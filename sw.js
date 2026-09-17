@@ -1,5 +1,5 @@
 'use strict';
-const BUILD='2026-09-17.4';
+const BUILD='2026-09-17.5';
 const CACHE='production-pwa-'+BUILD;
 const APP_SHELL=[
   './','./index.html','./assets/app.css','./assets/app.js','./bootstrap.js',
@@ -11,9 +11,11 @@ self.addEventListener('install',event=>{
 });
 self.addEventListener('activate',event=>{
   event.waitUntil(
-    caches.keys()
-      .then(keys=>Promise.all(keys.filter(k=>k!==CACHE&&k.startsWith('production-pwa-')).map(k=>caches.delete(k))))
-      .then(()=>self.clients.claim())
+    caches.keys().then(async keys=>{
+      const previous=keys.filter(k=>k!==CACHE&&k.startsWith('production-pwa-')).sort().reverse()[0]||'';
+      await Promise.all(keys.filter(k=>k.startsWith('production-pwa-')&&k!==CACHE&&k!==previous).map(k=>caches.delete(k)));
+      await self.clients.claim();
+    })
   );
 });
 self.addEventListener('message',event=>{
@@ -42,12 +44,9 @@ self.addEventListener('fetch',event=>{
     return;
   }
   event.respondWith(
-    caches.match(req).then(cached=>cached||fetch(req).then(r=>{
-      if(r.ok){
-        const copy=r.clone();
-        caches.open(CACHE).then(c=>c.put(req,copy));
-      }
+    caches.open(CACHE).then(c=>c.match(req).then(cached=>cached||fetch(req).then(r=>{
+      if(r.ok){const copy=r.clone();c.put(req,copy)}
       return r;
-    }))
+    })))
   );
 });

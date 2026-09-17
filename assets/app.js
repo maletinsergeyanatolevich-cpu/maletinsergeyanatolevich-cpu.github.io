@@ -1,5 +1,5 @@
 
-const APP_RELEASE=Object.freeze({version:'v0.3.1',buildId:'2026-09-17.4',channel:'private-tech-live',dbSchema:5,updateStrategy:'manifest-service-worker'});window.APP_RELEASE=APP_RELEASE;
+const APP_RELEASE=Object.freeze({version:'v0.3.1',buildId:'2026-09-17.5',channel:'admin1-stage',dbSchema:5,updateStrategy:'manifest-service-worker',rolloutStage:'admin1',previousBuildId:'2026-09-17.4'});window.APP_RELEASE=APP_RELEASE;
 function emptySnapshot(){return {meta:{version:APP_RELEASE.version,snapshotDate:'',snapshotTime:'',timezone:'',backendConnected:false,source:'Нет загруженных бизнес-данных',schemaVersion:1},orders:[],calculations:{},wallet:{balance:0,income:0,expense:0,reserve:0,freeNow:0,expense7:0,free7:0,futureExpenses:[],futureTotal:0,futureIncome:0,afterObligations:0},nomenclature:[],purchaseLines:[],purchaseAggregated:[],gallery:[],purchaseWarnings:[]}}
 function normalizeSnapshot(x){const b=emptySnapshot();if(!x||typeof x!=='object')return b;return {...b,...x,meta:{...b.meta,...(x.meta||{})},wallet:{...b.wallet,...(x.wallet||{})},orders:Array.isArray(x.orders)?x.orders:[],calculations:x.calculations&&typeof x.calculations==='object'?x.calculations:{},nomenclature:Array.isArray(x.nomenclature)?x.nomenclature:[],purchaseLines:Array.isArray(x.purchaseLines)?x.purchaseLines:[],purchaseAggregated:Array.isArray(x.purchaseAggregated)?x.purchaseAggregated:[],gallery:Array.isArray(x.gallery)?x.gallery:[],purchaseWarnings:Array.isArray(x.purchaseWarnings)?x.purchaseWarnings:[]}}
 let S=emptySnapshot(); window.SNAPSHOT=S;
@@ -12,6 +12,10 @@ let backendState={ping:'unknown',lastError:'',syncing:false};
 function lsGet(k){try{return localStorage.getItem(k)||''}catch(_){return ''}}
 function lsSet(k,v){try{localStorage.setItem(k,String(v??''))}catch(_){}}
 function lsDel(k){try{localStorage.removeItem(k)}catch(_){}}
+const THEME_KEY='prodTheme';
+function applyTheme(theme,save=true){const t=theme==='dark'?'dark':'light';document.documentElement.dataset.theme=t;if(save)lsSet(THEME_KEY,t);const btn=document.getElementById('themeToggle');if(btn){btn.textContent=t==='dark'?'🌙':'☀️';btn.setAttribute('aria-label',t==='dark'?'Включить светлую тему':'Включить тёмную тему');btn.setAttribute('title',t==='dark'?'Ночная тема — нажмите для дневной':'Дневная тема — нажмите для ночной')}const meta=document.getElementById('themeColorMeta')||document.querySelector('meta[name="theme-color"]');if(meta)meta.setAttribute('content',t==='dark'?'#121519':'#f7f3ed');return t}
+function initTheme(){const saved=lsGet(THEME_KEY)||document.documentElement.dataset.theme||'light';applyTheme(saved,false)}
+window.toggleTheme=function(){applyTheme(document.documentElement.dataset.theme==='dark'?'light':'dark',true)};
 function backendSession(){return lsGet(BACKEND_KEYS.session)}
 function backendDeviceId(){let v=lsGet(BACKEND_KEYS.device);if(!v){v='DEV-'+(crypto.randomUUID?crypto.randomUUID():Date.now()+'-'+Math.random().toString(16).slice(2));lsSet(BACKEND_KEYS.device,v)}return v}
 function randomSecret(){const a=new Uint8Array(32);crypto.getRandomValues(a);return [...a].map(x=>x.toString(16).padStart(2,'0')).join('')}
@@ -101,7 +105,7 @@ ${homeAttentionCard(q)}
 <div class="analytics-section media-section"><h3>Фото, голос, файлы, галерея</h3><div class="analytics-lines"><div><span>Фото / скриншоты ждут отправки</span><b>${photos}</b></div><div><span>Документы</span><b>${docs}</b></div><div><span>Голосовые записи</span><b>${audios}</b></div><div><span>Заметки / дополнения</span><b>${notes}</b></div><div><span>Кандидаты в Галерею</span><b>${galleryCand}</b></div><div><span>Одобрено в Галерее</span><b>${approved}</b></div><div><span>Предварительные расчёты</span><b>${quoteDrafts}</b></div><div><span>Черновики публикаций</span><b>${publishDrafts}</b></div></div></div>
 <div class="analytics-section sales-inline"><h3>Продажи</h3><p class="muted">Полная текущая информация из раздела «Аналитика продаж».</p><button class="sales-channel avito-channel" onclick="go('avito')"><span><b>Avito</b><small>скриншоты · фото · заметки · голос · будущие карточки объявлений</small></span><strong>${avito.length}</strong></button><div class="sales-channel passive"><span><b>VK</b><small>материалы из Галереи приложения и будущая статистика публикаций</small></span><strong>${countChannel('VK')}</strong></div><div class="sales-channel passive"><span><b>Сайт</b><small>после запуска сайта — публикации и обращения</small></span><strong>${countChannel('SITE')}</strong></div><div class="sales-channel passive"><span><b>Telegram / MAX / Instagram</b><small>черновики публикаций и будущая статистика</small></span><strong>${countChannel('TELEGRAM')+countChannel('MAX')+countChannel('INSTAGRAM')}</strong></div><div class="hint"><b>Сейчас:</b> собираем исходные данные и черновики. Реальные просмотры, обращения, лиды и продажи появятся после интеграций.</div></div>
 ${(isAdmin1()||hasPermission('activity.view'))?`<div class="analytics-section admin-audit-section"><h3>Администратор</h3><button class="feature-card" onclick="go('activityLog')"><span><b>Журнал действий</b><small>действия пользователя · устройство · время · статус</small></span><span class="arr">›</span></button></div>`:''}
-<div class="analytics-section system-section"><h3>Система</h3><div class="analytics-lines"><div><span>Версия приложения</span><b>${esc(APP_RELEASE.version)}</b></div><div><span>Снимок данных</span><b>${esc(S.meta.snapshotDate)}</b></div><div><span>Связь</span><b>${navigator.onLine?'Онлайн':'Офлайн'}</b></div><div><span>Backend</span><b>${S.meta.backendConnected?'включён':'пока выключен'}</b></div><div><span>Локальная очередь</span><b>${q.length}</b></div><div><span>Обновления</span><b>подготовлено для централизованной PWA</b></div></div><div class="hint"><b>После публикации HTTPS-PWA:</b> новая версия будет устанавливаться централизованно без ручной пересылки HTML. Локальные рабочие данные IndexedDB обновлением не удаляются.</div></div>`
+<div class="analytics-section system-section"><h3>Система</h3><div class="analytics-lines"><div><span>Версия приложения</span><b>${esc(APP_RELEASE.version)} · ${esc(APP_RELEASE.buildId)}</b></div><div><span>Снимок данных</span><b>${esc(S.meta.snapshotDate)}</b></div><div><span>Связь</span><b>${navigator.onLine?'Онлайн':'Офлайн'}</b></div><div><span>Backend</span><b>${S.meta.backendConnected?'включён':'пока выключен'}</b></div><div><span>Локальная очередь</span><b>${q.length}</b></div><div><span>Обновления</span><b>ADMIN1-first · manifest + service worker</b></div></div><div class="hint"><b>После публикации HTTPS-PWA:</b> новая версия будет устанавливаться централизованно без ручной пересылки HTML. Локальные рабочие данные IndexedDB обновлением не удаляются.</div></div>`
 ;}
 
 function activityTone(action){if(action==='sync_error')return 'error';if(['delivered','gallery_approved'].includes(action))return 'success';if(['created','edited','send_now','sync_started','ack_recheck','correction_created'].includes(action))return 'warning';return 'local'}
@@ -297,7 +301,17 @@ function quickNote(){modal('Быстрая заметка',`<div class="field"><
 function orderNote(id){modal(`Дополнение к ${id}`,`<div class="field"><label>Комментарий</label><textarea id="qText"></textarea></div><button class="primary" onclick="saveTextDraft('order-note','${id}')">Сохранить офлайн</button>`)}
 function calcNote(id){modal(`Дополнить расчёт ${id}`,`<div class="field"><label>Изменение / уточнение</label><textarea id="qText" placeholder="Размер, материал, количество, покрытие, что пересчитать..."></textarea></div><button class="primary" onclick="saveTextDraft('calc-note','${id}')">Сохранить задание</button>`)}
 function walletModal(orderId=''){const oid=String(orderId||'');const order=S.orders.find(o=>o.id===oid);modal(order?`Доход / расход · ${esc(order.id)}`:'Доход / расход',`<div class="field"><label>Тип</label><select id="wType"><option>Расход</option><option>Доход</option></select></div><div class="field"><label>Сумма, ₽</label><input id="wAmount" inputmode="decimal" placeholder="0"></div><div class="field"><label>Заказ</label><input id="wOrder" placeholder="2026-003" value="${esc(oid)}" ${order?'readonly':''}></div>${order?`<div class="hint">Операция автоматически привязана к заказу <b>${esc(order.id)} · ${esc(order.name)}</b>.</div>`:''}<div class="field"><label>Комментарий</label><textarea id="wText" placeholder="Что куплено / от кого поступили деньги"></textarea></div><button class="primary" onclick="saveWallet()">Сохранить офлайн</button>`)}
-function openDB(){return new Promise((resolve,reject)=>{const r=indexedDB.open('production-v011',5);r.onupgradeneeded=()=>{const db=r.result;if(!db.objectStoreNames.contains('drafts'))db.createObjectStore('drafts',{keyPath:'id'});if(!db.objectStoreNames.contains('history'))db.createObjectStore('history',{keyPath:'id'});if(!db.objectStoreNames.contains('activity'))db.createObjectStore('activity',{keyPath:'id'});if(!db.objectStoreNames.contains('checklists'))db.createObjectStore('checklists',{keyPath:'id'});if(!db.objectStoreNames.contains('snapshotCache'))db.createObjectStore('snapshotCache',{keyPath:'id'})};r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)})}
+const DB_NAME='production-v011';
+const DB_SCHEMA=APP_RELEASE.dbSchema;
+const DB_MIGRATIONS={
+  1:db=>{if(!db.objectStoreNames.contains('drafts'))db.createObjectStore('drafts',{keyPath:'id'})},
+  2:db=>{if(!db.objectStoreNames.contains('history'))db.createObjectStore('history',{keyPath:'id'})},
+  3:db=>{if(!db.objectStoreNames.contains('activity'))db.createObjectStore('activity',{keyPath:'id'})},
+  4:db=>{if(!db.objectStoreNames.contains('checklists'))db.createObjectStore('checklists',{keyPath:'id'})},
+  5:db=>{if(!db.objectStoreNames.contains('snapshotCache'))db.createObjectStore('snapshotCache',{keyPath:'id'})}
+};
+function runDbMigrations(db,oldVersion,newVersion){for(let v=Math.max(1,oldVersion+1);v<=newVersion;v++){const migrate=DB_MIGRATIONS[v];if(migrate)migrate(db)}}
+function openDB(){return new Promise((resolve,reject)=>{const r=indexedDB.open(DB_NAME,DB_SCHEMA);r.onupgradeneeded=e=>runDbMigrations(r.result,e.oldVersion,e.newVersion||DB_SCHEMA);r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);r.onblocked=()=>console.warn('IndexedDB upgrade blocked by another open app window')})}
 function offlineAccessValid(){const until=lsGet(BACKEND_KEYS.offlineUntil);const t=Date.parse(until||'');return Number.isFinite(t)&&t>Date.now()}
 async function purgeExpiredSnapshotCache(){if(offlineAccessValid())return false;await clearStore('snapshotCache');S=emptySnapshot();window.SNAPSHOT=S;return true}
 async function putSnapshotCache(snapshot){const db=await openDB();const tx=db.transaction('snapshotCache','readwrite');const rec={id:'current',savedAt:new Date().toISOString(),offlineAccessUntil:lsGet(BACKEND_KEYS.offlineUntil),user:backendUserPublic(),snapshot:normalizeSnapshot(snapshot)};tx.objectStore('snapshotCache').put(rec);return new Promise((res,rej)=>{tx.oncomplete=()=>res(rec);tx.onerror=()=>rej(tx.error)})}
@@ -365,6 +379,11 @@ async function simulateSync(){const a=await drafts();if(!a.length){alert('Оче
 function network(){const online=navigator.onLine;document.getElementById('netStatus').classList.toggle('online',online);document.getElementById('netStatus').classList.toggle('offline',!online);document.getElementById('offlineBanner').classList.toggle('hidden',online);refreshPending();if(online&&backendSession())setTimeout(()=>{refreshBackendData();syncReadyDrafts()},1200)}window.addEventListener('online',network);window.addEventListener('offline',network);
 setInterval(()=>{if(navigator.onLine&&backendSession())syncReadyDrafts()},15000);
 
+const updateState={manifest:null};
+function updateEligible(v={}){const stage=String(v.rolloutStage||v.releaseStage||'stable').toLowerCase();if(stage==='paused')return false;if(stage==='admin1')return isAdmin1();return true}
+function showUpdateBanner(v={}){if(!updateEligible(v))return;updateState.manifest=v||{};window.__PROD_UPDATE_READY=true;const box=document.getElementById('updateBanner');const text=document.getElementById('updateText');if(text)text.textContent=`Доступно обновление${v?.buildId?' · '+v.buildId:''}`;if(box)box.classList.remove('hidden')}
+document.addEventListener('production:update-ready',e=>showUpdateBanner(e.detail||{}));
+
 async function initPwaUpdateLayer(){
   if(!('serviceWorker' in navigator) || location.protocol==='file:') return;
   try{
@@ -376,24 +395,23 @@ async function initPwaUpdateLayer(){
       w.addEventListener('statechange',()=>{
         if(w.state==='installed' && navigator.serviceWorker.controller){
           window.__PROD_UPDATE_READY=true;
-          document.dispatchEvent(new CustomEvent('production:update-ready'));
+          document.dispatchEvent(new CustomEvent('production:update-ready',{detail:updateState.manifest||{rolloutStage:'admin1'}}));
         }
       });
     });
     navigator.serviceWorker.addEventListener('controllerchange',()=>location.reload());
     fetch('./version.json',{cache:'no-store'}).then(r=>r.ok?r.json():null).then(v=>{
-      if(v && v.buildId && v.buildId!==APP_RELEASE.buildId){
-        window.__PROD_UPDATE_READY=true;
-        document.dispatchEvent(new CustomEvent('production:update-ready',{detail:v}));
-      }
+      if(v&&v.buildId){updateState.manifest=v;if(v.buildId!==APP_RELEASE.buildId&&updateEligible(v)){window.__PROD_UPDATE_READY=true;document.dispatchEvent(new CustomEvent('production:update-ready',{detail:v}))}}
     }).catch(()=>{});
   }catch(err){ console.warn('PWA init failed',err); }
 }
 window.applyAvailableUpdate=function(){
+  const manifest=updateState.manifest||{};
+  if(!updateEligible(manifest)){alert('Это обновление пока доступно только ADMIN1.');return}
   const reg=window.__PROD_SW_REG;
   if(reg&&reg.waiting) reg.waiting.postMessage({type:'SKIP_WAITING'});
   else location.reload();
 };
 
-async function startApplication(){purgeLegacyDemoAdminState();hydrateBackendUser();await openDB();if(!offlineAccessValid())await purgeExpiredSnapshotCache();let loaded=false;if(backendSession()&&navigator.onLine){const d=await refreshBackendData();loaded=!!(d?.ok||d?.cached)}if(!loaded&&backendSession()&&offlineAccessValid())loaded=await loadCachedSnapshot();if(!loaded){S=emptySnapshot();window.SNAPSHOT=S;renderCoreScreens()}network();backendPing();initPwaUpdateLayer()}
+async function startApplication(){initTheme();purgeLegacyDemoAdminState();hydrateBackendUser();await openDB();if(!offlineAccessValid())await purgeExpiredSnapshotCache();let loaded=false;if(backendSession()&&navigator.onLine){const d=await refreshBackendData();loaded=!!(d?.ok||d?.cached)}if(!loaded&&backendSession()&&offlineAccessValid())loaded=await loadCachedSnapshot();if(!loaded){S=emptySnapshot();window.SNAPSHOT=S;renderCoreScreens()}network();backendPing();initPwaUpdateLayer()}
 startApplication();

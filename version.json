@@ -1,9 +1,19 @@
 {
   "version": "v0.3.1",
-  "buildId": "2026-09-17.4",
-  "channel": "private-tech-live",
+  "buildId": "2026-09-17.5",
+  "channel": "admin1-stage",
+  "rolloutStage": "admin1",
+  "eligibleRoles": [
+    "ADMIN1"
+  ],
   "dbSchema": 5,
   "minBackend": "backend-0.2.1",
-  "publishedAt": "2026-09-17T08:45:00Z",
-  "notes": "ADMIN1 server-admin build: demo users/rights removed. Users, permissions, access requests, devices and session revocation are managed through authenticated backend admin APIs. Legacy demo localStorage is purged."
+  "previousBuildId": "2026-09-17.4",
+  "rollback": {
+    "buildId": "2026-09-17.4",
+    "dbSchema": 5,
+    "safeWithoutDataReset": true
+  },
+  "publishedAt": "2026-09-17T16:14:12Z",
+  "notes": "ADMIN1-first update build. Adds persistent day/night theme toggle in the header, role-gated update banner, explicit non-destructive IndexedDB migration registry, and keeps one previous app-shell cache as rollback reserve. DB schema remains 5."
 }
