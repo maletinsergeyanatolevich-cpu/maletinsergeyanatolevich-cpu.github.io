@@ -1,0 +1,9 @@
+{
+  "version": "v0.3.1",
+  "buildId": "2026-09-17.4",
+  "channel": "private-tech-live",
+  "dbSchema": 5,
+  "minBackend": "backend-0.2.1",
+  "publishedAt": "2026-09-17T08:45:00Z",
+  "notes": "ADMIN1 server-admin build: demo users/rights removed. Users, permissions, access requests, devices and session revocation are managed through authenticated backend admin APIs. Legacy demo localStorage is purged."
+}
