@@ -1,4 +1,4 @@
-const APP_RELEASE=Object.freeze({version:'v0.3.3',buildId:'2026-09-18.5',channel:'admin1-stage',dbSchema:5,updateStrategy:'manifest-service-worker',rolloutStage:'admin1',previousBuildId:'2026-09-18.3'});window.APP_RELEASE=APP_RELEASE;
+const APP_RELEASE=Object.freeze({version:'v0.3.3',buildId:'2026-09-18.6',channel:'admin1-stage',dbSchema:5,updateStrategy:'manifest-service-worker',rolloutStage:'admin1',previousBuildId:'2026-09-18.5'});window.APP_RELEASE=APP_RELEASE;
 function emptySnapshot(){return {meta:{version:APP_RELEASE.version,snapshotDate:'',snapshotTime:'',timezone:'',backendConnected:false,source:'Нет загруженных бизнес-данных',schemaVersion:1},orders:[],calculations:{},wallet:{balance:0,income:0,expense:0,reserve:0,freeNow:0,expense7:0,free7:0,futureExpenses:[],futureTotal:0,futureIncome:0,afterObligations:0},nomenclature:[],purchaseLines:[],purchaseAggregated:[],gallery:[],purchaseWarnings:[]}}
 function normalizeSnapshot(x){const b=emptySnapshot();if(!x||typeof x!=='object')return b;return {...b,...x,meta:{...b.meta,...(x.meta||{})},wallet:{...b.wallet,...(x.wallet||{})},orders:Array.isArray(x.orders)?x.orders:[],calculations:x.calculations&&typeof x.calculations==='object'?x.calculations:{},nomenclature:Array.isArray(x.nomenclature)?x.nomenclature:[],purchaseLines:Array.isArray(x.purchaseLines)?x.purchaseLines:[],purchaseAggregated:Array.isArray(x.purchaseAggregated)?x.purchaseAggregated:[],gallery:Array.isArray(x.gallery)?x.gallery:[],purchaseWarnings:Array.isArray(x.purchaseWarnings)?x.purchaseWarnings:[]}}
 let S=emptySnapshot(); window.SNAPSHOT=S;
@@ -421,7 +421,7 @@ document.addEventListener('production:update-ready',e=>showUpdateBanner(e.detail
 async function initPwaUpdateLayer(){
   if(!('serviceWorker' in navigator) || location.protocol==='file:') return;
   try{
-    const reg=await navigator.serviceWorker.register('./sw.js',{scope:'./'});
+    const reg=await navigator.serviceWorker.register('./sw.js',{scope:'./',updateViaCache:'none'});
     window.__PROD_SW_REG=reg;
     reg.addEventListener('updatefound',()=>{
       const w=reg.installing;
@@ -434,17 +434,33 @@ async function initPwaUpdateLayer(){
       });
     });
     navigator.serviceWorker.addEventListener('controllerchange',()=>location.reload());
+    try{await reg.update()}catch(_){}
     fetch('./version.json',{cache:'no-store'}).then(r=>r.ok?r.json():null).then(v=>{
       if(v&&v.buildId){updateState.manifest=v;if(v.buildId!==APP_RELEASE.buildId&&updateEligible(v)){window.__PROD_UPDATE_READY=true;document.dispatchEvent(new CustomEvent('production:update-ready',{detail:v}))}}
     }).catch(()=>{});
   }catch(err){ console.warn('PWA init failed',err); }
 }
-window.applyAvailableUpdate=function(){
+window.applyAvailableUpdate=async function(){
   const manifest=updateState.manifest||{};
   if(!updateEligible(manifest)){alert('Это обновление пока доступно только ADMIN1.');return}
   const reg=window.__PROD_SW_REG;
-  if(reg&&reg.waiting) reg.waiting.postMessage({type:'SKIP_WAITING'});
-  else location.reload();
+  if(!reg){location.reload();return}
+  const activateWaiting=()=>{if(reg.waiting){reg.waiting.postMessage({type:'SKIP_WAITING'});return true}return false};
+  if(activateWaiting()) return;
+  try{await reg.update()}catch(_){}
+  if(activateWaiting()) return;
+  const w=reg.installing;
+  if(w){
+    const deadline=setTimeout(()=>{if(!activateWaiting())location.reload()},6000);
+    w.addEventListener('statechange',()=>{
+      if(w.state==='installed'){
+        clearTimeout(deadline);
+        if(!activateWaiting())location.reload();
+      }
+    },{once:false});
+    return;
+  }
+  location.reload();
 };
 
 

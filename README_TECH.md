@@ -1,6 +1,6 @@
 # Производство — PWA v0.3.3 OFFLINE+MEDIA
 
-Build: **2026-09-18.5**  
+Build: **2026-09-18.6**  
 Rollout: **ADMIN1 only**  
 Required backend: **backend-0.2.3 MEDIA-COMPAT**  
 DB schema: **5**  
@@ -27,10 +27,14 @@ Rollback: **2026-09-18.3** without IndexedDB reset.
 backend-0.2.3 returns media manifests only to v0.3.3+ clients. Older v0.3.2 clients continue receiving the old order shape with an empty images array.
 
 ## Acceptance
-1. Update ADMIN1 PWA to build 2026-09-18.5.
+1. Update ADMIN1 PWA to build 2026-09-18.6.
 2. Refresh business data once.
 3. Orders should show photo counters: 2026-002 = 1, 2026-003 = 2, 2026-004 = 11.
 4. Open an order on a good network: first three photos may load automatically.
 5. Open additional photos manually or use “Загрузить все при связи”.
 6. Close the PWA, disable network, reopen: lastGoodSnapshot and cached photos must remain.
 7. Pull-to-refresh offline must not blank business data.
+
+
+## Updater hotfix 2026-09-18.6
+Previous v0.3.2/v0.3.3 updater could detect a newer version.json but, when no waiting worker already existed, merely reload the cache-first shell. This could leave an installed PWA on the old build. Build .6 explicitly calls ServiceWorkerRegistration.update(), registers with updateViaCache='none', then activates a waiting/installing worker before reload. No IndexedDB or business-cache reset is performed.

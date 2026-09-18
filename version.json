@@ -1,6 +1,6 @@
 {
   "version": "v0.3.3",
-  "buildId": "2026-09-18.5",
+  "buildId": "2026-09-18.6",
   "channel": "admin1-stage",
   "rolloutStage": "admin1",
   "eligibleRoles": [
@@ -8,12 +8,12 @@
   ],
   "dbSchema": 5,
   "minBackend": "backend-0.2.3",
-  "previousBuildId": "2026-09-18.3",
+  "previousBuildId": "2026-09-18.5",
   "rollback": {
     "buildId": "2026-09-18.3",
     "dbSchema": 5,
     "safeWithoutDataReset": true
   },
-  "publishedAt": "2026-09-18T14:47:00Z",
-  "notes": "OFFLINE-FIRST R2 + ORDER MEDIA. Requires backend-0.2.3 MEDIA-COMPAT; v0.3.2 clients remain backend-compatible. Photo manifest + authenticated media fetch + bounded offline media cache. No DB schema change."
+  "publishedAt": "2026-09-18T14:58:00Z",
+  "notes": "OFFLINE-FIRST R2 + ORDER MEDIA + updater hotfix. Service Worker registration explicitly bypasses HTTP cache and calls registration.update(); update button checks for/installing/waiting worker before reload. Backend requirement remains backend-0.2.3. No DB schema change."
 }
