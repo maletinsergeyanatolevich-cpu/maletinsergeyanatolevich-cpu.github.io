@@ -1,19 +1,19 @@
 {
-  "version": "v0.3.2",
-  "buildId": "2026-09-18.3",
+  "version": "v0.3.3",
+  "buildId": "2026-09-18.5",
   "channel": "admin1-stage",
   "rolloutStage": "admin1",
   "eligibleRoles": [
     "ADMIN1"
   ],
   "dbSchema": 5,
-  "minBackend": "backend-0.2.1",
-  "previousBuildId": "2026-09-17.5",
+  "minBackend": "backend-0.2.3",
+  "previousBuildId": "2026-09-18.3",
   "rollback": {
-    "buildId": "2026-09-17.5",
+    "buildId": "2026-09-18.3",
     "dbSchema": 5,
     "safeWithoutDataReset": true
   },
-  "publishedAt": "2026-09-18T12:39:00Z",
-  "notes": "OFFLINE-FIRST recovery R2: cache-first shell + lastGoodSnapshot first; network-quality-gated background refresh; ADMIN1 cache survives network/session expiry; USER_DISABLED or DEVICE_REVOKED clears business cache; no DB reset."
+  "publishedAt": "2026-09-18T14:47:00Z",
+  "notes": "OFFLINE-FIRST R2 + ORDER MEDIA. Requires backend-0.2.3 MEDIA-COMPAT; v0.3.2 clients remain backend-compatible. Photo manifest + authenticated media fetch + bounded offline media cache. No DB schema change."
 }
