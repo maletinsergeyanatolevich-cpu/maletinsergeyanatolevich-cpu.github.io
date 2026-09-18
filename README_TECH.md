@@ -1,70 +1,36 @@
-﻿# Производство — PWA v0.3.2 OFFLINE-FIRST STAGING R2
+# Производство — PWA v0.3.3 OFFLINE+MEDIA
 
+Build: **2026-09-18.5**  
+Rollout: **ADMIN1 only**  
+Required backend: **backend-0.2.3 MEDIA-COMPAT**  
+DB schema: **5**  
+Rollback: **2026-09-18.3** without IndexedDB reset.
 
-Build: **2026-09-18.3**. Backend compatibility: **backend-0.2.1**. Rollout: **ADMIN1 only**.
+## What stays from v0.3.2
+- cache-first app shell;
+- lastGoodSnapshot before network;
+- ADMIN1 business snapshot survives network/session-expiry failures;
+- USER_DISABLED / DEVICE_REVOKED / remote wipe keep the R2 security rules;
+- background refresh is network-quality gated.
 
+## Order media
+- snapshot contains only order photo metadata for v0.3.3+ clients;
+- image bytes are requested through authenticated `order.media.get`;
+- Drive files are not made public;
+- first three order images may prefetch only on a good connection;
+- viewed/downloaded images are cached in `production-order-media-v1`;
+- cache is bounded and keyed by mediaId + modifiedAt;
+- cached photos can be shown offline;
+- the Orders list uses only an already-cached first image and does not mass-download photos.
 
-## Главный принцип
-Приложение сначала открывает последний успешно сохранённый business snapshot из IndexedDB и только после этого проверяет сеть. Отсутствие/плохое качество сети не превращает интерфейс в пустой.
+## Compatibility
+backend-0.2.3 returns media manifests only to v0.3.3+ clients. Older v0.3.2 clients continue receiving the old order shape with an empty images array.
 
-
-## Startup
-1. app-shell берётся из Service Worker cache;
-2. lastGoodSnapshot читается из IndexedDB;
-3. Заказы/Номенклатура отрисовываются сразу;
-4. затем выполняется короткий network probe;
-5. только при нормальной сети запускаются auth.check + snapshot.pull;
-6. новый snapshot сначала успешно сохраняется в IndexedDB, затем применяется в UI;
-7. network/auth timeout не очищает lastGoodSnapshot.
-
-
-## ADMIN1 offline policy
-Для доверенного ADMIN1 последний snapshot читается независимо от временного offline lease. Обычный USER после истечения lease не получает штатный рабочий offline snapshot.
-
-
-## Auth/revoke policy R2
-- SESSION_INVALID / SESSION_REVOKED / SESSION_EXPIRED: server session снимается, но lastGoodSnapshot сохраняется для ADMIN1 offline work;
-- USER_DISABLED / DEVICE_REVOKED: business snapshot очищается;
-- wipe_on_next_online / remote wipe: очищаются назначенные рабочие local stores;
-- legacy purgeExpiredSnapshotCache больше не удаляет snapshot по TTL.
-
-
-## Auto-refresh gate
-Автообновление не стартует при browser offline, Save-Data, slow-2g/2g, RTT > 1400 ms, downlink < 0.45 Mbps или backend ping > 2500 ms. Ручное обновление остаётся доступным.
-
-
-## Code vs data
-Service Worker обновляет код отдельным staged-процессом. Business data обновляются через snapshot.pull без reload приложения.
-
-
-## Автоматический contract test
-PASS:
-- startup читает cache раньше сети;
-- новый server snapshot сохраняется до замены UI;
-- expired ADMIN1 snapshot читается;
-- expired USER snapshot штатно не открывается;
-- SESSION_EXPIRED сохраняет snapshot;
-- DEVICE_REVOKED / USER_DISABLED очищают business snapshot;
-- Service Worker navigation cache-first.
-
-
-Полноценный Chromium/PWA e2e в текущей среде не запустился: локальная навигация браузера блокируется администратором среды. Поэтому обязательный финальный e2e остаётся на реальном Android ADMIN1.
-
-
-## Приёмочный Android-тест
-1. Online: один раз «Обновить данные».
-2. Убедиться, что видны 3 заказа и актуальная Номенклатура.
-3. Полностью закрыть PWA.
-4. Отключить Wi‑Fi и мобильные данные.
-5. Открыть PWA снова.
-6. Заказы и Номенклатура должны появиться без «Обновить данные».
-7. Сделать pull-to-refresh без сети — данные должны остаться.
-8. Включить нормальную сеть — фоновый refresh не должен очищать UI.
-
-
-## Rollback
-Target: **2026-09-17.5**, dbSchema 5, без очистки IndexedDB.
-
-
-## Media
-Предыдущий PWA v0.3.3 MEDIA build 2026-09-18.2 был собран поверх offline-first build 2026-09-18.1. После R2 он считается STAGING-SUPERSEDED и перед rollout должен быть rebased на 2026-09-18.3. Backend media 0.2.2 остаётся отдельным staging и live не менялся.
+## Acceptance
+1. Update ADMIN1 PWA to build 2026-09-18.5.
+2. Refresh business data once.
+3. Orders should show photo counters: 2026-002 = 1, 2026-003 = 2, 2026-004 = 11.
+4. Open an order on a good network: first three photos may load automatically.
+5. Open additional photos manually or use “Загрузить все при связи”.
+6. Close the PWA, disable network, reopen: lastGoodSnapshot and cached photos must remain.
+7. Pull-to-refresh offline must not blank business data.
