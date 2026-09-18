@@ -1,6 +1,6 @@
 {
-  "version": "v0.3.1",
-  "buildId": "2026-09-17.5",
+  "version": "v0.3.2",
+  "buildId": "2026-09-18.3",
   "channel": "admin1-stage",
   "rolloutStage": "admin1",
   "eligibleRoles": [
@@ -8,12 +8,12 @@
   ],
   "dbSchema": 5,
   "minBackend": "backend-0.2.1",
-  "previousBuildId": "2026-09-17.4",
+  "previousBuildId": "2026-09-17.5",
   "rollback": {
-    "buildId": "2026-09-17.4",
+    "buildId": "2026-09-17.5",
     "dbSchema": 5,
     "safeWithoutDataReset": true
   },
-  "publishedAt": "2026-09-17T16:14:12Z",
-  "notes": "ADMIN1-first update build. Adds persistent day/night theme toggle in the header, role-gated update banner, explicit non-destructive IndexedDB migration registry, and keeps one previous app-shell cache as rollback reserve. DB schema remains 5."
+  "publishedAt": "2026-09-18T12:39:00Z",
+  "notes": "OFFLINE-FIRST recovery R2: cache-first shell + lastGoodSnapshot first; network-quality-gated background refresh; ADMIN1 cache survives network/session expiry; USER_DISABLED or DEVICE_REVOKED clears business cache; no DB reset."
 }

@@ -1,5 +1,5 @@
 'use strict';
-const BUILD='2026-09-17.5';
+const BUILD='2026-09-18.3';
 const CACHE='production-pwa-'+BUILD;
 const APP_SHELL=[
   './','./index.html','./assets/app.css','./assets/app.js','./bootstrap.js',
@@ -33,13 +33,7 @@ self.addEventListener('fetch',event=>{
   }
   if(req.mode==='navigate'){
     event.respondWith(
-      fetch(req)
-        .then(r=>{
-          const copy=r.clone();
-          caches.open(CACHE).then(c=>c.put('./index.html',copy));
-          return r;
-        })
-        .catch(()=>caches.match('./index.html').then(r=>r||caches.match('./offline.html')))
+      caches.match('./index.html').then(cached=>cached||fetch(req).catch(()=>caches.match('./offline.html')))
     );
     return;
   }
