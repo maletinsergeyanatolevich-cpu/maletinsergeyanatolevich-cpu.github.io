@@ -1,10 +1,12 @@
-# Производство — PWA v0.3.3 OFFLINE+MEDIA
+﻿# Производство — PWA v0.3.3 OFFLINE+MEDIA
 
-Build: **2026-09-18.6**  
+
+Build: **2026-09-18.7**  
 Rollout: **ADMIN1 only**  
-Required backend: **backend-0.2.3 MEDIA-COMPAT**  
+Required backend: **backend-0.2.4 ACK+MEDIA**  
 DB schema: **5**  
 Rollback: **2026-09-18.3** without IndexedDB reset.
+
 
 ## What stays from v0.3.2
 - cache-first app shell;
@@ -12,6 +14,7 @@ Rollback: **2026-09-18.3** without IndexedDB reset.
 - ADMIN1 business snapshot survives network/session-expiry failures;
 - USER_DISABLED / DEVICE_REVOKED / remote wipe keep the R2 security rules;
 - background refresh is network-quality gated.
+
 
 ## Order media
 - snapshot contains only order photo metadata for v0.3.3+ clients;
@@ -23,8 +26,10 @@ Rollback: **2026-09-18.3** without IndexedDB reset.
 - cached photos can be shown offline;
 - the Orders list uses only an already-cached first image and does not mass-download photos.
 
+
 ## Compatibility
 backend-0.2.3 returns media manifests only to v0.3.3+ clients. Older v0.3.2 clients continue receiving the old order shape with an empty images array.
+
 
 ## Acceptance
 1. Update ADMIN1 PWA to build 2026-09-18.6.
@@ -36,5 +41,18 @@ backend-0.2.3 returns media manifests only to v0.3.3+ clients. Older v0.3.2 clie
 7. Pull-to-refresh offline must not blank business data.
 
 
+
+
 ## Updater hotfix 2026-09-18.6
 Previous v0.3.2/v0.3.3 updater could detect a newer version.json but, when no waiting worker already existed, merely reload the cache-first shell. This could leave an installed PWA on the old build. Build .6 explicitly calls ServiceWorkerRegistration.update(), registers with updateViaCache='none', then activates a waiting/installing worker before reload. No IndexedDB or business-cache reset is performed.
+
+
+
+
+## Reliability update 2026-09-18.7
+- manual photo opening does not depend on browser network-quality estimates;
+- small active-order media sets (<=15 MB, <=25 files) may cache fully when the order is opened online;
+- “Хранить офлайн” pins an order for future media refresh; unpinning is non-destructive;
+- sync.push uses event.status after a lost ACK;
+- stuck sending/confirming/error drafts are checked by event_id and moved to history if the server already has them;
+- Drive/Sheets remain source of truth; no IndexedDB schema reset.
