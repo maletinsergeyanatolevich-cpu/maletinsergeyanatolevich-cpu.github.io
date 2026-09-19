@@ -1,19 +1,19 @@
 ﻿{
-  "version": "v0.3.5",
-  "buildId": "2026-09-19.2",
+  "version": "v0.3.6",
+  "buildId": "2026-09-19.3",
   "channel": "admin1-stage",
   "rolloutStage": "admin1",
   "eligibleRoles": [
     "ADMIN1"
   ],
   "dbSchema": 5,
-  "minBackend": "backend-0.2.6",
-  "previousBuildId": "2026-09-19.1",
+  "minBackend": "backend-0.2.7",
+  "previousBuildId": "2026-09-19.2",
   "rollback": {
-    "buildId": "2026-09-19.1",
+    "buildId": "2026-09-19.2",
     "dbSchema": 5,
     "safeWithoutDataReset": true
   },
-  "publishedAt": "2026-09-19T03:45:00Z",
-  "notes": "Audio 38 UX package: progress indicator for refresh/sync/update, green bottom Refresh button, larger nav, Wi-Fi-first heavy media auto-sync, Wallet movement history, cleaned Purchases/Gallery/Sales Analytics copy, richer Nomenclature list, WhatsApp gallery channel. Keeps delta-sync and fixed update layer. DB schema 5."
+  "publishedAt": "2026-09-19T05:25:00Z",
+  "notes": "Acceptance fixes: Wallet movement history excludes future-expense/service rows; brighter green Refresh button; slightly smaller bottom-nav font. Keeps offline-first, nomenclature delta-sync, Wi-Fi-first media, and fixed update layer. DB schema 5."
 }

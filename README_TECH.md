@@ -1,4 +1,4 @@
-﻿# Производство — PWA v0.3.5 UX+DELTA
+﻿# Производство — PWA v0.3.6 UX+DELTA
 
 
 
@@ -7,11 +7,27 @@
 
 
 
-Build: **2026-09-19.2**  
+
+
+
+
+
+
+
+
+Build: **2026-09-19.3**  
 Rollout: **ADMIN1 only**  
-Required backend: **backend-0.2.6 WALLET-HISTORY**  
+Required backend: **backend-0.2.7 WALLET-HISTORY-FIX**  
 DB schema: **5**  
 Rollback: **2026-09-18.7** without IndexedDB reset.
+
+
+
+
+
+
+
+
 
 
 
@@ -26,6 +42,14 @@ Rollback: **2026-09-18.7** without IndexedDB reset.
 - ADMIN1 business snapshot survives network/session-expiry failures;
 - USER_DISABLED / DEVICE_REVOKED / remote wipe keep the R2 security rules;
 - background refresh is network-quality gated.
+
+
+
+
+
+
+
+
 
 
 
@@ -51,8 +75,24 @@ Rollback: **2026-09-18.7** without IndexedDB reset.
 
 
 
+
+
+
+
+
+
+
+
 ## Compatibility
 backend-0.2.3 returns media manifests only to v0.3.3+ clients. Older v0.3.2 clients continue receiving the old order shape with an empty images array.
+
+
+
+
+
+
+
+
 
 
 
@@ -69,6 +109,22 @@ backend-0.2.3 returns media manifests only to v0.3.3+ clients. Older v0.3.2 clie
 5. Open additional photos manually or use “Загрузить все при связи”.
 6. Close the PWA, disable network, reopen: lastGoodSnapshot and cached photos must remain.
 7. Pull-to-refresh offline must not blank business data.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -103,6 +159,22 @@ Previous v0.3.2/v0.3.3 updater could detect a newer version.json but, when no wa
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 ## Reliability update 2026-09-18.7
 - manual photo opening does not depend on browser network-quality estimates;
 - small active-order media sets (<=15 MB, <=25 files) may cache fully when the order is opened online;
@@ -110,6 +182,10 @@ Previous v0.3.2/v0.3.3 updater could detect a newer version.json but, when no wa
 - sync.push uses event.status after a lost ACK;
 - stuck sending/confirming/error drafts are checked by event_id and moved to history if the server already has them;
 - Drive/Sheets remain source of truth; no IndexedDB schema reset.
+
+
+
+
 
 
 
@@ -127,6 +203,8 @@ Previous v0.3.2/v0.3.3 updater could detect a newer version.json but, when no wa
 - DB schema stays at 5; rollback to build 2026-09-18.7 is safe without clearing local data.
 
 
+
+
 ## Audio 38 UX package — build 2026-09-19.2
 - visible progress overlay for manual data refresh, manual sync and app update;
 - green bottom “Обновить” button after “Загрузки”, using the same access/data refresh action;
@@ -140,3 +218,12 @@ Previous v0.3.2/v0.3.3 updater could detect a newer version.json but, when no wa
 - Orders, Home, General Information, Calculator and Checklists business behavior otherwise unchanged;
 - nomenclature delta-sync and service-worker update hotfix preserved;
 - DB schema remains 5; rollback to build 2026-09-19.1 is safe without clearing local data.
+
+
+## Acceptance fixes — build 2026-09-19.3
+- Wallet movement history is limited to the actual transaction block before «ПРЕДСТОЯЩИЕ РАСХОДЫ»;
+- zero-value service/header rows cannot become movement cards;
+- bottom «Обновить» button is brighter green;
+- bottom-navigation font is slightly smaller for cleaner wrapping;
+- no changes to orders, photos, offline-first, nomenclature delta-sync, gallery integrations or round-stock mapping;
+- DB schema remains 5; rollback to build 2026-09-19.2 is safe without clearing local data.
