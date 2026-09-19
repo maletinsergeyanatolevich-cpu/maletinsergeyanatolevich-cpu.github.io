@@ -7,7 +7,15 @@ const APP_SHELL=[
   './icons/icon.svg','./icons/icon-maskable.svg','./offline.html'
 ];
 self.addEventListener('install',event=>{
-  event.waitUntil(caches.open(CACHE).then(c=>c.addAll(APP_SHELL)));
+  event.waitUntil((async()=>{
+    const c=await caches.open(CACHE);
+    for(const path of APP_SHELL){
+      const request=new Request(path,{cache:'reload'});
+      const response=await fetch(request);
+      if(!response.ok) throw new Error('APP_SHELL_FETCH_FAILED:'+path+':'+response.status);
+      await c.put(path,response.clone());
+    }
+  })());
 });
 self.addEventListener('activate',event=>{
   event.waitUntil(
@@ -32,15 +40,26 @@ self.addEventListener('fetch',event=>{
     return;
   }
   if(req.mode==='navigate'){
-    event.respondWith(
-      caches.match('./index.html').then(cached=>cached||fetch(req).catch(()=>caches.match('./offline.html')))
-    );
+    event.respondWith((async()=>{
+      const c=await caches.open(CACHE);
+      const cached=await c.match('./index.html');
+      if(cached) return cached;
+      try{
+        const fresh=await fetch(req,{cache:'no-store'});
+        if(fresh.ok) await c.put('./index.html',fresh.clone());
+        return fresh;
+      }catch(_){
+        return c.match('./offline.html');
+      }
+    })());
     return;
   }
-  event.respondWith(
-    caches.open(CACHE).then(c=>c.match(req).then(cached=>cached||fetch(req).then(r=>{
-      if(r.ok){const copy=r.clone();c.put(req,copy)}
-      return r;
-    })))
-  );
+  event.respondWith((async()=>{
+    const c=await caches.open(CACHE);
+    const cached=await c.match(req);
+    if(cached) return cached;
+    const fresh=await fetch(req,{cache:'no-store'});
+    if(fresh.ok) await c.put(req,fresh.clone());
+    return fresh;
+  })());
 });
