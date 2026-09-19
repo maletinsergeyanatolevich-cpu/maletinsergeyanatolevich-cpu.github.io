@@ -1,19 +1,19 @@
 ﻿{
-  "version": "v0.3.3",
-  "buildId": "2026-09-18.7",
+  "version": "v0.3.4",
+  "buildId": "2026-09-19.1",
   "channel": "admin1-stage",
   "rolloutStage": "admin1",
   "eligibleRoles": [
     "ADMIN1"
   ],
   "dbSchema": 5,
-  "minBackend": "backend-0.2.4",
-  "previousBuildId": "2026-09-18.6",
+  "minBackend": "backend-0.2.5",
+  "previousBuildId": "2026-09-18.7",
   "rollback": {
-    "buildId": "2026-09-18.3",
+    "buildId": "2026-09-18.7",
     "dbSchema": 5,
     "safeWithoutDataReset": true
   },
-  "publishedAt": "2026-09-18T15:45:00Z",
-  "notes": "ORDER MEDIA reliability + offline packs + ACK recovery. Manual photo loads bypass network-quality heuristics; small active order media packs auto-cache when online; user can pin an order for offline storage; sync uses event.status after lost ACK and recovers stuck sending/confirming drafts. Requires backend-0.2.4. No DB schema change."
+  "publishedAt": "2026-09-19T00:05:00Z",
+  "notes": "Nomenclature delta-sync staging: full catalog remains local; routine snapshot.pull omits nomenclature; nomenclature.delta merges only changed IDs by _SYNC_REV; inactive rows remove local items; structural sheet changes force safe full refresh. Backend 0.2.5. DB schema remains 5."
 }

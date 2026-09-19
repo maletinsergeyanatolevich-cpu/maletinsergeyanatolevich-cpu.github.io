@@ -1,11 +1,15 @@
-﻿# Производство — PWA v0.3.3 OFFLINE+MEDIA
+﻿# Производство — PWA v0.3.4 OFFLINE+DELTA
 
 
-Build: **2026-09-18.7**  
+
+
+Build: **2026-09-19.1**  
 Rollout: **ADMIN1 only**  
-Required backend: **backend-0.2.4 ACK+MEDIA**  
+Required backend: **backend-0.2.5 NOM-DELTA**  
 DB schema: **5**  
-Rollback: **2026-09-18.3** without IndexedDB reset.
+Rollback: **2026-09-18.7** without IndexedDB reset.
+
+
 
 
 ## What stays from v0.3.2
@@ -14,6 +18,8 @@ Rollback: **2026-09-18.3** without IndexedDB reset.
 - ADMIN1 business snapshot survives network/session-expiry failures;
 - USER_DISABLED / DEVICE_REVOKED / remote wipe keep the R2 security rules;
 - background refresh is network-quality gated.
+
+
 
 
 ## Order media
@@ -27,8 +33,12 @@ Rollback: **2026-09-18.3** without IndexedDB reset.
 - the Orders list uses only an already-cached first image and does not mass-download photos.
 
 
+
+
 ## Compatibility
 backend-0.2.3 returns media manifests only to v0.3.3+ clients. Older v0.3.2 clients continue receiving the old order shape with an empty images array.
+
+
 
 
 ## Acceptance
@@ -43,8 +53,16 @@ backend-0.2.3 returns media manifests only to v0.3.3+ clients. Older v0.3.2 clie
 
 
 
+
+
+
+
 ## Updater hotfix 2026-09-18.6
 Previous v0.3.2/v0.3.3 updater could detect a newer version.json but, when no waiting worker already existed, merely reload the cache-first shell. This could leave an installed PWA on the old build. Build .6 explicitly calls ServiceWorkerRegistration.update(), registers with updateViaCache='none', then activates a waiting/installing worker before reload. No IndexedDB or business-cache reset is performed.
+
+
+
+
 
 
 
@@ -56,3 +74,16 @@ Previous v0.3.2/v0.3.3 updater could detect a newer version.json but, when no wa
 - sync.push uses event.status after a lost ACK;
 - stuck sending/confirming/error drafts are checked by event_id and moved to history if the server already has them;
 - Drive/Sheets remain source of truth; no IndexedDB schema reset.
+
+
+## Nomenclature delta-sync 2026-09-19.1
+- Google Sheets remains the source of truth.
+- Full active nomenclature remains in the local snapshot for offline search.
+- Normal snapshot.pull requests omit the nomenclature array once a local revision exists.
+- nomenclature.delta returns only rows with _SYNC_REV newer than the device revision.
+- Merge key is stable ID позиции, never sheet row number.
+- Активна=Нет removes the item from the local active catalogue.
+- Structural row/column changes require a safe full catalogue refresh.
+- Backend installs onEdit/onChange plus a periodic integrity hash sweep.
+- _NOM_SEARCH remains a separate search index and is not changed.
+- DB schema stays at 5; rollback to build 2026-09-18.7 is safe without clearing local data.

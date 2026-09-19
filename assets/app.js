@@ -1,4 +1,4 @@
-﻿const APP_RELEASE=Object.freeze({version:'v0.3.3',buildId:'2026-09-18.7',channel:'admin1-stage',dbSchema:5,updateStrategy:'manifest-service-worker',rolloutStage:'admin1',previousBuildId:'2026-09-18.6'});window.APP_RELEASE=APP_RELEASE;
+﻿const APP_RELEASE=Object.freeze({version:'v0.3.4',buildId:'2026-09-19.1',channel:'admin1-stage',dbSchema:5,updateStrategy:'manifest-service-worker',rolloutStage:'admin1',previousBuildId:'2026-09-18.7'});window.APP_RELEASE=APP_RELEASE;
 function emptySnapshot(){return {meta:{version:APP_RELEASE.version,snapshotDate:'',snapshotTime:'',timezone:'',backendConnected:false,source:'Нет загруженных бизнес-данных',schemaVersion:1},orders:[],calculations:{},wallet:{balance:0,income:0,expense:0,reserve:0,freeNow:0,expense7:0,free7:0,futureExpenses:[],futureTotal:0,futureIncome:0,afterObligations:0},nomenclature:[],purchaseLines:[],purchaseAggregated:[],gallery:[],purchaseWarnings:[]}}
 function normalizeSnapshot(x){const b=emptySnapshot();if(!x||typeof x!=='object')return b;return {...b,...x,meta:{...b.meta,...(x.meta||{})},wallet:{...b.wallet,...(x.wallet||{})},orders:Array.isArray(x.orders)?x.orders:[],calculations:x.calculations&&typeof x.calculations==='object'?x.calculations:{},nomenclature:Array.isArray(x.nomenclature)?x.nomenclature:[],purchaseLines:Array.isArray(x.purchaseLines)?x.purchaseLines:[],purchaseAggregated:Array.isArray(x.purchaseAggregated)?x.purchaseAggregated:[],gallery:Array.isArray(x.gallery)?x.gallery:[],purchaseWarnings:Array.isArray(x.purchaseWarnings)?x.purchaseWarnings:[]}}
 let S=emptySnapshot(); window.SNAPSHOT=S;
@@ -7,11 +7,50 @@ const titles={home:'Главная',checklists:'Чек-листы',analytics:'О
 
 
 
+
+
+
+
 const SESSION={userId:'',name:'',role:'GUEST',permissions:{}}; function applyBackendUser(u={}){SESSION.userId=String(u.user_id||u.id||'');SESSION.name=String(u.name||'');SESSION.role=String(u.role||'GUEST');SESSION.permissions=(u.permissions&&typeof u.permissions==='object')?u.permissions:{};return SESSION} function hydrateBackendUser(){try{const u=JSON.parse(lsGet(BACKEND_KEYS.user)||'{}');applyBackendUser(u)}catch(_){applyBackendUser({})}} function isAdmin1(){return SESSION.role==='ADMIN1'};
 const BACKEND_URL='https://script.google.com/macros/s/AKfycbw9LwsZcvSylhVtZPNL2_o0Thkz1eDKTuUBe6KS5V-D7Jzco7sXv4ynGzD1JTurXpUD/exec';
-const BACKEND_KEYS={device:'prodDeviceId',secret:'prodActivationSecret',request:'prodAccessRequestId',session:'prodSessionToken',sessionId:'prodSessionId',offlineUntil:'prodOfflineUntil',user:'prodBackendUser'};
+const BACKEND_KEYS={device:'prodDeviceId',secret:'prodActivationSecret',request:'prodAccessRequestId',session:'prodSessionToken',sessionId:'prodSessionId',offlineUntil:'prodOfflineUntil',user:'prodBackendUser',nomRev:'prodNomRevision',nomSetup:'prodNomDeltaSetup'};
 let backendState={ping:'unknown',lastError:'',syncing:false,recovering:false};
 const DATA_STATE={source:'',lastCacheAt:'',lastPullAt:'',lastAttemptAt:'',lastError:'',network:'unknown',refreshing:false};
+
+
+function localNomRevision(){const n=Math.floor(Number(lsGet(BACKEND_KEYS.nomRev)||0));return Number.isFinite(n)&&n>0?n:0}
+function setLocalNomRevision(v){const n=Math.floor(Number(v||0));if(n>0)lsSet(BACKEND_KEYS.nomRev,String(n));return n}
+async function ensureNomenclatureDeltaSetup(){
+  if(!backendSession()||!isAdmin1()||lsGet(BACKEND_KEYS.nomSetup)==='1'||navigator.onLine===false)return {ok:false,skipped:true};
+  try{
+    const d=await backendPost({action:'nomenclature.sync.install',session_token:backendSession(),device_id:backendDeviceId(),app_version:APP_RELEASE.version},{timeoutMs:15000});
+    if(d?.ok){const t=d.triggers||{};if(t.edit&&t.change&&t.integrity)lsSet(BACKEND_KEYS.nomSetup,'1')}
+    return d||{ok:false};
+  }catch(e){return {ok:false,error:String(e?.message||e)}}
+}
+async function mergeNomenclatureDelta(changes,currentRev){
+  const map=new Map((Array.isArray(S.nomenclature)?S.nomenclature:[]).filter(x=>x&&x.id).map(x=>[String(x.id),x]));
+  (Array.isArray(changes)?changes:[]).forEach(x=>{if(!x||!x.id)return;if(x.active===false)map.delete(String(x.id));else map.set(String(x.id),x)});
+  const next=normalizeSnapshot({...S,nomenclature:[...map.values()],meta:{...(S.meta||{}),nomenclatureRevision:Number(currentRev||localNomRevision()||0),nomenclatureDeltaSupported:true,nomenclatureOmitted:false}});
+  if(currentRev)setLocalNomRevision(currentRev);
+  await putSnapshotCache(next);applySnapshot(next);return next;
+}
+async function pullNomenclatureDelta(opts={}){
+  const token=backendSession();if(!token||navigator.onLine===false)return {ok:false,error:'NO_SESSION_OR_OFFLINE'};
+  const since=localNomRevision()||Math.floor(Number(S.meta?.nomenclatureRevision||0));
+  try{
+    const d=await backendPost({action:'nomenclature.delta',session_token:token,device_id:backendDeviceId(),since_rev:since,app_version:APP_RELEASE.version},{timeoutMs:Number(opts.timeoutMs||15000)});
+    if(!d?.ok)return d||{ok:false,error:'NOM_DELTA_FAILED'};
+    if(d.bootstrap_required||d.reset_required){
+      if(opts.allowFullFallback===false)return d;
+      const full=await pullLiveSnapshot({silent:true,timeoutMs:22000,forceFullNomenclature:true,skipNomDelta:true});
+      return {...d,fullReloaded:!!full?.ok,fullResult:full};
+    }
+    await mergeNomenclatureDelta(d.changes||[],d.current_rev||since);return d;
+  }catch(e){return {ok:false,error:String(e?.name==='AbortError'?'NOM_DELTA_TIMEOUT':(e?.message||e))}}
+}
+
+
 function lsGet(k){try{return localStorage.getItem(k)||''}catch(_){return ''}}
 function lsSet(k,v){try{localStorage.setItem(k,String(v??''))}catch(_){}}
 function lsDel(k){try{localStorage.removeItem(k)}catch(_){}}
@@ -42,6 +81,10 @@ async function recoverPendingAcks(){if(backendState.recovering||backendState.syn
 async function syncReadyDrafts(opts={}){if(backendState.syncing)return {ok:false,error:'SYNC_BUSY'};if(!navigator.onLine)return {ok:false,error:'OFFLINE'};const token=backendSession();if(!token)return {ok:false,error:'NO_SESSION'};backendState.syncing=true;try{const all=await drafts();const ready=all.filter(x=>draftState(x)==='ready');if(!ready.length)return {ok:true,count:0,results:[]};const results=[];for(const x of ready){let r;try{await logActivity(x.meta?.syncState==='error'?'ack_recheck':'sync_started',x);r=await syncEventWithRetry(x,token,2);results.push(r);if(r?.ok&&r?.server_received){await rememberDelivered(x,r);await deleteDraftDirect(x.id)}else{const rec=await getDraft(x.id);if(rec){rec.meta={...(rec.meta||{}),syncState:'error',lastSyncError:String(r?.error||'Сервер не подтвердил приём')};await updateDraft(rec);await logActivity('sync_error',rec,rec.meta.lastSyncError)}}}catch(e){r={event_id:x.id,ok:false,error:String(e?.message||e)};results.push(r);const rec=await getDraft(x.id);if(rec){rec.meta={...(rec.meta||{}),syncState:'error',lastSyncError:r.error};await updateDraft(rec);await logActivity('sync_error',rec,r.error)}}}await refreshPending();if(document.getElementById('sync').classList.contains('active'))await renderSync();if(opts.notify){const ok=results.filter(r=>r?.ok&&r?.server_received).length;const bad=results.length-ok;alert(ok&&bad===0?`Сервер подтвердил приём: ${ok}. Записи перенесены в историю.`:`Синхронизация: подтверждено ${ok}${bad?`, требуют проверки ${bad}`:''}. Неподтверждённые записи остаются локально.`)}return {ok:true,count:results.length,results}}finally{backendState.syncing=false}}
 async function syncDraftById(id){const token=backendSession();if(!token)return {ok:false,error:'NO_SESSION'};const x=await getDraft(id);if(!x||draftState(x)!=='ready'||!navigator.onLine)return {ok:false,error:'NOT_READY'};const seen=await checkEventStatus(x.id,token);if(seen?.server_received){await rememberDelivered(x,seen);await deleteDraftDirect(x.id);await refreshPending();if(document.getElementById('sync').classList.contains('active'))await renderSync();return seen}await logActivity(x.meta?.syncState==='error'?'ack_recheck':'sync_started',x);const r=await syncEventWithRetry(x,token,2);if(r?.ok&&r?.server_received){await rememberDelivered(x,r);await deleteDraftDirect(x.id);await refreshPending();if(document.getElementById('sync').classList.contains('active'))await renderSync();return r}const rec=await getDraft(id);if(rec){rec.meta={...(rec.meta||{}),syncState:'error',lastSyncError:String(r?.error||'Сервер не подтвердил приём')};await updateDraft(rec);await logActivity('sync_error',rec,rec.meta.lastSyncError)}await refreshPending();if(document.getElementById('sync').classList.contains('active'))await renderSync();return r}
 function backendAccessLabel(){if(backendSession())return 'сессия активна';if(lsGet(BACKEND_KEYS.request))return 'заявка PENDING / ждёт одобрения';return 'устройство не подключено'}
+
+
+
+
 
 
 
@@ -78,6 +121,10 @@ async function saveContextNote(){const text=(document.getElementById('contextNot
 
 
 
+
+
+
+
 let currentChecklistId='';
 async function allChecklists(){const db=await openDB();const tx=db.transaction('checklists','readonly');const r=tx.objectStore('checklists').getAll();return new Promise((res,rej)=>{r.onsuccess=()=>res(r.result||[]);r.onerror=()=>rej(r.error)})}
 async function getChecklist(id){const db=await openDB();const tx=db.transaction('checklists','readonly');const r=tx.objectStore('checklists').get(id);return new Promise((res,rej)=>{r.onsuccess=()=>res(r.result||null);r.onerror=()=>rej(r.error)})}
@@ -98,6 +145,10 @@ async function saveNewChecklist(){const title=String(document.getElementById('cl
 async function addChecklistItem(cid){if(!checklistPerm('checklists.edit'))return;const input=document.getElementById('newChecklistItem'),text=String(input?.value||'').trim();if(!text)return;const c=await getChecklist(cid);if(!c)return;c.items=[...(c.items||[]),{id:crypto.randomUUID(),text,done:false,doneAt:''}];c.updatedAt=new Date().toISOString();await saveChecklistRecord(c);await logActivity('checklist_item_added',{id:cid,kind:'checklist',objectId:cid,context:'checklists'},text);await renderChecklists()}
 async function toggleChecklistItem(cid,itemId){if(!checklistPerm('checklists.edit'))return;const c=await getChecklist(cid);if(!c)return;const x=(c.items||[]).find(i=>i.id===itemId);if(!x)return;x.done=!x.done;x.doneAt=x.done?new Date().toISOString():'';c.updatedAt=new Date().toISOString();await saveChecklistRecord(c);await logActivity(x.done?'checklist_item_done':'checklist_item_reopened',{id:cid,kind:'checklist',objectId:cid,context:'checklists'},x.text);await renderChecklists()}
 async function removeChecklistItem(cid,itemId){if(!checklistPerm('checklists.edit'))return;const c=await getChecklist(cid);if(!c)return;const x=(c.items||[]).find(i=>i.id===itemId);c.items=(c.items||[]).filter(i=>i.id!==itemId);c.updatedAt=new Date().toISOString();await saveChecklistRecord(c);await logActivity('checklist_item_deleted',{id:cid,kind:'checklist',objectId:cid,context:'checklists'},x?.text||'');await renderChecklists()}
+
+
+
+
 
 
 
@@ -141,6 +192,8 @@ async function hydrateOrderCardMedia(){for(const o of S.orders||[]){const m=orde
 function orderMediaStrip(o){const items=orderMediaItems(o);if(!items.length){if(typeof o.image==='string'&&o.image)return `<div class="photo-strip"><img class="photo-large" src="${o.image}" alt="референс" loading="lazy"></div>`;return '<div class="order-media-empty">Фото на устройстве пока не загружены.</div>'}const pinned=orderOfflinePinned(o.id);return `<div class="order-media-head"><b>Фото заказа · ${items.length}</b><div><button class="secondary" id="offline-pack-${domSafe(o.id)}" onclick="toggleOrderOfflinePack('${esc(o.id)}')">${pinned?'Офлайн включён':'Хранить офлайн'}</button><button class="secondary" onclick="loadAllOrderMedia('${esc(o.id)}')">Загрузить все</button></div></div><div class="photo-strip order-media-strip">${items.map((m,i)=>`<button class="order-media-slot" id="order-media-${domSafe(m.mediaId)}" onclick="loadOrderMediaItem('${esc(o.id)}','${esc(m.mediaId)}')"><span>📷</span><small>${i<3?'загрузится автоматически':'нажмите для загрузки'}</small></button>`).join('')}</div>`}
 
 
+
+
 function orderCard(o){const c=calcFor(o.id), known=c?rub(c.knownTotal):'расчёта нет'; return `<article class="order-card" onclick="openOrder('${o.id}')">${orderImage(o)}<div class="grow"><div class="title order-title-one-line">${esc(o.id)} · ${esc(o.name)}</div><div class="order-card-meta"><div class="stage">${esc(o.stage||o.status)}</div>${o.deadline?badge(o.deadline):badge('без срока','warn')}</div><div class="sub"><span>${c?'Расчёт '+esc(c.version)+' · '+known:'Сбор исходных данных'}</span><span>${o.clientPrice?rub(o.clientPrice):''}</span></div></div></article>`}
 async function renderAnalytics(){const w=S.wallet;const orders=S.orders||[];const active=orders.length;const nod=orders.filter(o=>!o.deadline).length;const calcs=Object.values(S.calculations||{});const knownMaterials=calcs.reduce((a,c)=>a+(Number(c.knownTotal)||0),0);const q=await drafts();window.__draftCache=q;const hist=(await sentHistory()).sort((a,b)=>String(b.sentAt||'').localeCompare(String(a.sentAt||'')));const activity=(await activityHistory()).sort((a,b)=>String(b.at||'').localeCompare(String(a.at||'')));const nowMs=Date.now();const sent24=hist.filter(x=>{const ms=Date.parse(x.sentAt||'');return Number.isFinite(ms)&&(nowMs-ms)<=86400000}).length;const activity24=activity.filter(x=>{const ms=Date.parse(x.at||'');return Number.isFinite(ms)&&(nowMs-ms)<=86400000}).length;const photos=q.filter(x=>x.kind==='photo').length;const docs=q.filter(x=>x.kind==='document').length;const audios=q.filter(x=>x.kind==='audio').length;const notes=q.filter(x=>['note','order-note','calc-note','avito-note'].includes(x.kind)).length;const galleryCand=q.filter(x=>x.context==='portfolio-candidate').length;const avito=q.filter(x=>String(x.context||'').startsWith('avito')||x.kind==='avito-note');const quoteDrafts=q.filter(x=>x.kind==='quote-draft').length;const pubs=q.filter(x=>x.kind==='publish-draft');const publishDrafts=pubs.length;const approved=(S.gallery||[]).length;const obligations=w.futureExpenses||[];const countChannel=ch=>pubs.filter(x=>(x.meta?.channels||[]).includes(ch)).length;document.getElementById('analytics').innerHTML=`<button class="back" onclick="go('home')">← Главная</button>
 <div class="analytics-kpis"><div class="kpi money"><span>Денег сейчас</span><b>${rub(w.balance)}</b><small>после обязательств ${rub(w.afterObligations)}</small></div><div class="kpi orders"><span>Активные заказы</span><b>${active}</b><small>${nod} без срока</small></div><div class="kpi costs"><span>Обязательства</span><b>${rub(w.futureTotal)}</b><small>${obligations.length} записей</small></div><div class="kpi media"><span>Загрузки</span><b>${q.length}</b><small>${photos} фото · ${audios} голос</small></div></div>
@@ -152,6 +205,10 @@ ${homeAttentionCard(q)}
 ${(isAdmin1()||hasPermission('activity.view'))?`<div class="analytics-section admin-audit-section"><h3>Администратор</h3><button class="feature-card" onclick="go('activityLog')"><span><b>Журнал действий</b><small>действия пользователя · устройство · время · статус</small></span><span class="arr">›</span></button></div>`:''}
 <div class="analytics-section system-section"><h3>Система</h3><div class="analytics-lines"><div><span>Версия приложения</span><b>${esc(APP_RELEASE.version)} · ${esc(APP_RELEASE.buildId)}</b></div><div><span>Снимок данных</span><b>${esc(S.meta.snapshotDate)}</b></div><div><span>Связь</span><b>${navigator.onLine?'Онлайн':'Офлайн'}</b></div><div><span>Backend</span><b>${S.meta.backendConnected?'включён':'пока выключен'}</b></div><div><span>Локальная очередь</span><b>${q.length}</b></div><div><span>Обновления</span><b>ADMIN1-first · manifest + service worker</b></div></div><div class="hint"><b>После публикации HTTPS-PWA:</b> новая версия будет устанавливаться централизованно без ручной пересылки HTML. Локальные рабочие данные IndexedDB обновлением не удаляются.</div></div>`
 ;}
+
+
+
+
 
 
 
@@ -178,9 +235,17 @@ async function promoteQuote(id){const a=await drafts();const q=a.find(x=>x.id===
 
 
 
+
+
+
+
 function renderOrders(){document.getElementById('orders').innerHTML=`<button class="back" onclick="go('home')">← Главная</button><div class="filters"><button class="chip active">Активные · ${S.orders.length}</button><button class="chip">По статусу</button><button class="chip">Без срока · ${S.orders.filter(o=>!o.deadline).length}</button></div>${S.orders.map(orderCard).join('')}`;setTimeout(()=>hydrateOrderCardMedia(),0)}
 async function openOrder(id){resetTempUrls();const o=S.orders.find(x=>x.id===id); if(!o)return; const c=calcFor(id); let calc=''; if(c){calc=`<div class="calc-head"><h3>Замороженный расчёт ${esc(c.version)}</h3><b>${rub(c.knownTotal)}</b></div><div class="hint">Цены показаны именно на дату расчёта. Текущая Номенклатура может уже отличаться — это не переписывает историю расчёта.</div><div class="calc-table">${c.lines.map(calcLine).join('')}</div>`}else calc=`<div class="risk"><b>Расчёт ещё не начат</b>${esc(o.stage||'Сначала собрать исходные данные.')}</div>`; document.getElementById('orderDetail').innerHTML=`<div class="back-row"><button class="back" onclick="go('orders')">← Заказы</button><button class="back back-home-secondary" onclick="go('home')">⌂ Главная</button></div><div class="detail-head"><div class="muted">${esc(o.id)} · ${esc(o.status)}</div><h2>${esc(o.name)}</h2><div class="detail-grid"><div><small>Срок</small><b>${esc(o.deadline||'не назначен')}</b></div><div><small>Цена клиенту</small><b>${o.clientPrice?rub(o.clientPrice):'не задана'}</b></div><div><small>Этап</small><b>${esc(o.stage||'—')}</b></div></div></div>${orderMediaStrip(o)}<div class="desc">${esc(o.description)}</div>${calc}<div class="section-title"><h2>Добавить к заказу</h2><span class="badge">${esc(id)}</span></div>${orderActionGrid(id)}`;go('orderDetail');setTimeout(()=>hydrateOrderMedia(id),0)}
 function calcLine(l){let change=''; if(l.price!=null&&l.currentPrice!=null&&Math.abs(l.price-l.currentPrice)>.001){change=`<div class="price-change">Сейчас в Номенклатуре: ${fmt(l.currentPrice)} ${esc(l.currentPriceBasis)} от ${esc(l.currentPriceDate)}. В этой версии расчёта сохранено: ${fmt(l.price)} ${esc(l.priceBasis)}.</div>`} let assum=''; if((l.comment||'').toUpperCase().includes('ПРЕДПОЛОЖЕНИЕ')) assum=`<div class="assumption">⚠ ${esc(l.comment)}</div>`; else if(l.amount==null) assum=`<div class="assumption unknown">⚠ Цена/позиция не определена: ${esc(l.comment||'требуется уточнение')}</div>`; return `<div class="calc-line"><div class="between"><div><div class="calc-name">${esc(l.name)}</div><div class="calc-meta">${esc(l.params)}<br>Нужно: ${fmt(l.qtyTech)} ${esc(l.unit)} · Купить: ${fmt(l.qtyBuy)} ${esc(l.buyUnit||l.unit)}${l.price!=null?` · Цена ${fmt(l.price)} ${esc(l.priceBasis||'')}`:''}${l.priceDate?` от ${esc(l.priceDate)}`:''}</div></div><div class="calc-money">${rub(l.amount)}</div></div>${change}${assum}</div>`}
+
+
+
+
 
 
 
@@ -347,8 +412,12 @@ function sheetPrices(n){const p=numPrice(n.price),area=areaFromNom(n);if(n.categ
 
 
 
+
+
+
+
 function renderNom(){const el=document.getElementById('nom');if(!el.querySelector('#nomSearch'))el.innerHTML=`<button class="back" onclick="go('home')">← Главная</button><input id="nomSearch" class="search" placeholder="Например: профильная труба-30, 25×25×1,5, щит 18×400" oninput="nomLimit=70;renderNomList()"><div id="nomMeta" class="search-meta"></div><div id="nomList"></div>`;renderNomList()}
-function renderNomList(){const q=normSearch(document.getElementById('nomSearch')?.value||'');const tokens=q.split(/\s+/).filter(Boolean);let arr=S.nomenclature.filter(n=>{const hay=normSearch(`${n.id} ${n.category} ${n.subcategory} ${n.name} ${n.spec} ${n.supplier}`);return !tokens.length||tokens.every(tok=>hay.includes(tok))});document.getElementById('nomMeta').textContent=`Найдено: ${arr.length} из ${S.nomenclature.length} активных позиций · офлайн-снимок`;const shown=arr.slice(0,nomLimit);document.getElementById('nomList').innerHTML=shown.map(nomCard).join('')+(arr.length>shown.length?`<button class="show-more" onclick="nomLimit+=100;renderNomList()">Показать ещё (${arr.length-shown.length})</button>`:'')}
+function renderNomList(){const q=normSearch(document.getElementById('nomSearch')?.value||'');const tokens=q.split(/\s+/).filter(Boolean);let arr=S.nomenclature.filter(n=>{const hay=normSearch(`${n.id} ${n.category} ${n.subcategory} ${n.name} ${n.spec} ${n.supplier}`);return !tokens.length||tokens.every(tok=>hay.includes(tok))});document.getElementById('nomMeta').textContent=`Найдено: ${arr.length} из ${S.nomenclature.length} активных позиций · локально · rev ${localNomRevision()||'—'}`;const shown=arr.slice(0,nomLimit);document.getElementById('nomList').innerHTML=shown.map(nomCard).join('')+(arr.length>shown.length?`<button class="show-more" onclick="nomLimit+=100;renderNomList()">Показать ещё (${arr.length-shown.length})</button>`:'')}
 function nomCard(n){return `<article class="nom-card nom-card-compact" onclick="nomDetail('${esc(n.id)}')"><b>${esc(n.name)}</b></article>`}
 function nomDetail(id){const n=S.nomenclature.find(x=>x.id===id);if(!n)return;const pp=profilePrices(n),wp=woodPrices(n),sp=sheetPrices(n);let priceBlock;if(pp)priceBlock=`<div class="field"><label>Цена трубы при базе ${fmt(n.price)} ₽/кг</label><b>1 м — ${rub(pp.perM)} · 6 м — ${rub(pp.per6)}</b><div class="muted">Масса: ${fmt(n.massPerM)} кг/м · база цены: ${esc(n.priceDate)}</div></div>`;else if(wp)priceBlock=`<div class="field"><label>Цена погонного материала</label><b>1 м — ${rub(wp.p1)}</b><div>2 м — ${rub(wp.p2)} · 4 м — ${rub(wp.p4)} · 6 м — ${rub(wp.p6)}</div><div class="hint">Это стоимость указанной длины по цене за метр. Наличие именно 2/4/6 м зависит от позиции и поставщика: ${esc(n.comment||'проверить у поставщика')}.</div></div>`;else if(sp)priceBlock=`<div class="field"><label>Цена листового материала</label><b>${esc(n.buyUnit==='щит'||n.calcUnit==='щит'?'Щит':'Лист')} — ${rub(sp.unit)} · 1 м² — ${rub(sp.perM2)}</b><div class="muted">Расчётная площадь позиции: ${fmt(sp.area)} м² · цена от ${esc(n.priceDate||'—')}</div></div>`;else priceBlock=`<div class="field"><label>Текущая цена</label><b>${n.price==null?'—':fmt(n.price)+' '+esc(n.priceBasis)}</b> <span class="muted">${esc(n.priceDate)}</span></div>`;modal('Номенклатура',`<div class="field"><label>ID</label><b>${esc(n.id)}</b></div><div class="field"><label>Наименование</label><b>${esc(n.name)}</b></div><div class="field"><label>Характеристика</label><div>${esc(n.spec||'—')}</div></div>${priceBlock}<div class="field"><label>Единица</label><div>Расчёт: ${esc(n.calcUnit||'—')} · закупка: ${esc(n.buyUnit||'—')}</div></div>${n.massPerM&&!pp?`<div class="field"><label>Масса 1 м</label><div>${fmt(n.massPerM)} кг/м</div></div>`:''}<div class="field"><label>Поставщик / источник</label><div>${esc(n.supplier||n.source||'—')}</div></div><button class="quick-action-wide nom-edit-btn" onclick="nomCorrection('${esc(n.id)}')"><span class="action-label">Исправить / уточнить</span><span class="action-icon" aria-hidden="true">✎</span></button>`,'nom-detail-sheet')}
 function nomCorrection(id){const n=S.nomenclature.find(x=>x.id===id);if(!n)return;modal('Исправление Номенклатуры',`<div class="hint">Текущую карточку мы не переписываем на телефоне. Ваше уточнение сохраняется как отдельная заметка, привязанная к позиции <b>${esc(n.name)}</b>, и проходит обычную безопасную синхронизацию.</div><div class="field"><label>Что изменить / что стало известно</label><textarea id="nomCorrectionText" placeholder="Например: цена теперь 95 ₽/кг; другой поставщик; характеристика указана неверно..."></textarea></div><button class="primary" onclick="saveNomCorrection('${esc(n.id)}')">Сохранить исправление</button>`,'nom-correction-sheet')}
@@ -379,8 +448,34 @@ async function handleAuthFailure(err){const code=String(err||'');if(/^(USER_DISA
 async function performRemoteWipe(){const db=await openDB();const names=['drafts','history','activity','checklists','snapshotCache'].filter(n=>db.objectStoreNames.contains(n));if(names.length){const tx=db.transaction(names,'readwrite');names.forEach(n=>tx.objectStore(n).clear());await new Promise((res,rej)=>{tx.oncomplete=res;tx.onerror=()=>rej(tx.error)})}await clearServerAccess(false,false);alert('Администратор отозвал локальные данные этого устройства. Для продолжения нужен новый доступ.')}
 function applySnapshot(snapshot){S=normalizeSnapshot(snapshot);window.SNAPSHOT=S;renderCoreScreens()}
 function renderCoreScreens(){renderHome();renderOrders();renderBuy();if(document.getElementById('wallet')?.classList.contains('active'))renderWallet();if(document.getElementById('nom')?.classList.contains('active'))renderNom();if(document.getElementById('gallery')?.classList.contains('active'))renderGallery();if(document.getElementById('analytics')?.classList.contains('active'))renderAnalytics();}
-async function loadCachedSnapshot(){const rec=await getSnapshotCache();if(!rec?.snapshot)return false;const cachedRole=String(rec.user?.role||SESSION.role||'');const recUntil=Date.parse(rec.offlineAccessUntil||'');const leaseValid=Number.isFinite(recUntil)&&recUntil>Date.now();if(cachedRole!=='ADMIN1'&&!leaseValid)return false;if(rec.user){lsSet(BACKEND_KEYS.user,JSON.stringify(rec.user));applyBackendUser(rec.user)}applySnapshot(rec.snapshot);DATA_STATE.source='cache';DATA_STATE.lastCacheAt=rec.savedAt||'';DATA_STATE.lastError='';return true}
-async function pullLiveSnapshot(opts={}){const token=backendSession();if(!token){DATA_STATE.lastError='NO_SESSION';return {ok:false,error:'NO_SESSION'}}DATA_STATE.lastAttemptAt=new Date().toISOString();try{const d=await backendPost({action:'snapshot.pull',session_token:token,device_id:backendDeviceId(),app_version:APP_RELEASE.version},{timeoutMs:Number(opts.timeoutMs||15000)});if(d?.ok&&d.snapshot){lsSet(BACKEND_KEYS.offlineUntil,d.offline_access_until||lsGet(BACKEND_KEYS.offlineUntil));lsSet(BACKEND_KEYS.user,JSON.stringify(d.user||{}));applyBackendUser(d.user||{});const next=normalizeSnapshot(d.snapshot);if(isAdmin1()&&next.orders.length===0&&next.nomenclature.length===0){DATA_STATE.lastError='EMPTY_SERVER_SNAPSHOT';return {...d,ok:false,error:'EMPTY_SERVER_SNAPSHOT'}}await putSnapshotCache(next);applySnapshot(next);DATA_STATE.source='server';DATA_STATE.lastPullAt=new Date().toISOString();DATA_STATE.lastError='';return {...d,snapshot:next}}const err=backendErrorCode(d,'SNAPSHOT_PULL_FAILED');DATA_STATE.lastError=err;if(d?.wipe_on_next_online){await performRemoteWipe();return {ok:false,error:'REMOTE_WIPE_COMPLETED'}}if(/^(SESSION_|USER_|DEVICE_)/.test(err))await handleAuthFailure(err);if(!opts.silent)alert('Не удалось получить данные: '+err);return {...d,error:err}}catch(e){DATA_STATE.lastError=String(e?.name==='AbortError'?'SNAPSHOT_TIMEOUT':(e?.message||e));const cached=await loadCachedSnapshot();if(!cached&&!opts.silent)alert('Сервер недоступен. Локального снимка пока нет.');return {ok:false,error:DATA_STATE.lastError,cached}}}
+async function loadCachedSnapshot(){const rec=await getSnapshotCache();if(!rec?.snapshot)return false;const cachedNomRev=Math.floor(Number(rec.snapshot?.meta?.nomenclatureRevision||0));if(cachedNomRev>localNomRevision())setLocalNomRevision(cachedNomRev);const cachedRole=String(rec.user?.role||SESSION.role||'');const recUntil=Date.parse(rec.offlineAccessUntil||'');const leaseValid=Number.isFinite(recUntil)&&recUntil>Date.now();if(cachedRole!=='ADMIN1'&&!leaseValid)return false;if(rec.user){lsSet(BACKEND_KEYS.user,JSON.stringify(rec.user));applyBackendUser(rec.user)}applySnapshot(rec.snapshot);DATA_STATE.source='cache';DATA_STATE.lastCacheAt=rec.savedAt||'';DATA_STATE.lastError='';return true}
+async function pullLiveSnapshot(opts={}){
+  const token=backendSession();if(!token){DATA_STATE.lastError='NO_SESSION';return {ok:false,error:'NO_SESSION'}}
+  DATA_STATE.lastAttemptAt=new Date().toISOString();
+  const localRev=localNomRevision()||Math.floor(Number(S.meta?.nomenclatureRevision||0));
+  const canOmit=opts.forceFullNomenclature!==true&&localRev>0&&Array.isArray(S.nomenclature)&&S.nomenclature.length>0;
+  try{
+    const body={action:'snapshot.pull',session_token:token,device_id:backendDeviceId(),app_version:APP_RELEASE.version};
+    if(canOmit)body.omit_nomenclature=true;
+    const d=await backendPost(body,{timeoutMs:Number(opts.timeoutMs||15000)});
+    if(d?.ok&&d.snapshot){
+      lsSet(BACKEND_KEYS.offlineUntil,d.offline_access_until||lsGet(BACKEND_KEYS.offlineUntil));lsSet(BACKEND_KEYS.user,JSON.stringify(d.user||{}));applyBackendUser(d.user||{});
+      const raw={...d.snapshot,meta:{...(d.snapshot.meta||{})}};const omitted=raw.meta?.nomenclatureOmitted===true;
+      if(omitted){raw.nomenclature=Array.isArray(S.nomenclature)?S.nomenclature:[];raw.meta.serverNomenclatureRevision=Math.floor(Number(raw.meta.nomenclatureRevision||0));raw.meta.nomenclatureRevision=localRev}
+      const next=normalizeSnapshot(raw);
+      if(isAdmin1()&&next.orders.length===0&&next.nomenclature.length===0){DATA_STATE.lastError='EMPTY_SERVER_SNAPSHOT';return {...d,ok:false,error:'EMPTY_SERVER_SNAPSHOT'}}
+      if(!omitted){const rev=Math.floor(Number(next.meta?.nomenclatureRevision||0));if(rev>0)setLocalNomRevision(rev)}
+      await putSnapshotCache(next);applySnapshot(next);DATA_STATE.source=omitted?'server+nom-delta':'server';DATA_STATE.lastPullAt=new Date().toISOString();DATA_STATE.lastError='';
+      if(omitted&&!opts.skipNomDelta){const delta=await pullNomenclatureDelta({silent:true,allowFullFallback:true,timeoutMs:15000});return {...d,snapshot:window.SNAPSHOT,nomDelta:delta}}
+      return {...d,snapshot:next};
+    }
+    const err=backendErrorCode(d,'SNAPSHOT_PULL_FAILED');DATA_STATE.lastError=err;
+    if(d?.wipe_on_next_online){await performRemoteWipe();return {ok:false,error:'REMOTE_WIPE_COMPLETED'}}
+    if(/^(SESSION_|USER_|DEVICE_)/.test(err))await handleAuthFailure(err);if(!opts.silent)alert('Не удалось получить данные: '+err);return {...d,error:err};
+  }catch(e){
+    DATA_STATE.lastError=String(e?.name==='AbortError'?'SNAPSHOT_TIMEOUT':(e?.message||e));const cached=await loadCachedSnapshot();if(!cached&&!opts.silent)alert('Сервер недоступен. Локального снимка пока нет.');return {ok:false,error:DATA_STATE.lastError,cached};
+  }
+}
 async function refreshBackendData(){if(!backendSession())return {ok:false,error:'NO_SESSION'};const auth=await checkBackendAuth();if(!auth?.ok){await loadCachedSnapshot();return auth}return pullLiveSnapshot({silent:true,timeoutMs:20000})}
 async function maybeBackgroundRefresh(reason='auto'){if(DATA_STATE.refreshing||!backendSession())return {ok:false,error:'NO_SESSION_OR_BUSY'};DATA_STATE.refreshing=true;try{const probe=await probeStableNetwork();if(!probe?.ok)return probe;const auth=await checkBackendAuth();if(!auth?.ok){await loadCachedSnapshot();return auth}const d=await pullLiveSnapshot({silent:true,timeoutMs:12000});if(d?.ok)syncReadyDrafts().catch(()=>{});return d}finally{DATA_STATE.refreshing=false}}
 const HOLD_MS=5*60*1000;
@@ -390,6 +485,10 @@ async function putDraft(d){const db=await openDB();const tx=db.transaction('draf
 async function getDraft(id){const db=await openDB();const tx=db.transaction('drafts','readonly');const r=tx.objectStore('drafts').get(id);return new Promise((res,rej)=>{r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})}
 async function updateDraft(rec){const db=await openDB();const tx=db.transaction('drafts','readwrite');tx.objectStore('drafts').put(rec);return new Promise((res,rej)=>{tx.oncomplete=res;tx.onerror=()=>rej(tx.error)})}
 async function drafts(){const db=await openDB();const tx=db.transaction('drafts','readonly');const r=tx.objectStore('drafts').getAll();return new Promise((res,rej)=>{r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})}
+
+
+
+
 
 
 
@@ -405,12 +504,20 @@ async function logActivity(action,x={},detail=''){try{const db=await openDB();co
 
 
 
+
+
+
+
 async function rememberDelivered(x,r){const u=backendUserPublic();const rec={id:x.id,eventId:x.id,createdAt:x.createdAt||'',sentAt:new Date().toISOString(),kind:x.kind||'unknown',context:x.context||'',objectId:x.objectId||'',text:['photo','audio','document'].includes(x.kind)?'':(x.text||''),appName:x.appName||x.text||'',originalName:x.originalName||'',note:x.meta?.note||'',userId:u.user_id||SESSION.userId,userName:u.name||SESSION.name,status:'delivered',reviewStatus:'delivered',correctionMessage:'',duplicate:!!r?.duplicate,mediaUrl:r?.media_url||''};await putHistory(rec);await logActivity('delivered',x,r?.duplicate?'Повторный ACK, дубль не создан':'Сервер подтвердил приём');return rec}
 function historyStatusText(h){if(h.reviewStatus==='needs_correction')return 'требует исправления';if(h.reviewStatus==='corrected')return 'исправлено';return 'доставлено'}
 function historyStatusClass(h){return h.reviewStatus==='needs_correction'?'correction':'delivered'}
 function historyItem(h){const body=h.text||h.note||h.appName||h.originalName||'Запись';const where=h.objectId?`Заказ ${h.objectId}`:(h.context==='wallet'?'Кошелёк':h.context==='purchase'?'Закупки по заказам':h.context==='portfolio-candidate'?'Галерея':String(h.context||'')==='general'?'Общее':h.context||'Общее');const link=h.mediaUrl?`<button onclick="window.open('${esc(h.mediaUrl)}','_blank')">Открыть на сервере</button>`:'';return `<div class="history-item"><div class="history-head"><div><div class="history-title">${esc(draftType(h))}</div><div class="history-meta">${esc(where)} · отправлено ${new Date(h.sentAt).toLocaleString('ru-RU')}<br>${esc(h.userName||h.userId||'')}</div></div><span class="history-status ${historyStatusClass(h)}">${esc(historyStatusText(h))}</span></div><div class="history-body">${esc(body)}</div>${h.correctionMessage?`<div class="risk"><b>Замечание:</b>${esc(h.correctionMessage)}</div>`:''}<div class="history-actions">${link}<button onclick="openCorrection('${esc(h.id)}')">Уточнить / исправить</button></div></div>`}
 async function openCorrection(id){const all=await sentHistory();const h=all.find(x=>x.id===id);if(!h)return;modal('Уточнение к отправленной записи',`<div class="hint">Исходная запись останется в истории. Исправление будет новой записью, связанной с событием ${esc(h.eventId||h.id)}.</div><div class="field"><label>Что исправить / уточнить</label><textarea id="correctionText"></textarea></div><button class="primary" onclick="saveCorrection('${esc(id)}')">Сохранить как новую запись</button>`)}
 async function saveCorrection(id){const all=await sentHistory();const h=all.find(x=>x.id===id);const text=(document.getElementById('correctionText')?.value||'').trim();if(!h||!text)return;const correction=await putDraft({kind:'note',objectId:h.objectId||'',text,context:h.context||'general',meta:{correctionOf:h.eventId||h.id,correction:true}});await logActivity('correction_created',correction,`Исправление к ${h.eventId||h.id}`);closeModal();await refreshPending();if(document.getElementById('sync').classList.contains('active'))await renderSync();alert('Исправление сохранено как новая запись. Исходная отправка остаётся в истории.')}
+
+
+
+
 
 
 
@@ -444,8 +551,12 @@ function queueItem(x){let media='';if(x.kind==='photo'&&x.blob instanceof Blob)m
 let holdTicker=null;function updateHoldCountdowns(){document.querySelectorAll('[data-hold-until]').forEach(el=>{const until=el.getAttribute('data-hold-until'),id=el.closest('[data-draft-id]')?.getAttribute('data-draft-id');if(!until){el.textContent='Готово к отправке';return}const ms=new Date(until).getTime()-Date.now();if(ms<=0){el.textContent='Готово к отправке';const badge=id?document.querySelector(`[data-status-badge="${CSS.escape(id)}"]`):null,line=id?document.querySelector(`[data-status-line="${CSS.escape(id)}"]`):null;if(badge){badge.textContent='готово';badge.classList.remove('warn');badge.classList.add('ok')}if(line){line.classList.remove('hold');line.classList.add('ready')}}else{const s=Math.ceil(ms/1000),m=Math.floor(s/60),ss=String(s%60).padStart(2,'0');el.textContent=`До отправки ${m}:${ss}`}})}
 async function renderSync(){resetTempUrls();const a=await drafts(),hist=(await sentHistory()).sort((x,y)=>String(y.sentAt||'').localeCompare(String(x.sentAt||''))),photos=a.filter(x=>x.kind==='photo').length,audios=a.filter(x=>x.kind==='audio').length,hold=a.filter(x=>draftState(x)==='hold').length,errors=a.filter(x=>x.meta?.syncState==='error').length,ready=a.filter(x=>draftState(x)==='ready'&&x.meta?.syncState!=='error').length;const req=lsGet(BACKEND_KEYS.request),session=backendSession();document.getElementById('sync').innerHTML=`<button class="back" onclick="go('home')">← Главная</button><div class="sync-card"><div class="sync-big">Загрузки</div><div class="muted">Здесь только неподтверждённые записи и история уже принятых сервером отправок</div><b>${navigator.onLine?'Сеть есть':'Сети нет'} · backend: ${esc(backendAccessLabel())}</b></div><div class="mini-stats sync-attention-stats"><div><b>${ready}</b><small>готовы</small></div><div class="${errors?'stat-error':''}"><b>${errors}</b><small>ошибки</small></div><div><b>${hold}</b><small>5 мин</small></div><div><b>${hist.length}</b><small>история</small></div></div><div class="five-min-rule"><b>Защита 5 минут.</b> Новая запись сначала остаётся на телефоне. Её можно изменить, удалить или отправить сейчас. После подтверждённого приёма она больше не отправляется повторно: тяжёлый локальный файл удаляется, а метаданные сохраняются в истории.</div><div class="sync-note"><b>Защита от дублей.</b> Если ответ сервера потерялся, приложение автоматически проверяет приём тем же <code>event_id</code>. Сервер не создаёт вторую копию. Пользователю не нужно нажимать «Отправить» несколько раз.</div><div class="settings-block"><h3>Подключение устройства</h3><div class="sync-list"><div><span>Backend</span><b>${backendState.ping==='ok'?'доступен':backendState.ping==='error'?'ошибка связи':'не проверен'}</b></div><div><span>Device ID</span><b>${esc(backendDeviceId().slice(0,22))}…</b></div><div><span>Доступ</span><b>${esc(backendAccessLabel())}</b></div>${req?`<div><span>Заявка</span><b>${esc(req.slice(0,22))}…</b></div>`:''}</div><div class="queue-actions v023">${session?`<button class="edit-btn" onclick="refreshBackendData().then(d=>alert(d.ok?'Доступ подтверждён, данные обновлены.':'Auth: '+(d.error||'ошибка'))) ">Обновить доступ и данные</button>`:`<button class="edit-btn" onclick="requestDeviceAccess()">Отправить заявку</button><button class="send-now-btn" onclick="activateApprovedDevice()">Проверить одобрение</button>`}<button class="send-now-btn" onclick="backendPing().then(()=>renderSync())">Ping backend</button></div></div><div class="sync-list"><div><span>Фото в очереди</span><b>${photos}</b></div><div><span>Голос в очереди</span><b>${audios}</b></div><div><span>Удаление тяжёлого локального файла</span><b>только после ACK сервера</b></div></div><button class="primary" onclick="simulateSync()">Синхронизировать готовые</button><div class="hint">Техническая сборка ${esc(APP_RELEASE.version)}: бизнес-данные загружаются только после серверной авторизации через snapshot.pull. Разрешённый офлайн-снимок хранится локально только до offline_access_until.</div><div class="section-title"><h2>К отправке</h2><span class="badge">${a.length}</span></div>${a.length?a.sort((x,y)=>String(y.createdAt).localeCompare(String(x.createdAt))).map(queueItem).join(''):`<div class="muted">Нет неподтверждённых записей.</div>`}<div class="section-title"><h2>История отправок</h2><span class="badge">${hist.length}</span></div>${hist.length?hist.slice(0,100).map(historyItem).join(''):`<div class="muted">История пока пуста.</div>`}`;updateHoldCountdowns();if(holdTicker)clearInterval(holdTicker);holdTicker=setInterval(()=>{if(document.getElementById('sync').classList.contains('active'))updateHoldCountdowns()},1000)}
 async function simulateSync(){const a=await drafts();if(!a.length){alert('Очередь пуста.');return}if(!backendSession()){alert('Сначала подключите и активируйте это устройство.');return}await syncReadyDrafts({notify:true})}
-function network(){const online=navigator.onLine!==false;document.getElementById('netStatus').classList.toggle('online',online);document.getElementById('netStatus').classList.toggle('offline',!online);document.getElementById('offlineBanner').classList.toggle('hidden',online);const netText=document.getElementById('netText');if(netText)netText.textContent=online?'Онлайн':'Офлайн';refreshPending();if(online&&backendSession()){setTimeout(()=>maybeBackgroundRefresh('online'),800);setTimeout(()=>recoverPendingAcks(),1800);setTimeout(()=>refreshPinnedOfflinePacks(),2600)}}window.addEventListener('online',network);window.addEventListener('offline',network);
+function network(){const online=navigator.onLine!==false;document.getElementById('netStatus').classList.toggle('online',online);document.getElementById('netStatus').classList.toggle('offline',!online);document.getElementById('offlineBanner').classList.toggle('hidden',online);const netText=document.getElementById('netText');if(netText)netText.textContent=online?'Онлайн':'Офлайн';refreshPending();if(online&&backendSession()){setTimeout(()=>maybeBackgroundRefresh('online'),800);setTimeout(()=>ensureNomenclatureDeltaSetup(),1300);setTimeout(()=>recoverPendingAcks(),1800);setTimeout(()=>refreshPinnedOfflinePacks(),2600)}}window.addEventListener('online',network);window.addEventListener('offline',network);
 setInterval(()=>{if(backendSession()&&autoRefreshAllowedByHint())syncReadyDrafts()},30000);
+
+
+
+
 
 
 
@@ -454,6 +565,10 @@ const updateState={manifest:null};
 function updateEligible(v={}){const stage=String(v.rolloutStage||v.releaseStage||'stable').toLowerCase();if(stage==='paused')return false;if(stage==='admin1')return isAdmin1();return true}
 function showUpdateBanner(v={}){if(!updateEligible(v))return;updateState.manifest=v||{};window.__PROD_UPDATE_READY=true;const box=document.getElementById('updateBanner');const text=document.getElementById('updateText');if(text)text.textContent=`Доступно обновление${v?.buildId?' · '+v.buildId:''}`;if(box)box.classList.remove('hidden')}
 document.addEventListener('production:update-ready',e=>showUpdateBanner(e.detail||{}));
+
+
+
+
 
 
 
@@ -506,5 +621,9 @@ window.applyAvailableUpdate=async function(){
 
 
 
-async function startApplication(){initTheme();purgeLegacyDemoAdminState();hydrateBackendUser();await openDB();let loaded=await loadCachedSnapshot();if(!loaded){S=emptySnapshot();window.SNAPSHOT=S;DATA_STATE.source='empty';renderCoreScreens()}network();initPwaUpdateLayer();if(backendSession()){setTimeout(()=>maybeBackgroundRefresh('startup'),250);setTimeout(()=>recoverPendingAcks(),1400);setTimeout(()=>refreshPinnedOfflinePacks(),2200)}else backendPing({timeoutMs:2500})}
+
+
+
+
+async function startApplication(){initTheme();purgeLegacyDemoAdminState();hydrateBackendUser();await openDB();let loaded=await loadCachedSnapshot();if(!loaded){S=emptySnapshot();window.SNAPSHOT=S;DATA_STATE.source='empty';renderCoreScreens()}network();initPwaUpdateLayer();if(backendSession()){setTimeout(()=>maybeBackgroundRefresh('startup'),250);setTimeout(()=>ensureNomenclatureDeltaSetup(),900);setTimeout(()=>recoverPendingAcks(),1400);setTimeout(()=>refreshPinnedOfflinePacks(),2200)}else backendPing({timeoutMs:2500})}
 startApplication();
