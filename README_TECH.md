@@ -1,13 +1,21 @@
-﻿# Производство — PWA v0.3.4 OFFLINE+DELTA
+﻿# Производство — PWA v0.3.5 UX+DELTA
 
 
 
 
-Build: **2026-09-19.1**  
+
+
+
+
+Build: **2026-09-19.2**  
 Rollout: **ADMIN1 only**  
-Required backend: **backend-0.2.5 NOM-DELTA**  
+Required backend: **backend-0.2.6 WALLET-HISTORY**  
 DB schema: **5**  
 Rollback: **2026-09-18.7** without IndexedDB reset.
+
+
+
+
 
 
 
@@ -18,6 +26,10 @@ Rollback: **2026-09-18.7** without IndexedDB reset.
 - ADMIN1 business snapshot survives network/session-expiry failures;
 - USER_DISABLED / DEVICE_REVOKED / remote wipe keep the R2 security rules;
 - background refresh is network-quality gated.
+
+
+
+
 
 
 
@@ -35,8 +47,16 @@ Rollback: **2026-09-18.7** without IndexedDB reset.
 
 
 
+
+
+
+
 ## Compatibility
 backend-0.2.3 returns media manifests only to v0.3.3+ clients. Older v0.3.2 clients continue receiving the old order shape with an empty images array.
+
+
+
+
 
 
 
@@ -57,8 +77,24 @@ backend-0.2.3 returns media manifests only to v0.3.3+ clients. Older v0.3.2 clie
 
 
 
+
+
+
+
+
+
+
+
 ## Updater hotfix 2026-09-18.6
 Previous v0.3.2/v0.3.3 updater could detect a newer version.json but, when no waiting worker already existed, merely reload the cache-first shell. This could leave an installed PWA on the old build. Build .6 explicitly calls ServiceWorkerRegistration.update(), registers with updateViaCache='none', then activates a waiting/installing worker before reload. No IndexedDB or business-cache reset is performed.
+
+
+
+
+
+
+
+
 
 
 
@@ -76,6 +112,8 @@ Previous v0.3.2/v0.3.3 updater could detect a newer version.json but, when no wa
 - Drive/Sheets remain source of truth; no IndexedDB schema reset.
 
 
+
+
 ## Nomenclature delta-sync 2026-09-19.1
 - Google Sheets remains the source of truth.
 - Full active nomenclature remains in the local snapshot for offline search.
@@ -87,3 +125,18 @@ Previous v0.3.2/v0.3.3 updater could detect a newer version.json but, when no wa
 - Backend installs onEdit/onChange plus a periodic integrity hash sweep.
 - _NOM_SEARCH remains a separate search index and is not changed.
 - DB schema stays at 5; rollback to build 2026-09-18.7 is safe without clearing local data.
+
+
+## Audio 38 UX package — build 2026-09-19.2
+- visible progress overlay for manual data refresh, manual sync and app update;
+- green bottom “Обновить” button after “Загрузки”, using the same access/data refresh action;
+- bottom navigation approximately 1.5× larger;
+- automatic heavy-media sync only when the browser confirms Wi-Fi/ethernet; text remains eligible on stable network; manual heavy send can explicitly override;
+- Wallet shows existing transaction history from Google Sheets: date, +/- amount, category, order and comment;
+- Purchases explanatory “Сводно по всем активным заказам” block removed;
+- Nomenclature list shows per-meter price and mass when available;
+- Gallery purple introductory hero removed; WhatsApp added as publication channel/status;
+- Sales Analytics introductory copy removed, leaving channel rows;
+- Orders, Home, General Information, Calculator and Checklists business behavior otherwise unchanged;
+- nomenclature delta-sync and service-worker update hotfix preserved;
+- DB schema remains 5; rollback to build 2026-09-19.1 is safe without clearing local data.

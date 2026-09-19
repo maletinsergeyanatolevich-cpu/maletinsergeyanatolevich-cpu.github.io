@@ -1,19 +1,19 @@
 ﻿{
-  "version": "v0.3.4",
-  "buildId": "2026-09-19.1",
+  "version": "v0.3.5",
+  "buildId": "2026-09-19.2",
   "channel": "admin1-stage",
   "rolloutStage": "admin1",
   "eligibleRoles": [
     "ADMIN1"
   ],
   "dbSchema": 5,
-  "minBackend": "backend-0.2.5",
-  "previousBuildId": "2026-09-18.7",
+  "minBackend": "backend-0.2.6",
+  "previousBuildId": "2026-09-19.1",
   "rollback": {
-    "buildId": "2026-09-18.7",
+    "buildId": "2026-09-19.1",
     "dbSchema": 5,
     "safeWithoutDataReset": true
   },
-  "publishedAt": "2026-09-19T00:05:00Z",
-  "notes": "Nomenclature delta-sync staging: full catalog remains local; routine snapshot.pull omits nomenclature; nomenclature.delta merges only changed IDs by _SYNC_REV; inactive rows remove local items; structural sheet changes force safe full refresh. Backend 0.2.5. DB schema remains 5."
+  "publishedAt": "2026-09-19T03:45:00Z",
+  "notes": "Audio 38 UX package: progress indicator for refresh/sync/update, green bottom Refresh button, larger nav, Wi-Fi-first heavy media auto-sync, Wallet movement history, cleaned Purchases/Gallery/Sales Analytics copy, richer Nomenclature list, WhatsApp gallery channel. Keeps delta-sync and fixed update layer. DB schema 5."
 }
