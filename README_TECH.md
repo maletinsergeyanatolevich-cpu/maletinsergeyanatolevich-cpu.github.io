@@ -1,4 +1,4 @@
-﻿# Производство — PWA v0.3.6 UX+DELTA
+﻿# Производство — PWA v0.3.7 Q013
 
 
 
@@ -15,9 +15,9 @@
 
 
 
-Build: **2026-09-19.3**  
+Build: **2026-09-20.1**  
 Rollout: **ADMIN1 only**  
-Required backend: **backend-0.2.7 WALLET-HISTORY-FIX**  
+Required backend: **backend-0.2.8 Q013 IDEMPOTENCY ROUTER**  
 DB schema: **5**  
 Rollback: **2026-09-18.7** without IndexedDB reset.
 
@@ -227,3 +227,11 @@ Previous v0.3.2/v0.3.3 updater could detect a newer version.json but, when no wa
 - bottom-navigation font is slightly smaller for cleaner wrapping;
 - no changes to orders, photos, offline-first, nomenclature delta-sync, gallery integrations or round-stock mapping;
 - DB schema remains 5; rollback to build 2026-09-19.2 is safe without clearing local data.
+
+## Q-013 staging — build 2026-09-20.1
+- structured finance-entry with amount/type/currency/context preserved;
+- synchronous per-event send lock blocks double taps before IndexedDB state is persisted;
+- access approval preselects only an exact employee-name match and otherwise requires explicit selection;
+- activation/request actions reuse the existing busy overlay;
+- backend requirement raised to 0.2.8; dbSchema remains 5;
+- rollback to build 2026-09-19.3 is safe without IndexedDB reset.
