@@ -1819,12 +1819,14 @@ async function saveAvitoNote(){const text=document.getElementById('qText').value
 function hasPermission(key){if(isAdmin1())return true;return SESSION.permissions&&SESSION.permissions[key]===true}
 function canMutateRecord(domain,action,createdByUserId){
   if(isAdmin1())return true;
-  const own=!!createdByUserId&&String(createdByUserId)===String(SESSION.userId||'');
+  const own=!!createdByUserId&&String(createdByUserId)===String(SESSION.userId||''),p=SESSION.permissions||{};
+  const hasNew=[domain+'.edit-own',domain+'.edit-all',domain+'.delete-own',domain+'.delete-all'].some(k=>Object.prototype.hasOwnProperty.call(p,k));
   if(action==='update'){
     if(hasPermission(domain+'.edit-all'))return true;
-    if(domain==='wallet'&&hasPermission('wallet.edit'))return true;
-    if(domain==='orders'&&hasPermission('orders.edit'))return true;
-    return own&&hasPermission(domain+'.edit-own');
+    if(own&&hasPermission(domain+'.edit-own'))return true;
+    if(!hasNew&&domain==='wallet'&&hasPermission('wallet.edit'))return true;
+    if(!hasNew&&domain==='orders'&&hasPermission('orders.edit'))return true;
+    return false;
   }
   if(action==='delete'){
     if(hasPermission(domain+'.delete-all')||hasPermission('data.delete'))return true;
