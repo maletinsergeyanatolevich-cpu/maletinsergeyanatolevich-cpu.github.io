@@ -1,19 +1,20 @@
 ﻿{
-  "version": "v0.3.7",
-  "buildId": "2026-09-20.1",
-  "channel": "admin1-stage",
-  "rolloutStage": "admin1",
+  "version": "v0.3.8",
+  "buildId": "2026-09-22.1",
+  "channel": "stable",
+  "rolloutStage": "stable",
   "eligibleRoles": [
-    "ADMIN1"
+    "ADMIN1",
+    "USER"
   ],
   "dbSchema": 5,
   "minBackend": "backend-0.2.8",
-  "previousBuildId": "2026-09-19.3",
+  "previousBuildId": "2026-09-20.1",
   "rollback": {
-    "buildId": "2026-09-19.3",
+    "buildId": "2026-09-20.1",
     "dbSchema": 5,
     "safeWithoutDataReset": true
   },
-  "publishedAt": "2026-09-20T11:31:00Z",
-  "notes": "Q-013 staging: structured finance-entry, event_id idempotency, identity-safe access approval, double-submit lock, durable inbox routing. DB schema remains 5; rollback to build 2026-09-19.3 is safe without data reset."
+  "publishedAt": "2026-09-22T02:35:00Z",
+  "notes": "v0.3.8: visual диктофон без системных alert, аудио в Загрузках с прослушиванием, галерея плитками + полноэкранный просмотр + избранное, внутренний комментарий отдельно от текста публикации, права gallery.* работают для USER, короткий номер заказа 002/003 нормализуется при однозначном совпадении, media timeout увеличен."
 }
