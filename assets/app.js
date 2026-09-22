@@ -1,8 +1,8 @@
-﻿const APP_RELEASE=Object.freeze({version:'v0.3.8',buildId:'2026-09-22.1',channel:'stable',dbSchema:5,updateStrategy:'manifest-service-worker',rolloutStage:'stable',previousBuildId:'2026-09-20.1'});window.APP_RELEASE=APP_RELEASE;
-function emptySnapshot(){return {meta:{version:APP_RELEASE.version,snapshotDate:'',snapshotTime:'',timezone:'',backendConnected:false,source:'Нет загруженных бизнес-данных',schemaVersion:1},orders:[],calculations:{},wallet:{balance:0,income:0,expense:0,reserve:0,freeNow:0,expense7:0,free7:0,futureExpenses:[],transactions:[],futureTotal:0,futureIncome:0,afterObligations:0},nomenclature:[],purchaseLines:[],purchaseAggregated:[],gallery:[],purchaseWarnings:[]}}
-function normalizeSnapshot(x){const b=emptySnapshot();if(!x||typeof x!=='object')return b;return {...b,...x,meta:{...b.meta,...(x.meta||{})},wallet:{...b.wallet,...(x.wallet||{})},orders:Array.isArray(x.orders)?x.orders:[],calculations:x.calculations&&typeof x.calculations==='object'?x.calculations:{},nomenclature:Array.isArray(x.nomenclature)?x.nomenclature:[],purchaseLines:Array.isArray(x.purchaseLines)?x.purchaseLines:[],purchaseAggregated:Array.isArray(x.purchaseAggregated)?x.purchaseAggregated:[],gallery:Array.isArray(x.gallery)?x.gallery:[],purchaseWarnings:Array.isArray(x.purchaseWarnings)?x.purchaseWarnings:[]}}
+﻿const APP_RELEASE=Object.freeze({version:'v0.3.9',buildId:'2026-09-22.2',channel:'step2-stage',dbSchema:5,updateStrategy:'manifest-service-worker',rolloutStage:'admin1',previousBuildId:'2026-09-22.1'});window.APP_RELEASE=APP_RELEASE;
+function emptySnapshot(){return {meta:{version:APP_RELEASE.version,snapshotDate:'',snapshotTime:'',timezone:'',backendConnected:false,source:'Нет загруженных бизнес-данных',schemaVersion:1},orders:[],calculations:{},wallet:{balance:0,income:0,expense:0,reserve:0,freeNow:0,expense7:0,free7:0,futureExpenses:[],transactions:[],futureTotal:0,futureIncome:0,afterObligations:0},nomenclature:[],purchaseLines:[],purchaseAggregated:[],gallery:[],appIssues:[],purchaseWarnings:[]}}
+function normalizeSnapshot(x){const b=emptySnapshot();if(!x||typeof x!=='object')return b;return {...b,...x,meta:{...b.meta,...(x.meta||{})},wallet:{...b.wallet,...(x.wallet||{})},orders:Array.isArray(x.orders)?x.orders:[],calculations:x.calculations&&typeof x.calculations==='object'?x.calculations:{},nomenclature:Array.isArray(x.nomenclature)?x.nomenclature:[],purchaseLines:Array.isArray(x.purchaseLines)?x.purchaseLines:[],purchaseAggregated:Array.isArray(x.purchaseAggregated)?x.purchaseAggregated:[],gallery:Array.isArray(x.gallery)?x.gallery:[],appIssues:Array.isArray(x.appIssues)?x.appIssues:[],purchaseWarnings:Array.isArray(x.purchaseWarnings)?x.purchaseWarnings:[]}}
 let S=emptySnapshot(); window.SNAPSHOT=S;
-const titles={home:'Главная',checklists:'Чек-листы',analytics:'Общая информация',calculator:'Калькулятор заказов',salesAnalytics:'Аналитика продаж',orders:'Заказы',gallery:'Галерея',avito:'Avito',admin:'Настройки',activityLog:'Журнал действий',orderDetail:'Заказ',buy:'Закупки по заказам',wallet:'Кошелёк',nom:'Номенклатура',sync:'Загрузки'};
+const titles={home:'Главная',checklists:'Чек-листы',analytics:'Общая информация',calculator:'Калькулятор заказов',salesAnalytics:'Аналитика продаж',orders:'Заказы',gallery:'Галерея',avito:'Avito',admin:'Настройки',activityLog:'Журнал действий',orderDetail:'Заказ',buy:'Закупки по заказам',wallet:'Кошелёк',nom:'Номенклатура',sync:'Загрузки',appdev:'Разработка приложения'};
 
 
 
@@ -293,7 +293,9 @@ function orderRefResolve(raw){
   if(m){const full=m[1]+'-'+m[2].padStart(3,'0'),hit=(S.orders||[]).find(o=>String(o.id)===full);return {id:hit?String(hit.id):full};}
   return {id:v};
 }
-async function manualRefreshData(){if(!backendSession()){alert('Сначала подключите и активируйте устройство.');return {ok:false,error:'NO_SESSION'}}return withBusy('Обновляю доступ и данные…',async()=>{const d=await refreshBackendData();if(document.getElementById('sync')?.classList.contains('active'))await renderSync();alert(d?.ok?'Доступ подтверждён, данные обновлены.':'Не удалось обновить: '+String(d?.error||'ошибка'));return d})}
+let LAST_AUTO_REFRESH_ERROR_AT=0,AUTO_REFRESH_PROMISE=null;
+async function autoRefreshData(reason='auto'){if(!backendSession()||navigator.onLine===false)return {ok:false,error:'NO_SESSION_OR_OFFLINE'};if(AUTO_REFRESH_PROMISE)return AUTO_REFRESH_PROMISE;AUTO_REFRESH_PROMISE=(async()=>{const d=await refreshBackendData();if(d?.ok){if(document.getElementById('sync')?.classList.contains('active'))await renderSync();return d}const now=Date.now();if(now-LAST_AUTO_REFRESH_ERROR_AT>60000){LAST_AUTO_REFRESH_ERROR_AT=now;showAppToast('Не получилось обновить данные. Показываю последние сохранённые.','bad',4200)}return d})();try{return await AUTO_REFRESH_PROMISE}finally{AUTO_REFRESH_PROMISE=null}}
+async function manualRefreshData(){if(!backendSession()){showAppToast('Сначала подключите и активируйте устройство.','bad',3600);return {ok:false,error:'NO_SESSION'}}return withBusy('Обновляю данные…',async()=>{const d=await refreshBackendData();if(document.getElementById('sync')?.classList.contains('active'))await renderSync();showAppToast(d?.ok?'Данные обновлены.':'Не получилось обновить данные.',''+(d?.ok?'ok':'bad'),3200);return d})}
 
 
 
@@ -469,7 +471,7 @@ async function backendPost(body,opts={}){const timeoutMs=Math.max(1500,Number(op
 async function backendPing(opts={}){const timeoutMs=Math.max(1200,Number(opts.timeoutMs||3500));const ctrl=typeof AbortController!=='undefined'?new AbortController():null;const timer=ctrl?setTimeout(()=>ctrl.abort(),timeoutMs):null;const started=performance.now();try{const r=await fetch(BACKEND_URL+'?action=ping',{cache:'no-store',redirect:'follow',signal:ctrl?.signal});const d=await r.json();const latency=Math.round(performance.now()-started);backendState.ping=d?.ok?'ok':'error';backendState.lastError=d?.ok?'':String(d?.error||'PING_FAILED');return {...d,latencyMs:latency}}catch(e){backendState.ping='error';backendState.lastError=String(e?.name==='AbortError'?'PING_TIMEOUT':(e?.message||e));return {ok:false,error:backendState.lastError,latencyMs:Math.round(performance.now()-started)}}finally{if(timer)clearTimeout(timer)}}
 function networkHints(){const c=navigator.connection||navigator.mozConnection||navigator.webkitConnection||null;return {online:navigator.onLine!==false,saveData:!!c?.saveData,type:String(c?.type||''),effectiveType:String(c?.effectiveType||''),rtt:Number(c?.rtt||0),downlink:Number(c?.downlink||0)}}
 function autoRefreshAllowedByHint(){const n=networkHints();if(!n.online||n.saveData)return false;if(['slow-2g','2g'].includes(n.effectiveType))return false;if(n.rtt>1400)return false;if(n.downlink>0&&n.downlink<0.45)return false;return true}
-function heavyDraft(x){return !!(x?.blob instanceof Blob)||['photo','audio','document'].includes(String(x?.kind||''))}
+function heavyDraft(x){return !!(x?.blob instanceof Blob)||Array.isArray(x?.attachments)&&x.attachments.some(a=>a?.blob instanceof Blob)||['photo','audio','document'].includes(String(x?.kind||''))}
 function wifiConfirmed(){const t=networkHints().type.toLowerCase();return t==='wifi'||t==='ethernet'}
 function heavyNetworkLabel(){const n=networkHints();return wifiConfirmed()?'Wi‑Fi':(n.type?n.type:'тип сети не определяется браузером')}
 function allowHeavyManual(){if(wifiConfirmed())return true;return confirm('Тяжёлые файлы автоматически отправляются только при Wi‑Fi. Сейчас '+heavyNetworkLabel()+'. Отправить выбранные файлы через текущую сеть вручную?')}
@@ -479,12 +481,14 @@ async function activateApprovedDevice(){const req=lsGet(BACKEND_KEYS.request);if
 function backendErrorCode(d,fallback='BACKEND_ERROR'){const raw=String((d?.error==='SERVER_ERROR'&&d?.detail)?d.detail:(d?.error||fallback));return raw.split(':')[0]}
 async function checkBackendAuth(){const token=backendSession();if(!token)return {ok:false,error:'NO_SESSION'};try{const d=await backendPost({action:'auth.check',session_token:token,device_id:backendDeviceId()});if(d?.ok){lsSet(BACKEND_KEYS.offlineUntil,d.offline_access_until||'');lsSet(BACKEND_KEYS.user,JSON.stringify(d.user||{}));applyBackendUser(d.user||{});if(d.wipe_on_next_online){await performRemoteWipe();return {ok:false,error:'REMOTE_WIPE_COMPLETED'}}return d}const err=backendErrorCode(d,'AUTH_FAILED');if(d?.wipe_on_next_online){await performRemoteWipe();return {ok:false,error:'REMOTE_WIPE_COMPLETED'}}if(/^(SESSION_|USER_|DEVICE_)/.test(err)){await handleAuthFailure(err)}return {...d,error:err}}catch(e){return {ok:false,error:String(e?.message||e)}}}
 function blobToBase64(blob){return new Promise((res,rej)=>{const fr=new FileReader();fr.onload=()=>res(String(fr.result||'').split(',')[1]||'');fr.onerror=()=>rej(fr.error);fr.readAsDataURL(blob)})}
-async function draftToEvent(x){const ev={event_id:x.id,event_type:x.kind||'unknown',kind:x.kind||'unknown',created_at:x.createdAt||'',holdUntil:x.holdUntil||'',sendNowRequested:!!x.meta?.sendNowRequested,context:x.context||'',entity_id:x.objectId||'',objectId:x.objectId||'',text:x.text||'',amount:x.meta?.amount??'',category:x.meta?.type||'',finance_type:x.meta?.financeType||x.meta?.type||'',currency:x.meta?.currency||'',meta:{...(x.meta||{}),appName:x.appName||'',originalName:x.originalName||''}};if(x.blob instanceof Blob){if(x.blob.size>7*1024*1024)throw new Error('Файл больше 7 МБ: '+(x.appName||x.text||x.id));ev.media={base64:await blobToBase64(x.blob),mimeType:x.mime||x.blob.type||'application/octet-stream',fileName:x.appName||x.originalName||('PROD_'+x.id)}}return ev}
-function sleep(ms){return new Promise(res=>setTimeout(res,ms))}
+async function draftToEvent(x){const ev={event_id:x.id,event_type:x.kind||'unknown',kind:x.kind||'unknown',created_at:x.createdAt||'',holdUntil:x.holdUntil||'',sendNowRequested:!!x.meta?.sendNowRequested,context:x.context||'',entity_id:x.objectId||'',objectId:x.objectId||'',text:x.text||'',amount:x.meta?.amount??'',category:x.meta?.type||'',finance_type:x.meta?.financeType||x.meta?.type||'',currency:x.meta?.currency||'',meta:{...(x.meta||{}),appName:x.appName||'',originalName:x.originalName||'',app_version:APP_RELEASE.version}};
+ if(x.blob instanceof Blob){if(x.blob.size>7*1024*1024)throw new Error('Файл больше 7 МБ: '+(x.appName||x.text||x.id));ev.media={base64:await blobToBase64(x.blob),mimeType:x.mime||x.blob.type||'application/octet-stream',fileName:x.appName||x.originalName||('PROD_'+x.id)}}
+ if(Array.isArray(x.attachments)&&x.attachments.length){ev.mediaList=[];for(const a of x.attachments.slice(0,8)){const b=a?.blob;if(!(b instanceof Blob))continue;if(b.size>7*1024*1024)throw new Error('Файл больше 7 МБ: '+(a.name||x.id));ev.mediaList.push({base64:await blobToBase64(b),mimeType:a.mime||b.type||'application/octet-stream',fileName:a.name||('PROD_'+x.id)})}}
+ return ev}
 async function checkEventStatus(eventId,token){if(!eventId||!token||navigator.onLine===false)return {ok:false,received:false,error:'OFFLINE_OR_NO_SESSION'};try{const d=await backendPost({action:'event.status',session_token:token,device_id:backendDeviceId(),event_id:eventId,app_version:APP_RELEASE.version},{timeoutMs:10000});if(d?.ok&&d?.received)return {event_id:eventId,ok:true,server_received:true,received:true,status:'synced',confirmed_by:'event.status',detail:d.detail||null};return {event_id:eventId,ok:!!d?.ok,server_received:false,received:false,status:d?.status||'not_found',error:d?.error||''}}catch(e){return {event_id:eventId,ok:false,server_received:false,received:false,error:String(e?.message||e)}}}
 async function syncEventWithRetry(x,token,maxAttempts=2){let last={event_id:x.id,ok:false,error:'NO_ACK'};const prior=String(x.meta?.syncState||'');if(['sending','confirming','error'].includes(prior)){const seen=await checkEventStatus(x.id,token);if(seen?.server_received)return seen}const ev=await draftToEvent(x);for(let attempt=1;attempt<=maxAttempts;attempt++){try{const current=await getDraft(x.id);if(current){current.meta={...(current.meta||{}),syncState:attempt===1?'sending':'confirming',syncAttempt:attempt,lastSyncAttemptAt:new Date().toISOString(),lastSyncError:''};await updateDraft(current)}const d=await backendPost({action:'sync.push',session_token:token,device_id:backendDeviceId(),events:[ev],app_version:APP_RELEASE.version},{timeoutMs:heavyDraft(x)?60000:25000});const r=d?.results?.[0]||{event_id:x.id,ok:false,error:d?.error||'NO_RESULT'};last=r;if(r?.ok&&r?.server_received)return r;if(r?.error&&String(r.error).startsWith('PERMISSION_DENIED'))return r}catch(e){last={event_id:x.id,ok:false,error:String(e?.message||e)}}const seen=await checkEventStatus(x.id,token);if(seen?.server_received)return seen;if(attempt<maxAttempts)await sleep(1500*attempt)}return last}
 async function recoverPendingAcks(){if(backendState.recovering||backendState.syncing||navigator.onLine===false)return {ok:false,error:'BUSY_OR_OFFLINE'};const token=backendSession();if(!token)return {ok:false,error:'NO_SESSION'};backendState.recovering=true;let recovered=0;try{const all=await drafts();const pending=all.filter(x=>draftState(x)==='ready'&&['sending','confirming','error'].includes(String(x.meta?.syncState||'')));for(const x of pending){const r=await checkEventStatus(x.id,token);if(r?.server_received){await rememberDelivered(x,r);await deleteDraftDirect(x.id);recovered++;continue}if(['sending','confirming'].includes(String(x.meta?.syncState||''))){const rec=await getDraft(x.id);if(rec){rec.meta={...(rec.meta||{}),syncState:'error',lastSyncError:'Сервер пока не подтвердил запись. Можно проверить ещё раз или повторить отправку.'};await updateDraft(rec)}}}if(recovered||pending.length){await refreshPending();if(document.getElementById('sync').classList.contains('active'))await renderSync()}return {ok:true,recovered}}finally{backendState.recovering=false}}
-async function syncReadyDrafts(opts={}){if(backendState.syncing)return {ok:false,error:'SYNC_BUSY'};if(!navigator.onLine)return {ok:false,error:'OFFLINE'};const token=backendSession();if(!token)return {ok:false,error:'NO_SESSION'};backendState.syncing=true;try{const all=await drafts();let ready=all.filter(x=>draftState(x)==='ready');const heavyReady=ready.filter(heavyDraft);if(opts.manual===true&&heavyReady.length&&!wifiConfirmed()&&!allowHeavyManual())ready=ready.filter(x=>!heavyDraft(x));if(opts.manual!==true&&!wifiConfirmed())ready=ready.filter(x=>!heavyDraft(x));const waitingHeavy=heavyReady.filter(x=>!ready.includes(x)).length;if(!ready.length){if(opts.notify&&waitingHeavy)alert('Тяжёлые файлы ждут Wi‑Fi либо ручной отправки. Текстовые записи при устойчивой сети отправляются отдельно.');return {ok:true,count:0,results:[],waitingHeavy}};const results=[];for(const x of ready){let r;try{await logActivity(x.meta?.syncState==='error'?'ack_recheck':'sync_started',x);r=await syncEventWithRetry(x,token,2);results.push(r);if(r?.ok&&r?.server_received){await rememberDelivered(x,r);await deleteDraftDirect(x.id)}else{const rec=await getDraft(x.id);if(rec){rec.meta={...(rec.meta||{}),syncState:'error',lastSyncError:String(r?.error||'Сервер не подтвердил приём')};await updateDraft(rec);await logActivity('sync_error',rec,rec.meta.lastSyncError)}}}catch(e){r={event_id:x.id,ok:false,error:String(e?.message||e)};results.push(r);const rec=await getDraft(x.id);if(rec){rec.meta={...(rec.meta||{}),syncState:'error',lastSyncError:r.error};await updateDraft(rec);await logActivity('sync_error',rec,r.error)}}}await refreshPending();if(document.getElementById('sync').classList.contains('active'))await renderSync();if(opts.notify){const ok=results.filter(r=>r?.ok&&r?.server_received).length;const bad=results.length-ok;alert(waitingHeavy?`Синхронизация: подтверждено ${ok}${bad?`, требуют проверки ${bad}`:''}. Тяжёлых файлов ждут Wi‑Fi: ${waitingHeavy}.`:ok&&bad===0?`Сервер подтвердил приём: ${ok}. Записи перенесены в историю.`:`Синхронизация: подтверждено ${ok}${bad?`, требуют проверки ${bad}`:''}. Неподтверждённые записи остаются локально.`)}return {ok:true,count:results.length,results,waitingHeavy}}finally{backendState.syncing=false}}
+async function syncReadyDrafts(opts={}){if(backendState.syncing)return {ok:false,error:'SYNC_BUSY'};if(!navigator.onLine)return {ok:false,error:'OFFLINE'};const token=backendSession();if(!token)return {ok:false,error:'NO_SESSION'};backendState.syncing=true;try{const all=await drafts();let ready=all.filter(x=>draftState(x)==='ready');if(opts.auto===true){const now=Date.now();ready=ready.filter(x=>{const st=String(x.meta?.syncState||'');if(st!=='error')return true;const err=String(x.meta?.lastSyncError||'');if(/^PERMISSION_DENIED|MUTATION_DENIED|MEDIA_TOO_LARGE/.test(err))return false;const at=Date.parse(x.meta?.lastSyncAttemptAt||'');return !Number.isFinite(at)||now-at>=60000})}const heavyReady=ready.filter(heavyDraft);if(opts.manual===true&&heavyReady.length&&!wifiConfirmed()&&!allowHeavyManual())ready=ready.filter(x=>!heavyDraft(x));if(opts.manual!==true&&!wifiConfirmed())ready=ready.filter(x=>!heavyDraft(x));const waitingHeavy=heavyReady.filter(x=>!ready.includes(x)).length;if(!ready.length){if(opts.notify&&waitingHeavy)alert('Тяжёлые файлы ждут Wi‑Fi либо ручной отправки. Текстовые записи при устойчивой сети отправляются отдельно.');return {ok:true,count:0,results:[],waitingHeavy}};const results=[];for(const x of ready){let r;try{await logActivity(x.meta?.syncState==='error'?'ack_recheck':'sync_started',x);r=await syncEventWithRetry(x,token,2);results.push(r);if(r?.ok&&r?.server_received){await rememberDelivered(x,r);await deleteDraftDirect(x.id)}else{const rec=await getDraft(x.id);if(rec){rec.meta={...(rec.meta||{}),syncState:'error',lastSyncError:String(r?.error||'Сервер не подтвердил приём')};await updateDraft(rec);await logActivity('sync_error',rec,rec.meta.lastSyncError)}}}catch(e){r={event_id:x.id,ok:false,error:String(e?.message||e)};results.push(r);const rec=await getDraft(x.id);if(rec){rec.meta={...(rec.meta||{}),syncState:'error',lastSyncError:r.error};await updateDraft(rec);await logActivity('sync_error',rec,r.error)}}}await refreshPending();if(results.some(r=>r?.ok&&r?.server_received&&(r?.operation_id||r?.order_id))){await autoRefreshData('post-sync')}if(document.getElementById('sync').classList.contains('active'))await renderSync();if(document.getElementById('appdev')?.classList.contains('active'))await renderAppDev();if(opts.notify){const ok=results.filter(r=>r?.ok&&r?.server_received).length;const bad=results.length-ok;alert(waitingHeavy?`Синхронизация: подтверждено ${ok}${bad?`, требуют проверки ${bad}`:''}. Тяжёлых файлов ждут Wi‑Fi: ${waitingHeavy}.`:ok&&bad===0?`Сервер подтвердил приём: ${ok}. Записи перенесены в историю.`:`Синхронизация: подтверждено ${ok}${bad?`, требуют проверки ${bad}`:''}. Неподтверждённые записи остаются локально.`)}return {ok:true,count:results.length,results,waitingHeavy}}finally{backendState.syncing=false}}
 async function syncDraftById(id){const token=backendSession();if(!token)return {ok:false,error:'NO_SESSION'};const x=await getDraft(id);if(!x||draftState(x)!=='ready'||!navigator.onLine)return {ok:false,error:'NOT_READY'};if(heavyDraft(x)&&!wifiConfirmed()&&!allowHeavyManual())return {ok:false,error:'WAIT_WIFI'};const seen=await checkEventStatus(x.id,token);if(seen?.server_received){await rememberDelivered(x,seen);await deleteDraftDirect(x.id);await refreshPending();if(document.getElementById('sync').classList.contains('active'))await renderSync();return seen}await logActivity(x.meta?.syncState==='error'?'ack_recheck':'sync_started',x);const r=await syncEventWithRetry(x,token,2);if(r?.ok&&r?.server_received){await rememberDelivered(x,r);await deleteDraftDirect(x.id);await refreshPending();if(document.getElementById('sync').classList.contains('active'))await renderSync();return r}const rec=await getDraft(id);if(rec){rec.meta={...(rec.meta||{}),syncState:'error',lastSyncError:String(r?.error||'Сервер не подтвердил приём')};await updateDraft(rec);await logActivity('sync_error',rec,rec.meta.lastSyncError)}await refreshPending();if(document.getElementById('sync').classList.contains('active'))await renderSync();return r}
 function backendAccessLabel(){if(backendSession())return 'сессия активна';if(lsGet(BACKEND_KEYS.request))return 'заявка PENDING / ждёт одобрения';return 'устройство не подключено'}
 
@@ -744,7 +748,7 @@ function backendAccessLabel(){if(backendSession())return 'сессия акти�
 
 
 const fmt=n=>n==null?'—':new Intl.NumberFormat('ru-RU',{maximumFractionDigits:2}).format(n); const rub=n=>n==null?'—':fmt(n)+' ₽'; const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
-function go(id){document.querySelectorAll('.screen').forEach(x=>x.classList.remove('active'));document.getElementById(id).classList.add('active');document.getElementById('pageTitle').textContent=titles[id]||'Производство';document.querySelectorAll('.nav').forEach(x=>x.classList.toggle('active',x.dataset.screen===id));window.scrollTo({top:0,behavior:'smooth'});if(id==='home')renderHome();if(id==='checklists')renderChecklists();if(id==='sync')renderSync();if(id==='wallet')renderWallet();if(id==='nom')renderNom();if(id==='avito')renderAvito();if(id==='gallery')renderGallery();if(id==='admin')renderAdmin();if(id==='activityLog')renderActivityLog();if(id==='analytics')renderAnalytics();if(id==='calculator')renderCalculator();if(id==='salesAnalytics')renderSalesAnalytics();}
+function go(id){document.querySelectorAll('.screen').forEach(x=>x.classList.remove('active'));document.getElementById(id).classList.add('active');document.getElementById('pageTitle').textContent=titles[id]||'Производство';document.querySelectorAll('.nav').forEach(x=>x.classList.toggle('active',x.dataset.screen===id));window.scrollTo({top:0,behavior:'smooth'});if(id==='home')renderHome();if(id==='checklists')renderChecklists();if(id==='sync')renderSync();if(id==='wallet')renderWallet();if(id==='nom')renderNom();if(id==='avito')renderAvito();if(id==='gallery')renderGallery();if(id==='admin')renderAdmin();if(id==='activityLog')renderActivityLog();if(id==='analytics')renderAnalytics();if(id==='calculator')renderCalculator();if(id==='salesAnalytics')renderSalesAnalytics();if(id==='appdev')renderAppDev();}
 function badge(text,kind=''){return `<span class="badge ${kind}">${esc(text)}</span>`}
 function orderImage(o,cls='order-img'){if(typeof o.image==='string'&&o.image)return `<img class="${cls}" src="${o.image}" alt="${esc(o.name)}" loading="lazy">`;const media=Array.isArray(o.images)?o.images.filter(x=>x&&typeof x==='object'&&x.mediaId):[];return media.length?`<div class="order-placeholder order-media-card" id="order-card-media-${domSafe(o.id)}"><span>📷</span><small>${media.length}</small></div>`:`<div class="order-placeholder">${esc(o.id.slice(-3))}</div>`}
 function calcFor(id){return S.calculations[id]||null}
@@ -1468,7 +1472,21 @@ function orderMediaStrip(o){const items=orderMediaItems(o);if(!items.length){if(
 
 
 
-function orderCard(o){const c=calcFor(o.id), known=c?rub(c.knownTotal):'расчёта нет'; return `<article class="order-card" onclick="openOrder('${o.id}')">${orderImage(o)}<div class="grow"><div class="title order-title-one-line">${esc(o.id)} · ${esc(o.name)}</div><div class="order-card-meta"><div class="stage">${esc(o.stage||o.status)}</div>${o.deadline?badge(o.deadline):badge('без срока','warn')}</div><div class="sub"><span>${c?'Расчёт '+esc(c.version)+' · '+known:'Сбор исходных данных'}</span><span>${o.clientPrice?rub(o.clientPrice):''}</span></div></div></article>`}
+function orderCard(o){const c=calcFor(o.id),known=c?rub(c.knownTotal):'расчёта нет',author=o.createdByName||o.createdByUserId||'',canEdit=canMutateRecord('orders','update',o.createdByUserId),canDelete=canMutateRecord('orders','delete',o.createdByUserId);return `<article class="order-card" onclick="openOrder('${o.id}')">${orderImage(o)}<div class="grow"><div class="title order-title-one-line">${esc(o.id)} · ${esc(o.name)}</div><div class="order-card-meta"><div class="stage">${esc(o.stage||o.status)}</div>${o.deadline?badge(o.deadline):badge('без срока','warn')}</div><div class="sub"><span>${c?'Расчёт '+esc(c.version)+' · '+known:'Сбор исходных данных'}</span><span>${o.clientPrice?rub(o.clientPrice):''}</span></div>${author?`<div class="record-author">создал: ${esc(author)}</div>`:''}${canEdit||canDelete?`<div class="record-actions" onclick="event.stopPropagation()">${canEdit?`<button onclick="editOrderRecord('${esc(o.id)}')">Изменить</button>`:''}${canDelete?`<button class="danger" onclick="deleteOrderRecord('${esc(o.id)}')">Удалить</button>`:''}</div>`:''}</div></article>`}
+let step2MediaFiles=[];let step2MediaMode='';
+function resetStep2Media(mode=''){step2MediaFiles=[];step2MediaMode=mode;updateStep2MediaLabel()}
+function chooseStep2Media(mode){step2MediaMode=mode;document.getElementById('step2MediaInput')?.click()}
+function updateStep2MediaLabel(){const el=document.getElementById('step2MediaLabel');if(el)el.textContent=step2MediaFiles.length?`Выбрано фото: ${step2MediaFiles.length}`:'Фото не выбраны'}
+const step2MediaInput=document.getElementById('step2MediaInput');if(step2MediaInput)step2MediaInput.addEventListener('change',e=>{const files=[...(e.target.files||[])].slice(0,8);if(step2MediaMode==='appdev-admin'){APPDEV_ADMIN_NEW_MEDIA=files;const lab=document.getElementById('appDevAdminMediaLabel');if(lab)lab.textContent=files.length?`Новых изображений: ${files.length}`:'Новых изображений нет'}else{step2MediaFiles=files;updateStep2MediaLabel()}e.target.value=''});
+function attachmentRecords(files){return (files||[]).slice(0,8).map(f=>({name:f.name||('photo-'+Date.now()+'.jpg'),mime:f.type||'image/jpeg',size:f.size||0,blob:f}))}
+function newOrderModal(){if(!hasPermission('orders.create')){showAppToast('Нет права создавать заказы.','bad',3600);return}resetStep2Media('order');modal('Новый заказ',`<div class="field"><label>Название заказа</label><input id="newOrderTitle" placeholder="Например: Стеллаж"></div><div class="field"><label>Описание</label><textarea id="newOrderDescription" placeholder="Что нужно изготовить"></textarea></div><div class="field"><label>Сумма заказа, ₽</label><input id="newOrderPrice" inputmode="decimal" placeholder="0"></div><div class="field"><label>Предоплата, ₽</label><input id="newOrderPrepay" inputmode="decimal" placeholder="0"></div><div class="field"><label>Срок сдачи</label><input id="newOrderDeadline" type="date"></div><div class="field"><label>Комментарий</label><textarea id="newOrderComment" placeholder="Дополнительная информация"></textarea></div><button class="secondary" onclick="chooseStep2Media('order')">Добавить фото</button><div class="hint" id="step2MediaLabel">Фото не выбраны</div><button class="primary" style="margin-top:10px" onclick="saveNewOrderDraft()">Создать заказ</button><div class="hint">Сначала запись сохраняется на телефоне. Через 5 минут приложение отправит её автоматически. Номер заказа присвоит сервер без риска дублей.</div>`)}
+async function saveNewOrderDraft(){const title=(document.getElementById('newOrderTitle')?.value||'').trim(),description=(document.getElementById('newOrderDescription')?.value||'').trim(),price=Number(String(document.getElementById('newOrderPrice')?.value||'').replace(',','.'))||0,prepay=Number(String(document.getElementById('newOrderPrepay')?.value||'').replace(',','.'))||0,deadline=document.getElementById('newOrderDeadline')?.value||'',comment=(document.getElementById('newOrderComment')?.value||'').trim();if(!title){showAppToast('Укажите название заказа.','bad');return}if(prepay>price&&price>0){showAppToast('Предоплата не должна быть больше суммы заказа.','bad',4200);return}await putDraft({kind:'order-create',context:'order-create',objectId:'',text:title,attachments:attachmentRecords(step2MediaFiles),meta:{title,description,clientPrice:price||'',prepayment:prepay||0,deadline,comment}});resetStep2Media();closeModal();await refreshPending();showAppToast('Новый заказ сохранён. После подтверждения сервера ему будет присвоен номер.','ok',4600)}
+function editOrderRecord(id){const o=(S.orders||[]).find(x=>String(x.id)===String(id));if(!o)return;modal('Изменить заказ '+esc(id),`<div class="field"><label>Название</label><input id="ordEditTitle" value="${esc(o.name||'')}"></div><div class="field"><label>Описание</label><textarea id="ordEditDescription">${esc(o.description||'')}</textarea></div><div class="field"><label>Сумма заказа</label><input id="ordEditPrice" inputmode="decimal" value="${esc(o.clientPrice??'')}"></div><div class="field"><label>Получено / предоплата</label><input id="ordEditReceived" inputmode="decimal" value="${esc(o.received??0)}"></div><div class="field"><label>Срок</label><input id="ordEditDeadline" placeholder="дд.мм.гггг" value="${esc(o.deadline||'')}"></div><div class="field"><label>Комментарий</label><textarea id="ordEditComment">${esc(o.comment||'')}</textarea></div><button class="primary" onclick="saveOrderRecord('${esc(id)}')">Сохранить</button>`)}
+async function saveOrderRecord(id){const patch={title:(document.getElementById('ordEditTitle')?.value||'').trim(),description:(document.getElementById('ordEditDescription')?.value||'').trim(),client_price:(document.getElementById('ordEditPrice')?.value||'').trim(),received:(document.getElementById('ordEditReceived')?.value||'').trim(),deadline:(document.getElementById('ordEditDeadline')?.value||'').trim(),comment:(document.getElementById('ordEditComment')?.value||'').trim()};closeModal();await mutateRecord('order',id,'update',patch)}
+async function deleteOrderRecord(id){if(!confirm('Удалить заказ из активных? Запись останется в master и аудите как архивная.'))return;await mutateRecord('order',id,'delete',{},'Архивировано из приложения')}
+
+/* restored unchanged v0.3.8 modules after APP-Q014 staging read-back */
+function sleep(ms){return new Promise(res=>setTimeout(res,ms))}
 async function renderAnalytics(){const w=S.wallet;const orders=S.orders||[];const active=orders.length;const nod=orders.filter(o=>!o.deadline).length;const calcs=Object.values(S.calculations||{});const knownMaterials=calcs.reduce((a,c)=>a+(Number(c.knownTotal)||0),0);const q=await drafts();window.__draftCache=q;const hist=(await sentHistory()).sort((a,b)=>String(b.sentAt||'').localeCompare(String(a.sentAt||'')));const activity=(await activityHistory()).sort((a,b)=>String(b.at||'').localeCompare(String(a.at||'')));const nowMs=Date.now();const sent24=hist.filter(x=>{const ms=Date.parse(x.sentAt||'');return Number.isFinite(ms)&&(nowMs-ms)<=86400000}).length;const activity24=activity.filter(x=>{const ms=Date.parse(x.at||'');return Number.isFinite(ms)&&(nowMs-ms)<=86400000}).length;const photos=q.filter(x=>x.kind==='photo').length;const docs=q.filter(x=>x.kind==='document').length;const audios=q.filter(x=>x.kind==='audio').length;const notes=q.filter(x=>['note','order-note','calc-note','avito-note'].includes(x.kind)).length;const galleryCand=q.filter(x=>x.context==='portfolio-candidate').length;const avito=q.filter(x=>String(x.context||'').startsWith('avito')||x.kind==='avito-note');const quoteDrafts=q.filter(x=>x.kind==='quote-draft').length;const pubs=q.filter(x=>x.kind==='publish-draft');const publishDrafts=pubs.length;const approved=(S.gallery||[]).length;const obligations=w.futureExpenses||[];const countChannel=ch=>pubs.filter(x=>(x.meta?.channels||[]).includes(ch)).length;document.getElementById('analytics').innerHTML=`<button class="back" onclick="go('home')">← Главная</button>
 <div class="analytics-kpis"><div class="kpi money"><span>Денег сейчас</span><b>${rub(w.balance)}</b><small>после обязательств ${rub(w.afterObligations)}</small></div><div class="kpi orders"><span>Активные заказы</span><b>${active}</b><small>${nod} без срока</small></div><div class="kpi costs"><span>Обязательства</span><b>${rub(w.futureTotal)}</b><small>${obligations.length} записей</small></div><div class="kpi media"><span>Загрузки</span><b>${q.length}</b><small>${photos} фото · ${audios} голос</small></div></div>
 ${homeAttentionCard(q)}
@@ -1479,266 +1497,9 @@ ${homeAttentionCard(q)}
 ${(isAdmin1()||hasPermission('activity.view'))?`<div class="analytics-section admin-audit-section"><h3>Администратор</h3><button class="feature-card" onclick="go('activityLog')"><span><b>Журнал действий</b><small>действия пользователя · устройство · время · статус</small></span><span class="arr">›</span></button></div>`:''}
 <div class="analytics-section system-section"><h3>Система</h3><div class="analytics-lines"><div><span>Версия приложения</span><b>${esc(APP_RELEASE.version)} · ${esc(APP_RELEASE.buildId)}</b></div><div><span>Снимок данных</span><b>${esc(S.meta.snapshotDate)}</b></div><div><span>Связь</span><b>${navigator.onLine?'Онлайн':'Офлайн'}</b></div><div><span>Backend</span><b>${S.meta.backendConnected?'включён':'пока выключен'}</b></div><div><span>Локальная очередь</span><b>${q.length}</b></div><div><span>Обновления</span><b>ADMIN1-first · manifest + service worker</b></div></div><div class="hint"><b>После публикации HTTPS-PWA:</b> новая версия будет устанавливаться централизованно без ручной пересылки HTML. Локальные рабочие данные IndexedDB обновлением не удаляются.</div></div>`
 ;}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 function activityTone(action){if(action==='sync_error')return 'error';if(['delivered','gallery_approved'].includes(action))return 'success';if(['created','edited','send_now','sync_started','ack_recheck','correction_created'].includes(action))return 'warning';return 'local'}
 function activityToneText(action){const t=activityTone(action);return t==='error'?'ошибка':t==='success'?'успешно':t==='warning'?'в работе':'локально'}
 function activityRowHtml(x){const tone=activityTone(x.action);return `<div class="activity-log-row ${tone}"><div class="activity-log-head"><b>${esc(x.userName||x.userId||SESSION.name)} · ${esc(activityActionText(x.action))}</b><span class="activity-status ${tone}">${activityToneText(x.action)}</span></div><div class="activity-log-meta">${esc(x.at?new Date(x.at).toLocaleString('ru-RU'):'')} · ${esc(x.deviceId||'устройство')}</div><div class="activity-log-body">${esc(activityObjectLabel(x))}${x.detail?' · '+esc(x.detail):''}</div></div>`}
-let activityPresetOrder='';
 function openActivityLogForOrder(id){activityPresetOrder=String(id||'');go('activityLog')}
 async function renderActivityLog(){if(!(isAdmin1()||hasPermission('activity.view'))){document.getElementById('activityLog').innerHTML='<div class="risk">Нет права просмотра журнала действий.</div>';return}const rows=(await activityHistory()).sort((a,b)=>String(b.at||'').localeCompare(String(a.at||'')));window.__activityRows=rows;const users=[...new Set(rows.map(x=>x.userName||x.userId).filter(Boolean))].sort();const orders=[...new Set(rows.map(x=>x.objectId).filter(x=>/^20\d\d-/.test(String(x||''))))].sort();const actions=[...new Set(rows.map(x=>x.action).filter(Boolean))].sort();document.getElementById('activityLog').innerHTML=`<button class="back" onclick="go('home')">← Главная</button><div class="analytics-head"><h2>Журнал действий</h2><p>Неизменяемая локальная история действий этого устройства. Серверная история всех пользователей будет объединена с этим экраном позже.</p></div><div class="activity-filters"><select id="afUser" onchange="applyActivityFilters()"><option value="">Все пользователи</option>${users.map(x=>`<option>${esc(x)}</option>`).join('')}</select><select id="afOrder" onchange="applyActivityFilters()"><option value="">Все заказы</option>${orders.map(x=>`<option>${esc(x)}</option>`).join('')}</select><select id="afAction" onchange="applyActivityFilters()"><option value="">Все действия</option>${actions.map(x=>`<option value="${esc(x)}">${esc(activityActionText(x))}</option>`).join('')}</select><select id="afStatus" onchange="applyActivityFilters()"><option value="">Все статусы</option><option value="error">Только ошибки</option><option value="success">Успешные</option><option value="warning">В работе</option><option value="local">Локальные</option></select><select id="afPeriod" onchange="applyActivityFilters()"><option value="all">Всё время</option><option value="1">24 часа</option><option value="7">7 дней</option><option value="30">30 дней</option></select></div><div class="section-title"><h2>События</h2><span id="activityFilteredCount" class="badge">${rows.length}</span></div><div id="activityLogRows"></div>`;if(activityPresetOrder){const el=document.getElementById('afOrder');if(el&&[...el.options].some(o=>o.value===activityPresetOrder))el.value=activityPresetOrder;activityPresetOrder=''}applyActivityFilters()}
 function applyActivityFilters(){let rows=[...(window.__activityRows||[])];const user=document.getElementById('afUser')?.value||'',order=document.getElementById('afOrder')?.value||'',action=document.getElementById('afAction')?.value||'',status=document.getElementById('afStatus')?.value||'',period=document.getElementById('afPeriod')?.value||'all';if(user)rows=rows.filter(x=>(x.userName||x.userId)===user);if(order)rows=rows.filter(x=>String(x.objectId||'')===order);if(action)rows=rows.filter(x=>x.action===action);if(status)rows=rows.filter(x=>activityTone(x.action)===status);if(period!=='all'){const since=Date.now()-Number(period)*86400000;rows=rows.filter(x=>Date.parse(x.at||'')>=since)}const count=document.getElementById('activityFilteredCount');if(count)count.textContent=rows.length;const box=document.getElementById('activityLogRows');if(box)box.innerHTML=rows.length?rows.slice(0,300).map(activityRowHtml).join(''):'<div class="muted">По выбранным фильтрам событий нет.</div>'}
@@ -1751,265 +1512,9 @@ function newQuoteModal(){modal('Новый предварительный рас
 async function saveQuoteDraft(){const text=document.getElementById('quoteText')?.value.trim()||'';if(!text){alert('Опишите изделие.');return}const qty=Math.max(1,Number(document.getElementById('quoteQty')?.value||1));const coating=document.getElementById('quoteCoating')?.value||'AUTO';const qid=nextQuoteId();await putDraft({kind:'quote-draft',objectId:qid,text,context:'calculator',meta:{quoteId:qid,qty,coating,reservePct:30,status:'awaiting-ai'}});closeModal();await refreshPending();await renderCalculator()}
 function quoteCard(q){const m=q.meta||{};const result=m.resultTotal!=null?`<div class="quote-result"><span>База ${rub(m.baseCost||0)}</span><span>Резерв ${m.reservePct||30}%</span><b>${rub(m.resultTotal)}</b></div>`:`<div class="quote-wait">После синхронизации ИИ рассчитает материалы и базовую оценку; сюда вернётся результат + 30%.</div>`;return `<article class="quote-card"><div class="between"><div><b>${esc(m.quoteId||q.objectId)}</b><small>${new Date(q.createdAt).toLocaleString('ru-RU')} · ${esc(quoteStatusLabel(q))}</small></div><span class="badge ${m.resultTotal!=null?'ok':'warn'}">${m.resultTotal!=null?'готов':'черновик'}</span></div><div class="quote-text">${esc(q.text)}</div><div class="quote-meta">Количество: ${fmt(m.qty||1)} · Резерв: ${m.reservePct||30}% · Покрытие: ${esc(m.coating==='AUTO'?'металл порошок / дерево уточнить':m.coating==='NONE'?'без покрытия':'по описанию')}</div>${result}${standardActions('quote',q.objectId,'Заметка к расчёту')}<div class="quote-actions">${m.resultTotal!=null?`<button class="primary" onclick="promoteQuote('${esc(q.id)}')">В активный заказ</button>`:`<button class="secondary" onclick="alert('После подключения backend этот черновик уйдёт на расчёт ИИ при синхронизации. Сейчас он уже сохранён локально.')">На расчёт</button>`}<button class="danger" onclick="deleteQuote('${esc(q.id)}')">Удалить</button></div></article>`}
 async function deleteQuote(id){if(!confirm('Удалить предварительный расчёт?'))return;const rec=await getDraft(id);await deleteDraftDirect(id);if(rec)await logActivity('quote_deleted',rec);await refreshPending();await renderCalculator()}
-async function deleteDraftDirect(id){const db=await openDB();const tx=db.transaction('drafts','readwrite');tx.objectStore('drafts').delete(id);return new Promise((res,rej)=>{tx.oncomplete=res;tx.onerror=()=>rej(tx.error)})}
 async function promoteQuote(id){const a=await drafts();const q=a.find(x=>x.id===id);if(!q||q.meta?.resultTotal==null)return;await putDraft({kind:'quote-promote',objectId:q.objectId,text:`Перевести ${q.objectId} в активный заказ`,context:'calculator',meta:{sourceQuoteId:q.objectId}});alert('Запрос на перевод в активный заказ сохранён. В рабочей версии сервер создаст номер заказа и сохранит исходный предварительный расчёт в истории.');await refreshPending()}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-function renderOrders(){document.getElementById('orders').innerHTML=`<button class="back" onclick="go('home')">← Главная</button><div class="filters"><button class="chip active">Активные · ${S.orders.length}</button><button class="chip">По статусу</button><button class="chip">Без срока · ${S.orders.filter(o=>!o.deadline).length}</button></div>${S.orders.map(orderCard).join('')}`;setTimeout(()=>hydrateOrderCardMedia(),0)}
+let activityPresetOrder='';
+function renderOrders(){document.getElementById('orders').innerHTML=`<button class="back" onclick="go('home')">← Главная</button>${hasPermission('orders.create')?'<button class="primary new-order-button" onclick="newOrderModal()">+ Новый заказ</button>':''}<div class="filters"><button class="chip active">Активные · ${S.orders.length}</button><button class="chip">По статусу</button><button class="chip">Без срока · ${S.orders.filter(o=>!o.deadline).length}</button></div>${S.orders.map(orderCard).join('')}`;setTimeout(()=>hydrateOrderCardMedia(),0)}
 async function openOrder(id){resetTempUrls();const o=S.orders.find(x=>x.id===id); if(!o)return; const c=calcFor(id); let calc=''; if(c){calc=`<div class="calc-head"><h3>Замороженный расчёт ${esc(c.version)}</h3><b>${rub(c.knownTotal)}</b></div><div class="hint">Цены показаны именно на дату расчёта. Текущая Номенклатура может уже отличаться — это не переписывает историю расчёта.</div><div class="calc-table">${c.lines.map(calcLine).join('')}</div>`}else calc=`<div class="risk"><b>Расчёт ещё не начат</b>${esc(o.stage||'Сначала собрать исходные данные.')}</div>`; document.getElementById('orderDetail').innerHTML=`<div class="back-row"><button class="back" onclick="go('orders')">← Заказы</button><button class="back back-home-secondary" onclick="go('home')">⌂ Главная</button></div><div class="detail-head"><div class="muted">${esc(o.id)} · ${esc(o.status)}</div><h2>${esc(o.name)}</h2><div class="detail-grid"><div><small>Срок</small><b>${esc(o.deadline||'не назначен')}</b></div><div><small>Цена клиенту</small><b>${o.clientPrice?rub(o.clientPrice):'не задана'}</b></div><div><small>Этап</small><b>${esc(o.stage||'—')}</b></div></div></div>${orderMediaStrip(o)}<div class="desc">${esc(o.description)}</div>${calc}<div class="section-title"><h2>Добавить к заказу</h2><span class="badge">${esc(id)}</span></div>${orderActionGrid(id)}`;go('orderDetail');setTimeout(()=>hydrateOrderMedia(id),0)}
 function calcLine(l){let change=''; if(l.price!=null&&l.currentPrice!=null&&Math.abs(l.price-l.currentPrice)>.001){change=`<div class="price-change">Сейчас в Номенклатуре: ${fmt(l.currentPrice)} ${esc(l.currentPriceBasis)} от ${esc(l.currentPriceDate)}. В этой версии расчёта сохранено: ${fmt(l.price)} ${esc(l.priceBasis)}.</div>`} let assum=''; if((l.comment||'').toUpperCase().includes('ПРЕДПОЛОЖЕНИЕ')) assum=`<div class="assumption">⚠ ${esc(l.comment)}</div>`; else if(l.amount==null) assum=`<div class="assumption unknown">⚠ Цена/позиция не определена: ${esc(l.comment||'требуется уточнение')}</div>`; return `<div class="calc-line"><div class="between"><div><div class="calc-name">${esc(l.name)}</div><div class="calc-meta">${esc(l.params)}<br>Нужно: ${fmt(l.qtyTech)} ${esc(l.unit)} · Купить: ${fmt(l.qtyBuy)} ${esc(l.buyUnit||l.unit)}${l.price!=null?` · Цена ${fmt(l.price)} ${esc(l.priceBasis||'')}`:''}${l.priceDate?` от ${esc(l.priceDate)}`:''}</div></div><div class="calc-money">${rub(l.amount)}</div></div>${change}${assum}</div>`}
 
@@ -2296,22 +1801,52 @@ function pickGalleryCameraFromModal(){const id=gallerySelectedOrder(),note=galle
 function pickGalleryFilesFromModal(){const id=gallerySelectedOrder(),note=galleryInternalNote();closeModal();pickGalleryFiles('portfolio-candidate',id,{note})}
 function pickGalleryCameraForOrder(id){const note=galleryInternalNote();closeModal();pickPhoto('portfolio-candidate',id,{note})}
 function pickGalleryFilesForOrder(id){const note=galleryInternalNote();closeModal();pickGalleryFiles('portfolio-candidate',id,{note})}
+
+function appDevStatusClass(v){const s=String(v||'');return /ТРЕБУЕТ/.test(s)?'warn':/ОТКЛОН/.test(s)?'bad':/ВЫПУЩ/.test(s)?'ok':''}
+function appDevIssueCard(x){const key=x.issue_id||x.local_id||'',media=Array.isArray(x.media_urls)?x.media_urls:[],admin=hasPermission('appdev.admin');return `<article class="appdev-card"><div class="between"><div><b>${esc(x.issue_id||x.local_id||'замечание')}</b><small>${esc(x.created_by_name||x.created_by_user_id||'')} · ${x.created_at?new Date(x.created_at).toLocaleString('ru-RU'):''}</small></div><span class="badge ${appDevStatusClass(x.status)}">${esc(x.status||'')}</span></div><h3>${esc(x.title||'Замечание')}</h3><div class="appdev-text">${esc(x.working_text||x.original_text||'')}</div>${media.length?`<div class="appdev-media">${media.map((u,i)=>`<button onclick="window.open('${esc(u)}','_blank')">Скриншот ${i+1}</button>`).join('')}</div>`:''}${x.admin_note?`<div class="hint"><b>ADMIN1:</b> ${esc(x.admin_note)}</div>`:''}${admin?`<div class="record-actions"><button onclick="appDevAdminModal('${esc(key)}')">Редактировать</button>${!x.issue_id&&x.status!=='ОТКЛОНЕНО'?`<button class="approve-btn" onclick="appDevAction('${esc(key)}','approve')">Утвердить</button><button class="danger" onclick="appDevAction('${esc(key)}','reject')">Отклонить</button>`:''}</div>`:''}</article>`}
+async function renderAppDev(){const el=document.getElementById('appdev');if(!el)return;if(!hasPermission('appdev.view')){el.innerHTML='<button class="back" onclick="go(\'home\')">← Главная</button><div class="empty">Нет права видеть замечания приложения.</div>';return}const local=(await drafts()).filter(x=>x.kind==='appdev-issue'),server=Array.isArray(S.appIssues)?S.appIssues:[];el.innerHTML=`<button class="back" onclick="go('home')">← Главная</button>${hasPermission('appdev.submit')?'<button class="primary" onclick="newAppDevIssueModal()">+ Новое замечание</button>':''}<div class="section-title"><h2>Замечания</h2><span class="badge">${server.length+local.length}</span></div>${local.map(x=>`<article class="appdev-card local"><div class="between"><b>Ждёт отправки</b><span class="badge warn">локально</span></div><h3>${esc(x.meta?.title||'Замечание')}</h3><div class="appdev-text">${esc(x.text||'')}</div><div class="hint">Вложений: ${x.attachments?.length||0} · event_id ${esc(x.id)}</div></article>`).join('')}${server.length?server.map(appDevIssueCard).join(''):'<div class="muted">Серверных замечаний пока нет.</div>'}`}
+function newAppDevIssueModal(){if(!hasPermission('appdev.submit')){showAppToast('Нет права отправлять замечания.','bad');return}resetStep2Media('appdev');modal('Новое замечание',`<div class="field"><label>Краткое название</label><input id="appDevTitle" placeholder="Что нужно исправить"></div><div class="field"><label>Описание</label><textarea id="appDevText" placeholder="Что происходит и как должно быть"></textarea></div><button class="secondary" onclick="chooseStep2Media('appdev')">Добавить скриншоты / фото</button><div class="hint" id="step2MediaLabel">Фото не выбраны</div><button class="primary" style="margin-top:10px" onclick="saveAppDevIssueDraft()">Отправить замечание</button><div class="hint">Текст и все изображения сохраняются одним пакетом. После ADMIN1-проверки замечанию присваивается официальный ID.</div>`)}
+async function saveAppDevIssueDraft(){const title=(document.getElementById('appDevTitle')?.value||'').trim(),txt=(document.getElementById('appDevText')?.value||'').trim();if(!title&&!txt&&!step2MediaFiles.length){showAppToast('Добавьте текст или скриншот.','bad');return}const screen=document.querySelector('.screen.active')?.id||'',localId='LOCAL-'+crypto.randomUUID();await putDraft({kind:'appdev-issue',context:'appdev',objectId:localId,text:txt,attachments:attachmentRecords(step2MediaFiles),meta:{title:title||'Замечание к приложению',screen,app_version:APP_RELEASE.version,local_id:localId}});resetStep2Media();closeModal();await refreshPending();await renderAppDev();showAppToast('Замечание сохранено одним пакетом и будет отправлено автоматически.','ok',4400)}
+let APPDEV_ADMIN_NEW_MEDIA=[];
+function appDevAdminModal(key){const x=(S.appIssues||[]).find(i=>String(i.issue_id||i.local_id)===String(key));if(!x)return;APPDEV_ADMIN_NEW_MEDIA=[];const media=Array.isArray(x.media_urls)?x.media_urls:[];modal('Редактировать замечание',`<div class="field"><label>Название</label><input id="appDevEditTitle" value="${esc(x.title||'')}"></div><div class="field"><label>Рабочий текст</label><textarea id="appDevEditText">${esc(x.working_text||x.original_text||'')}</textarea></div><div class="field"><label>Комментарий ADMIN1</label><textarea id="appDevAdminNote">${esc(x.admin_note||'')}</textarea></div>${media.length?`<div class="field"><label>Текущие изображения</label>${media.map((u,i)=>`<label class="media-remove-row"><input type="checkbox" data-appdev-remove="${esc(u)}"> удалить скриншот ${i+1}</label>`).join('')}</div>`:''}<button class="secondary" onclick="chooseAppDevAdminMedia()">Добавить изображения</button><div class="hint" id="appDevAdminMediaLabel">Новых изображений нет</div><button class="primary" style="margin-top:10px" onclick="saveAppDevAdminEdit('${esc(key)}')">Сохранить правки</button>`)}
+function chooseAppDevAdminMedia(){step2MediaMode='appdev-admin';document.getElementById('step2MediaInput')?.click()}
+async function appDevMediaPayload(files){const out=[];for(const f of (files||[]).slice(0,8)){if(f.size>7*1024*1024){showAppToast('Файл больше 7 МБ: '+f.name,'bad',4600);continue}out.push({base64:await blobToBase64(f),mimeType:f.type||'image/jpeg',fileName:f.name||'screenshot.jpg'})}return out}
+async function saveAppDevAdminEdit(key){const remove=[...document.querySelectorAll('[data-appdev-remove]:checked')].map(x=>x.dataset.appdevRemove),newMedia=await appDevMediaPayload(APPDEV_ADMIN_NEW_MEDIA.length?APPDEV_ADMIN_NEW_MEDIA:step2MediaFiles);const body={action:'appdev.update',session_token:backendSession(),device_id:backendDeviceId(),issue_key:key,issue_action:'edit',title:(document.getElementById('appDevEditTitle')?.value||'').trim(),working_text:(document.getElementById('appDevEditText')?.value||'').trim(),admin_note:(document.getElementById('appDevAdminNote')?.value||'').trim(),remove_media_urls:remove,new_media:newMedia,app_version:APP_RELEASE.version};closeModal();await withBusy('Сохраняю замечание…',async()=>{const d=await backendPost(body,{timeoutMs:60000});if(!d?.ok){showAppToast('Не удалось сохранить замечание.','bad');return}await pullLiveSnapshot({silent:true});await renderAppDev();showAppToast('Замечание обновлено.','ok')})}
+async function appDevAction(key,action){if(!confirm(action==='approve'?'Утвердить замечание и присвоить официальный ID?':'Отклонить замечание?'))return;await withBusy(action==='approve'?'Утверждаю замечание…':'Отклоняю замечание…',async()=>{const d=await backendPost({action:'appdev.update',session_token:backendSession(),device_id:backendDeviceId(),issue_key:key,issue_action:action,app_version:APP_RELEASE.version},{timeoutMs:30000});if(!d?.ok){showAppToast('Операция не выполнена: '+String(d?.error||''),'bad');return}await pullLiveSnapshot({silent:true});await renderAppDev();showAppToast(action==='approve'?'Замечанию присвоен ID и оно отправлено в «Требует обновления».':'Замечание отклонено.','ok',4400)})}
 async function renderAvito(){resetTempUrls();const all=await drafts(),a=all.filter(x=>String(x.context||'').startsWith('avito')||x.kind==='avito-note'),photos=a.filter(x=>x.kind==='photo').length,audios=a.filter(x=>x.kind==='audio').length,notes=a.filter(x=>x.kind==='avito-note').length;document.getElementById('avito').innerHTML=`<button class="back" onclick="go('home')">← Главная</button><div class="avito-hero"><span class="badge">сбор данных</span><h2>Avito</h2><p>Пока ничего не анализируем автоматически. Сначала собираем качественные исходные данные, чтобы позже связать объявления → обращения → заказы → деньги.</p></div>${standardActions('avito','AVITO','Заметка Avito')}<div class="mini-stats" style="margin-top:10px"><div><b>${a.length}</b><small>ждут sync</small></div><div><b>${photos}</b><small>фото</small></div><div><b>${audios}</b><small>голос</small></div></div><div class="hint"><b>Что потом сможем анализировать:</b> просмотры, обращения, цену, продвижение, изменения объявлений и связь с реальными заказами. Сейчас важнее не потерять первичные скриншоты/заметки.</div><div class="section-title"><h2>Офлайн-материалы Avito</h2><span class="badge">${a.length}</span></div>${a.length?a.sort((x,y)=>String(y.createdAt).localeCompare(String(x.createdAt))).map(queueItem).join(''):`<div class="muted">Пока ничего не добавлено.</div>`}`}
 function avitoNote(){modal('Заметка Avito',`<div class="field"><label>Объявление / тема (необязательно)</label><input id="avitoRef" placeholder="Например: стол лофт Томск"></div><div class="field"><label>Заметка</label><textarea id="qText" placeholder="Что изменили, что заметили, что проверить..."></textarea></div><button class="primary" onclick="saveAvitoNote()">Сохранить офлайн</button>`)}
 async function saveAvitoNote(){const text=document.getElementById('qText').value.trim(),ref=document.getElementById('avitoRef').value.trim();if(!text&&!ref)return;await putDraft({kind:'avito-note',objectId:'AVITO',text:text||ref,context:'avito',meta:{listingRef:ref}});closeModal();await refreshPending();if(document.getElementById('avito').classList.contains('active'))renderAvito();if(document.getElementById('gallery').classList.contains('active'))renderGallery();if(document.getElementById('calculator').classList.contains('active'))renderCalculator();if(document.getElementById('buy').classList.contains('active'))renderBuy()}
 function hasPermission(key){if(isAdmin1())return true;return SESSION.permissions&&SESSION.permissions[key]===true}
+function canMutateRecord(domain,action,createdByUserId){
+  if(isAdmin1())return true;
+  const own=!!createdByUserId&&String(createdByUserId)===String(SESSION.userId||''),p=SESSION.permissions||{};
+  const hasNew=[domain+'.edit-own',domain+'.edit-all',domain+'.delete-own',domain+'.delete-all'].some(k=>Object.prototype.hasOwnProperty.call(p,k));
+  if(action==='update'){
+    if(hasPermission(domain+'.edit-all'))return true;
+    if(own&&hasPermission(domain+'.edit-own'))return true;
+    if(!hasNew&&domain==='wallet'&&hasPermission('wallet.edit'))return true;
+    if(!hasNew&&domain==='orders'&&hasPermission('orders.edit'))return true;
+    return false;
+  }
+  if(action==='delete'){
+    if(hasPermission(domain+'.delete-all')||hasPermission('data.delete'))return true;
+    return own&&hasPermission(domain+'.delete-own');
+  }
+  return false;
+}
 const adminState={users:[],access:[],devices:[],loaded:false,loading:false,error:''};
 let adminSelectedUserId='ADMIN1';
 function permissionGroups(){return [
- ['Заказы',[['orders.view','Видеть заказы'],['orders.create','Создавать заказ'],['orders.edit','Менять заказ'],['orders.media','Фото / голос / файлы']]],
+ ['Заказы',[['orders.view','Видеть заказы'],['orders.create','Создавать заказ'],['orders.edit','Менять заказ (совместимость)'],['orders.media','Фото / голос / файлы'],['orders.edit-own','Менять свои заказы'],['orders.edit-all','Менять все заказы'],['orders.delete-own','Удалять свои заказы'],['orders.delete-all','Удалять все заказы']]],
  ['Закупка',[['purchase.view','Видеть «Закупки по заказам»']]],
- ['Кошелёк',[['wallet.view','Видеть Кошелёк'],['wallet.add','Добавлять доход/расход'],['wallet.edit','Редактировать операции']]],
+ ['Кошелёк',[['wallet.view','Видеть Кошелёк'],['wallet.add','Добавлять доход/расход'],['wallet.edit','Редактировать операции (совместимость)'],['wallet.edit-own','Менять свои операции'],['wallet.edit-all','Менять все операции'],['wallet.delete-own','Удалять свои операции'],['wallet.delete-all','Удалять все операции']]],
  ['Галерея',[['gallery.view','Смотреть Галерею'],['gallery.add','Добавлять кандидатов'],['gallery.approve','Одобрять в Галерею'],['gallery.share','Поделиться / готовить публикации'],['gallery.delete','Удалять фото из Галереи']]],
  ['Калькулятор заказов',[['calculator.view','Видеть Калькулятор'],['calculator.create','Создавать предварительные расчёты'],['calculator.delete','Удалять черновики'],['calculator.promote','Переводить в активный заказ']]],
  ['VK',[['vk.draft','Готовить публикацию VK'],['vk.publish','Публиковать в VK']]],
  ['Avito',[['avito.view','Открывать Avito'],['avito.draft','Создавать карточку/текст'],['avito.publish','Публиковать Avito']]],
  ['Сайт',[['site.draft','Готовить материал для сайта'],['site.publish','Публиковать на сайте']]],
  ['Другие каналы',[['max.publish','Публиковать в MAX'],['instagram.publish','Публиковать в Instagram'],['telegram.publish','Публиковать в Telegram']]],
+ ['Разработка приложения',[['appdev.view','Видеть замечания'],['appdev.submit','Отправлять замечания'],['appdev.admin','Редактировать и утверждать замечания']]],
  ['Чек-листы',[['checklists.view','Смотреть чек-листы'],['checklists.create','Создавать чек-листы'],['checklists.edit','Отмечать и менять пункты чек-листов']]],
  ['Система',[['analytics.view','Смотреть общую информацию / аналитику'],['activity.view','Смотреть журнал действий'],['nomenclature.view','Смотреть Номенклатуру'],['nomenclature.edit','Менять Номенклатуру'],['sync.run','Запускать синхронизацию'],['users.manage','Управлять пользователями'],['data.delete','Удалять данные']]]
 ]}
@@ -2434,8 +1969,14 @@ async function revokeDeviceSessions(i){
 }
 function renderBuy(){const lines=S.purchaseAggregated||S.purchaseLines, known=lines.reduce((a,x)=>a+(x.amount||0),0), unknown=lines.filter(x=>x.amount==null||x.hasUnknownAmount).length; const groups=['Металл','Дерево / щиты','ЛКМ','Крепёж / фурнитура','Прочее']; let body=''; groups.forEach(g=>{const a=lines.filter(x=>x.group===g);if(!a.length)return;body+=`<div class="group">${g}</div>`+a.map(buyLine).join('')}); const warnings=(S.purchaseWarnings||[]).map(w=>`<div class="risk"><b>⚠ ${esc(w.orderId)}</b>${esc(w.text)}</div>`).join(''); document.getElementById('buy').innerHTML=`<button class="back" onclick="go('home')">← Главная</button><div class="summary"><div><b>${lines.length}</b><small>сводных позиций</small></div><div><b>${rub(known)}</b><small>известная сумма</small></div><div><b>${unknown}</b><small>требуют уточнения</small></div></div>${warnings}<div class="buy-intake"><div class="section-title"><h2>Добавить к закупке</h2><span class="badge">офлайн</span></div>${standardActions('purchase','PURCHASE','Заметка к закупке')}<button class="doc-action" onclick="pickDocument('purchase','PURCHASE')">Документ</button></div>${body}`}
 function buyLine(l){const orders=(l.orders||[l.orderId]).filter(Boolean).join(', '), sizes=(l.stdSizes||[l.stdSize]).filter(Boolean).join(' / ');return `<div class="buy-row"><div><b>${esc(l.name)}</b><small>Заказы: ${esc(orders)} · Купить: ${fmt(l.qtyBuy)} ${esc(l.buyUnit||l.unit)}${sizes?' · '+esc(sizes):''}</small></div><div class="buy-money">${rub(l.amount)}</div></div>`}
-function walletMovementRow(x){const income=String(x.direction||'')==='income',sign=income?'+':'−',order=x.orderId?'Заказ '+esc(x.orderId):'Общие';return `<div class="wallet-movement"><div class="between"><div><b>${esc(x.date||'—')} · ${esc(x.category||'Без категории')}</b><small>${order}</small></div><span class="wallet-movement-amount ${income?'income':'expense'}">${sign} ${rub(x.amount||0)}</span></div><div class="muted">${esc(x.comment||'Без комментария')}</div></div>`}
-function renderWallet(){const w=S.wallet,tx=Array.isArray(w.transactions)?w.transactions:[];document.getElementById('wallet').innerHTML=`<button class="back" onclick="go('home')">← Главная</button><div class="grid2"><article class="metric"><div class="label">Остаток</div><div class="value">${rub(w.balance)}</div><div class="note">Текущий период после обнуления</div></article><article class="metric"><div class="label">Предстоящие расходы</div><div class="value">${rub(w.futureTotal)}</div><div class="note bad">После обязательств ${rub(w.afterObligations)}</div></article></div><div class="wallet-list"><div><span>Доходы периода</span><b>${rub(w.income)}</b></div><div><span>Расходы периода</span><b>${rub(w.expense)}</b></div><div><span>Предстоящие доходы</span><b>${rub(w.futureIncome)}</b></div></div><button class="doc-action wallet-add-structured quick-action-wide" onclick="walletModal()"><span class="action-label">Доход / расход</span>${actionIcon('money')}</button><div class="section-title"><h2>Быстро добавить информацию</h2><span class="badge">офлайн</span></div>${standardActions('wallet','WALLET','Заметка к Кошельку')}<div class="section-title obligations-title"><h2>Ближайшие обязательства</h2><span class="badge bad">${rub(w.futureTotal)}</span></div>${w.futureExpenses.map(x=>`<div class="obligation"><div class="between"><b>${esc(x.date)} · ${esc(x.category)}</b><span class="amount">${rub(x.amount)}</span></div><div class="muted">${esc(x.to)} · ${esc(x.status)}</div><div class="muted">${esc(x.comment)}</div></div>`).join('')}<div class="section-title"><h2>Движение денег</h2><span class="badge">${tx.length}</span></div>${tx.length?tx.map(walletMovementRow).join(''):'<div class="muted">Движений за текущий период пока нет.</div>'}<div class="section-title"><h2>Черновики с телефона</h2><span id="walletDraftBadge" class="badge">0</span></div><div id="walletDrafts" class="drafts"></div>`;renderWalletDrafts()}
+function walletObligationRow(x,i){const label=x.category||x.to||x.comment||'Обязательство';return `<div class="obligation compact-obligation"><button class="obligation-summary" onclick="toggleWalletObligation(${i})"><span><b>${esc(x.date||'без даты')} · ${esc(label)}</b>${x.orderId?`<small>заказ ${esc(x.orderId)}</small>`:''}</span><strong>${rub(x.amount||0)}</strong></button><div class="obligation-details hidden" id="wallet-obligation-${i}"><div class="muted">${esc(x.to||'')}${x.status?' · '+esc(x.status):''}</div>${x.comment?`<div>${esc(x.comment)}</div>`:''}</div></div>`}
+function toggleWalletObligation(i){document.getElementById('wallet-obligation-'+i)?.classList.toggle('hidden')}
+function walletMovementRow(x){const income=String(x.direction||'')==='income',sign=income?'+':'−',order=x.orderId?'Заказ '+esc(x.orderId):'Общие',author=x.createdByName||x.createdByUserId||'';const edit=canMutateRecord('wallet','update',x.createdByUserId),del=canMutateRecord('wallet','delete',x.createdByUserId);return `<div class="wallet-movement"><div class="between"><div><b>${esc(x.date||'—')} · ${esc(x.category||'Без категории')}</b><small>${order}${author?' · '+esc(author):''}</small></div><span class="wallet-movement-amount ${income?'income':'expense'}">${sign} ${rub(x.amount||0)}</span></div><div class="muted">${esc(x.comment||'Без комментария')}</div>${x.operationId&&(edit||del)?`<div class="record-actions">${edit?`<button onclick="editFinanceOperation('${esc(x.operationId)}')">Изменить</button>`:''}${del?`<button class="danger" onclick="deleteFinanceOperation('${esc(x.operationId)}')">Удалить</button>`:''}</div>`:''}</div>`}
+async function mutateRecord(entityType,entityId,recordAction,patch={},note=''){if(!backendSession()||navigator.onLine===false){showAppToast('Изменение требует связи с сервером.','bad',3600);return null}return withBusy(recordAction==='delete'?'Удаляю запись…':'Сохраняю изменение…',async()=>{const d=await backendPost({action:'record.mutate',session_token:backendSession(),device_id:backendDeviceId(),entity_type:entityType,entity_id:entityId,record_action:recordAction,patch,note,app_version:APP_RELEASE.version},{timeoutMs:25000});if(!d?.ok){showAppToast('Не удалось сохранить: '+String(d?.error||d?.detail||'ошибка'),'bad',5200);return d}await pullLiveSnapshot({silent:true,timeoutMs:20000});showAppToast(recordAction==='delete'?'Удалено с сохранением аудита.':'Изменение сохранено.','ok',2800);return d})}
+function editFinanceOperation(id){const x=(S.wallet.transactions||[]).find(t=>String(t.operationId)===String(id));if(!x)return;modal('Изменить операцию',`<div class="field"><label>Тип</label><select id="finEditType"><option value="Расход" ${x.direction==='expense'?'selected':''}>Расход</option><option value="Приход" ${x.direction==='income'?'selected':''}>Доход</option></select></div><div class="field"><label>Сумма</label><input id="finEditAmount" inputmode="decimal" value="${esc(x.amount||'')}"></div><div class="field"><label>№ заказа</label><input id="finEditOrder" value="${esc(x.orderId||'')}"></div><div class="field"><label>Комментарий</label><textarea id="finEditComment">${esc(x.comment||'')}</textarea></div><button class="primary" onclick="saveFinanceOperation('${esc(id)}')">Сохранить</button>`)}
+async function saveFinanceOperation(id){const amount=Number(String(document.getElementById('finEditAmount')?.value||'').replace(',','.'));if(!(amount>0)){showAppToast('Укажите сумму больше 0.','bad');return}const rawOrder=(document.getElementById('finEditOrder')?.value||'').trim(),ref=orderRefResolve(rawOrder);if(ref.error){showAppToast(ref.error,'bad',5200);return}const patch={type:document.getElementById('finEditType')?.value||'Расход',amount,order_id:ref.id,comment:(document.getElementById('finEditComment')?.value||'').trim()};closeModal();await mutateRecord('finance',id,'update',patch)}
+async function deleteFinanceOperation(id){if(!confirm('Удалить финансовую операцию? Строка останется в аудите и перестанет входить в Кошелёк.'))return;await mutateRecord('finance',id,'delete',{},'Удалено из приложения')}
+function renderWallet(){const w=S.wallet,tx=Array.isArray(w.transactions)?w.transactions:[];document.getElementById('wallet').innerHTML=`<button class="back" onclick="go('home')">← Главная</button><div class="grid2"><article class="metric"><div class="label">Остаток</div><div class="value">${rub(w.balance)}</div><div class="note">Текущий период после обнуления</div></article><article class="metric"><div class="label">Предстоящие расходы</div><div class="value">${rub(w.futureTotal)}</div><div class="note bad">После обязательств ${rub(w.afterObligations)}</div></article></div><div class="wallet-list"><div><span>Доходы периода</span><b>${rub(w.income)}</b></div><div><span>Расходы периода</span><b>${rub(w.expense)}</b></div><div><span>Предстоящие доходы</span><b>${rub(w.futureIncome)}</b></div></div><button class="doc-action wallet-add-structured quick-action-wide" onclick="walletModal()"><span class="action-label">Доход / расход</span>${actionIcon('money')}</button><div class="section-title"><h2>Быстро добавить информацию</h2><span class="badge">офлайн</span></div>${standardActions('wallet','WALLET','Заметка к Кошельку')}<div class="section-title obligations-title"><h2>Ближайшие обязательства</h2><span class="badge bad">${rub(w.futureTotal)}</span></div>${w.futureExpenses.map(walletObligationRow).join('')}<div class="section-title"><h2>Движение денег</h2><span class="badge">${tx.length}</span></div>${tx.length?tx.map(walletMovementRow).join(''):'<div class="muted">Движений за текущий период пока нет.</div>'}<div class="section-title"><h2>Черновики с телефона</h2><span id="walletDraftBadge" class="badge">0</span></div><div id="walletDrafts" class="drafts"></div>`;renderWalletDrafts()}
 let nomLimit=70;
 function normSearch(s){return String(s??'').toLowerCase().replace(/ё/g,'е').replace(/[×хx*]/g,'x').replace(/,/g,'.').replace(/[-–—_\/]+/g,' ').replace(/[()№:;]+/g,' ').replace(/\s+/g,' ').trim()}
 function profilePrices(n){if(n.subcategory!=='Профильная труба'||n.price==null||n.massPerM==null)return null;const perM=n.pricePerM??Math.round((Number(n.price)*Number(n.massPerM)+Number.EPSILON)*100)/100;const per6=n.price6m??Math.round((Number(n.price)*Number(n.massPerM)*6+Number.EPSILON)*100)/100;return {perM,per6}}
@@ -2737,7 +2278,7 @@ async function clearServerAccess(clearDevice=false,preserveSnapshot=true){lsDel(
 async function handleAuthFailure(err){const code=String(err||'');if(/^(USER_DISABLED|DEVICE_REVOKED)$/.test(code)){await clearServerAccess(false,false);return 'cleared'}if(/^SESSION_/.test(code)){await clearServerAccess(false,true);return 'preserved'}return 'ignored'}
 async function performRemoteWipe(){const db=await openDB();const names=['drafts','history','activity','checklists','snapshotCache'].filter(n=>db.objectStoreNames.contains(n));if(names.length){const tx=db.transaction(names,'readwrite');names.forEach(n=>tx.objectStore(n).clear());await new Promise((res,rej)=>{tx.oncomplete=res;tx.onerror=()=>rej(tx.error)})}await clearServerAccess(false,false);alert('Администратор отозвал локальные данные этого устройства. Для продолжения нужен новый доступ.')}
 function applySnapshot(snapshot){S=normalizeSnapshot(snapshot);window.SNAPSHOT=S;renderCoreScreens()}
-function renderCoreScreens(){renderHome();renderOrders();renderBuy();if(document.getElementById('wallet')?.classList.contains('active'))renderWallet();if(document.getElementById('nom')?.classList.contains('active'))renderNom();if(document.getElementById('gallery')?.classList.contains('active'))renderGallery();if(document.getElementById('analytics')?.classList.contains('active'))renderAnalytics();}
+function syncPermissionNav(){const b=document.querySelector('.nav-appdev');if(b)b.classList.toggle('hidden',!hasPermission('appdev.view'))}function renderCoreScreens(){syncPermissionNav();renderHome();renderOrders();renderBuy();if(document.getElementById('wallet')?.classList.contains('active'))renderWallet();if(document.getElementById('nom')?.classList.contains('active'))renderNom();if(document.getElementById('gallery')?.classList.contains('active'))renderGallery();if(document.getElementById('analytics')?.classList.contains('active'))renderAnalytics();if(document.getElementById('appdev')?.classList.contains('active'))renderAppDev();}
 async function loadCachedSnapshot(){const rec=await getSnapshotCache();if(!rec?.snapshot)return false;const cachedNomRev=Math.floor(Number(rec.snapshot?.meta?.nomenclatureRevision||0));if(cachedNomRev>localNomRevision())setLocalNomRevision(cachedNomRev);const cachedRole=String(rec.user?.role||SESSION.role||'');const recUntil=Date.parse(rec.offlineAccessUntil||'');const leaseValid=Number.isFinite(recUntil)&&recUntil>Date.now();if(cachedRole!=='ADMIN1'&&!leaseValid)return false;if(rec.user){lsSet(BACKEND_KEYS.user,JSON.stringify(rec.user));applyBackendUser(rec.user)}applySnapshot(rec.snapshot);DATA_STATE.source='cache';DATA_STATE.lastCacheAt=rec.savedAt||'';DATA_STATE.lastError='';return true}
 async function pullLiveSnapshot(opts={}){
   const token=backendSession();if(!token){DATA_STATE.lastError='NO_SESSION';return {ok:false,error:'NO_SESSION'}}
@@ -3294,7 +2835,7 @@ async function logActivity(action,x={},detail=''){try{const db=await openDB();co
 
 
 
-async function rememberDelivered(x,r){const u=backendUserPublic();const rec={id:x.id,eventId:x.id,createdAt:x.createdAt||'',sentAt:new Date().toISOString(),kind:x.kind||'unknown',context:x.context||'',objectId:x.objectId||'',text:['photo','audio','document'].includes(x.kind)?'':(x.text||''),appName:x.appName||x.text||'',originalName:x.originalName||'',note:x.meta?.note||'',userId:u.user_id||SESSION.userId,userName:u.name||SESSION.name,status:'delivered',reviewStatus:'delivered',correctionMessage:'',duplicate:!!r?.duplicate,mediaUrl:r?.media_url||''};await putHistory(rec);await logActivity('delivered',x,r?.duplicate?'Повторный ACK, дубль не создан':'Сервер подтвердил приём');return rec}
+async function rememberDelivered(x,r){const u=backendUserPublic();const rec={id:x.id,eventId:x.id,createdAt:x.createdAt||'',sentAt:new Date().toISOString(),kind:x.kind||'unknown',context:x.context||'',objectId:x.objectId||'',text:['photo','audio','document'].includes(x.kind)?'':(x.text||''),appName:x.appName||x.text||'',originalName:x.originalName||'',note:x.meta?.note||'',userId:u.user_id||SESSION.userId,userName:u.name||SESSION.name,status:'delivered',reviewStatus:'delivered',correctionMessage:'',duplicate:!!r?.duplicate,mediaUrl:r?.media_url||'',mediaUrls:Array.isArray(r?.media_urls)?r.media_urls:[],serverRef:r?.operation_id||r?.order_id||''};await putHistory(rec);await logActivity('delivered',x,r?.duplicate?'Повторный ACK, дубль не создан':'Сервер подтвердил приём');return rec}
 function historyStatusText(h){if(h.reviewStatus==='needs_correction')return 'требует исправления';if(h.reviewStatus==='corrected')return 'исправлено';return 'доставлено'}
 function historyStatusClass(h){return h.reviewStatus==='needs_correction'?'correction':'delivered'}
 function historyItem(h){const body=h.text||h.note||h.appName||h.originalName||'Запись';const where=h.objectId?`Заказ ${h.objectId}`:(h.context==='wallet'?'Кошелёк':h.context==='purchase'?'Закупки по заказам':h.context==='portfolio-candidate'?'Галерея':String(h.context||'')==='general'?'Общее':h.context||'Общее');const link=h.mediaUrl?`<button onclick="window.open('${esc(h.mediaUrl)}','_blank')">Открыть на сервере</button>`:'';return `<div class="history-item"><div class="history-head"><div><div class="history-title">${esc(draftType(h))}</div><div class="history-meta">${esc(where)} · отправлено ${new Date(h.sentAt).toLocaleString('ru-RU')}<br>${esc(h.userName||h.userId||'')}</div></div><span class="history-status ${historyStatusClass(h)}">${esc(historyStatusText(h))}</span></div><div class="history-body">${esc(body)}</div>${h.correctionMessage?`<div class="risk"><b>Замечание:</b>${esc(h.correctionMessage)}</div>`:''}<div class="history-actions">${link}<button onclick="openCorrection('${esc(h.id)}')">Уточнить / исправить</button></div></div>`}
@@ -3593,12 +3134,15 @@ async function renderWalletDrafts(){const el=document.getElementById('walletDraf
 let tempUrls=[];function resetTempUrls(){tempUrls.forEach(u=>{try{URL.revokeObjectURL(u)}catch(_){}});tempUrls=[]}function blobUrl(b){const u=URL.createObjectURL(b);tempUrls.push(u);return u}
 function draftType(x){return ({photo:'Фото',audio:'Голос',wallet:'Доход / расход','finance-entry':'Доход / расход','order-note':'Заметка к заказу','calc-note':'Дополнение к расчёту','avito-note':'Заметка Avito','portfolio-candidate':'Фото готового изделия / Галерея','quote-draft':'Предварительный расчёт','quote-promote':'Перевод в заказ','publish-draft':'Черновик публикации',document:'Документ',note:'Заметка'}[x.kind]||x.kind||'Запись')}
 function draftWhere(x){if(String(x.context||'').startsWith('avito')||x.kind==='avito-note')return 'Аналитика Avito';if(x.context==='calculator')return `Калькулятор · ${x.objectId||'черновик'}`;if(x.context==='gallery-share'||x.context==='gallery-share-media')return 'Галерея · публикация';if(x.context==='portfolio-candidate')return x.objectId&&x.objectId!=='GALLERY'?`Галерея · заказ ${x.objectId}`:'Галерея · кандидат';if(x.context==='wallet'||x.kind==='wallet'||x.kind==='finance-entry')return x.objectId?`Кошелёк · заказ ${x.objectId}`:'Кошелёк';if(x.context==='purchase')return 'Закупки по заказам';if(x.objectId&&/^20\d\d-/.test(String(x.objectId)))return `Заказ ${x.objectId}`;return 'Общее'}
-function queueItem(x){let media='';if(x.kind==='photo'&&x.blob instanceof Blob)media=`<div class="queue-media"><img class="queue-img" src="${blobUrl(x.blob)}" alt="локальное фото"></div>`;if(x.kind==='audio'&&x.blob instanceof Blob)media=`<div class="queue-media"><audio class="queue-audio" controls preload="metadata" src="${blobUrl(x.blob)}"></audio></div>`;const name=x.appName||x.text||'вложение';const orig=x.originalName&&x.originalName!==name?`<div class="file-meta">Исходный файл телефона: ${esc(x.originalName)}</div>`:'';const note=x.meta?.note?`<div style="margin-top:6px"><b>Комментарий:</b> ${esc(x.meta.note)}</div>`:'';const st=draftState(x),syncState=x.meta?.syncState||'',isBusy=syncState==='sending'||syncState==='confirming',isErr=syncState==='error';const badgeText=isBusy?'проверяю приём':isErr?'нужно проверить':st==='hold'?'проверка 5 мин':'готово';const badgeKind=isErr?'bad':isBusy?'':st==='hold'?'warn':'ok';const actionText=isBusy?'Проверяю…':isErr?'Проверить приём':'Отправить сейчас';const statusText=isBusy?(syncState==='sending'?'Отправляется на сервер…':'Проверяется подтверждение сервера…'):isErr?`Сохранено локально · ${esc(friendlySyncError(x.meta?.lastSyncError))}`:holdText(x);return `<div class="queue-item ${isBusy?'sending':''} ${isErr?'error':''}" data-draft-id="${esc(x.id)}"><div class="queue-head"><div><div class="queue-type">${esc(draftType(x))}</div><div class="queue-context">${esc(draftWhere(x))} · ${new Date(x.createdAt).toLocaleString('ru-RU')}</div></div><span class="badge ${badgeKind}" data-status-badge="${esc(x.id)}">${badgeText}</span></div>${!['photo','audio','document'].includes(x.kind)?`<div style="margin-top:6px">${esc(x.text||'')}</div>`:`<div class="file-meta">Файл приложения: ${esc(name)}</div>${orig}`}${note}${media}<div class="queue-status-line ${st}" data-status-line="${esc(x.id)}"><span class="sync-state-text" ${isBusy||isErr?'':'data-hold-until="'+esc(x.holdUntil||'')+'"'}>${statusText}</span><b>${navigator.onLine?'сеть есть':'офлайн'}</b></div><div class="queue-actions v023"><button class="edit-btn" onclick="editDraft('${esc(x.id)}')" ${isBusy?'disabled':''}>Изменить</button><button class="danger" onclick="deleteDraft('${esc(x.id)}')" ${isBusy?'disabled':''}>Удалить</button><button class="send-now-btn" onclick="sendNowDraft('${esc(x.id)}')" ${isBusy?'disabled':''}>${actionText}</button></div></div>`}
-let holdTicker=null;function updateHoldCountdowns(){document.querySelectorAll('[data-hold-until]').forEach(el=>{const until=el.getAttribute('data-hold-until'),id=el.closest('[data-draft-id]')?.getAttribute('data-draft-id');if(!until){el.textContent='Готово к отправке';return}const ms=new Date(until).getTime()-Date.now();if(ms<=0){el.textContent='Готово к отправке';const badge=id?document.querySelector(`[data-status-badge="${CSS.escape(id)}"]`):null,line=id?document.querySelector(`[data-status-line="${CSS.escape(id)}"]`):null;if(badge){badge.textContent='готово';badge.classList.remove('warn');badge.classList.add('ok')}if(line){line.classList.remove('hold');line.classList.add('ready')}}else{const s=Math.ceil(ms/1000),m=Math.floor(s/60),ss=String(s%60).padStart(2,'0');el.textContent=`До отправки ${m}:${ss}`}})}
-async function renderSync(){resetTempUrls();const a=await drafts(),hist=(await sentHistory()).sort((x,y)=>String(y.sentAt||'').localeCompare(String(x.sentAt||''))),photos=a.filter(x=>x.kind==='photo').length,audios=a.filter(x=>x.kind==='audio').length,hold=a.filter(x=>draftState(x)==='hold').length,errors=a.filter(x=>x.meta?.syncState==='error').length,ready=a.filter(x=>draftState(x)==='ready'&&x.meta?.syncState!=='error').length;const req=lsGet(BACKEND_KEYS.request),session=backendSession();document.getElementById('sync').innerHTML=`<button class="back" onclick="go('home')">← Главная</button><div class="sync-card"><div class="sync-big">Загрузки</div><div class="muted">Здесь только неподтверждённые записи и история уже принятых сервером отправок</div><b>${navigator.onLine?'Сеть есть':'Сети нет'} · backend: ${esc(backendAccessLabel())}</b></div><div class="mini-stats sync-attention-stats"><div><b>${ready}</b><small>готовы</small></div><div class="${errors?'stat-error':''}"><b>${errors}</b><small>ошибки</small></div><div><b>${hold}</b><small>5 мин</small></div><div><b>${hist.length}</b><small>история</small></div></div><div class="five-min-rule"><b>Защита 5 минут.</b> Новая запись сначала остаётся на телефоне. Её можно изменить, удалить или отправить сейчас. После подтверждённого приёма она больше не отправляется повторно: тяжёлый локальный файл удаляется, а метаданные сохраняются в истории.</div><div class="sync-note"><b>Защита от дублей.</b> Если ответ сервера потерялся, приложение автоматически проверяет приём тем же <code>event_id</code>. Сервер не создаёт вторую копию. Пользователю не нужно нажимать «Отправить» несколько раз.</div><div class="settings-block"><h3>Подключение устройства</h3><div class="sync-list"><div><span>Backend</span><b>${backendState.ping==='ok'?'доступен':backendState.ping==='error'?'ошибка связи':'не проверен'}</b></div><div><span>Device ID</span><b>${esc(backendDeviceId().slice(0,22))}…</b></div><div><span>Доступ</span><b>${esc(backendAccessLabel())}</b></div>${req?`<div><span>Заявка</span><b>${esc(req.slice(0,22))}…</b></div>`:''}</div><div class="queue-actions v023">${session?`<button class="edit-btn" onclick="manualRefreshData()">Обновить доступ и данные</button>`:`<button class="edit-btn" onclick="requestDeviceAccess()">Отправить заявку</button><button class="send-now-btn" onclick="activateApprovedDevice()">Проверить одобрение</button>`}<button class="send-now-btn" onclick="backendPing().then(()=>renderSync())">Ping backend</button></div></div><div class="sync-list"><div><span>Фото в очереди</span><b>${photos}</b></div><div><span>Голос в очереди</span><b>${audios}</b></div><div><span>Удаление тяжёлого локального файла</span><b>только после ACK сервера</b></div></div><button class="primary" onclick="simulateSync()">Синхронизировать готовые</button><div class="hint"><b>Сеть:</b> текстовые заметки и небольшие данные могут синхронизироваться при устойчивой связи. Фото, аудио и документы автоматически отправляются только когда браузер подтверждает Wi‑Fi/ethernet; через мобильную или неопределённую сеть — только после ручного подтверждения.</div><div class="section-title"><h2>К отправке</h2><span class="badge">${a.length}</span></div>${a.length?a.sort((x,y)=>String(y.createdAt).localeCompare(String(x.createdAt))).map(queueItem).join(''):`<div class="muted">Нет неподтверждённых записей.</div>`}<div class="section-title"><h2>История отправок</h2><span class="badge">${hist.length}</span></div>${hist.length?hist.slice(0,100).map(historyItem).join(''):`<div class="muted">История пока пуста.</div>`}`;updateHoldCountdowns();if(holdTicker)clearInterval(holdTicker);holdTicker=setInterval(()=>{if(document.getElementById('sync').classList.contains('active'))updateHoldCountdowns()},1000)}
+function queueItem(x){let media='';if(x.kind==='photo'&&x.blob instanceof Blob)media=`<div class="queue-media"><img class="queue-img" src="${blobUrl(x.blob)}" alt="локальное фото"></div>`;if(x.kind==='audio'&&x.blob instanceof Blob)media=`<div class="queue-media"><audio class="queue-audio" controls preload="metadata" src="${blobUrl(x.blob)}"></audio></div>`;if(Array.isArray(x.attachments)&&x.attachments.length){const thumbs=x.attachments.filter(a=>a?.blob instanceof Blob&&String(a.mime||a.blob.type||'').startsWith('image/')).slice(0,4).map(a=>`<img class="queue-attachment-thumb" src="${blobUrl(a.blob)}" alt="вложение">`).join('');media+=`<div class="queue-attachments"><b>Вложений: ${x.attachments.length}</b>${thumbs?`<div class="queue-attachment-grid">${thumbs}</div>`:''}</div>`}const name=x.appName||x.text||'вложение';const orig=x.originalName&&x.originalName!==name?`<div class="file-meta">Исходный файл телефона: ${esc(x.originalName)}</div>`:'';const note=x.meta?.note?`<div style="margin-top:6px"><b>Комментарий:</b> ${esc(x.meta.note)}</div>`:'';const st=draftState(x),syncState=x.meta?.syncState||'',isBusy=syncState==='sending'||syncState==='confirming',isErr=syncState==='error';const badgeText=isBusy?'проверяю приём':isErr?'нужно проверить':st==='hold'?'проверка 5 мин':'готово';const badgeKind=isErr?'bad':isBusy?'':st==='hold'?'warn':'ok';const actionText=isBusy?'Проверяю…':isErr?'Проверить приём':'Отправить сейчас';const statusText=isBusy?(syncState==='sending'?'Отправляется на сервер…':'Проверяется подтверждение сервера…'):isErr?`Сохранено локально · ${esc(friendlySyncError(x.meta?.lastSyncError))}`:holdText(x);return `<div class="queue-item ${isBusy?'sending':''} ${isErr?'error':''}" data-draft-id="${esc(x.id)}"><div class="queue-head"><div><div class="queue-type">${esc(draftType(x))}</div><div class="queue-context">${esc(draftWhere(x))} · ${new Date(x.createdAt).toLocaleString('ru-RU')}</div></div><span class="badge ${badgeKind}" data-status-badge="${esc(x.id)}">${badgeText}</span></div>${!['photo','audio','document'].includes(x.kind)?`<div style="margin-top:6px">${esc(x.text||'')}</div>`:`<div class="file-meta">Файл приложения: ${esc(name)}</div>${orig}`}${note}${media}<div class="queue-status-line ${st}" data-status-line="${esc(x.id)}"><span class="sync-state-text" ${isBusy||isErr?'':'data-hold-until="'+esc(x.holdUntil||'')+'"'}>${statusText}</span><b>${navigator.onLine?'сеть есть':'офлайн'}</b></div><div class="queue-actions v023"><button class="edit-btn" onclick="editDraft('${esc(x.id)}')" ${isBusy?'disabled':''}>Изменить</button><button class="danger" onclick="deleteDraft('${esc(x.id)}')" ${isBusy?'disabled':''}>Удалить</button><button class="send-now-btn" onclick="sendNowDraft('${esc(x.id)}')" ${isBusy?'disabled':''}>${actionText}</button></div></div>`}
+let holdTicker=null;let syncView='ready';
+function updateHoldCountdowns(){document.querySelectorAll('[data-hold-until]').forEach(el=>{const until=el.getAttribute('data-hold-until'),id=el.closest('[data-draft-id]')?.getAttribute('data-draft-id');if(!until){el.textContent='Готово к отправке';return}const ms=new Date(until).getTime()-Date.now();if(ms<=0){el.textContent='Готово к отправке';const badge=id?document.querySelector(`[data-status-badge="${CSS.escape(id)}"]`):null,line=id?document.querySelector(`[data-status-line="${CSS.escape(id)}"]`):null;if(badge){badge.textContent='готово';badge.classList.remove('warn');badge.classList.add('ok')}if(line){line.classList.remove('hold');line.classList.add('ready')}}else{const sec=Math.ceil(ms/1000),m=Math.floor(sec/60),ss=String(sec%60).padStart(2,'0');el.textContent=`До автоотправки ${m}:${ss}`}})}
+function setSyncView(v){syncView=v;renderSync()}
+async function renderSync(){resetTempUrls();const a=await drafts(),hist=(await sentHistory()).sort((x,y)=>String(y.sentAt||'').localeCompare(String(x.sentAt||''))),holdItems=a.filter(x=>draftState(x)==='hold'),errorItems=a.filter(x=>x.meta?.syncState==='error'),readyItems=a.filter(x=>draftState(x)==='ready'&&x.meta?.syncState!=='error'),req=lsGet(BACKEND_KEYS.request),session=backendSession();let body='';if(syncView==='history')body=hist.length?hist.slice(0,100).map(historyItem).join(''):'<div class="muted">История пока пуста.</div>';else{const items=syncView==='errors'?errorItems:syncView==='hold'?holdItems:readyItems;body=items.length?items.sort((x,y)=>String(y.createdAt).localeCompare(String(x.createdAt))).map(queueItem).join(''):'<div class="muted">Здесь сейчас пусто.</div>'}document.getElementById('sync').innerHTML=`<button class="back" onclick="go('home')">← Главная</button><div class="sync-tabs"><button class="${syncView==='ready'?'active':''}" onclick="setSyncView('ready')"><b>${readyItems.length}</b><span>готовы</span></button><button class="${syncView==='errors'?'active error':''}" onclick="setSyncView('errors')"><b>${errorItems.length}</b><span>ошибки</span></button><button class="${syncView==='hold'?'active':''}" onclick="setSyncView('hold')"><b>${holdItems.length}</b><span>5 минут</span></button><button class="${syncView==='history'?'active':''}" onclick="setSyncView('history')"><b>${hist.length}</b><span>история</span></button></div><div class="section-title"><h2>${syncView==='history'?'История':syncView==='errors'?'Требуют проверки':syncView==='hold'?'Ожидают автоотправки':'Готовы к отправке'}</h2><span class="badge">${navigator.onLine?'онлайн':'офлайн'}</span></div>${body}<div class="settings-block sync-connection"><h3>Подключение устройства</h3><div class="sync-list"><div><span>Доступ</span><b>${esc(backendAccessLabel())}</b></div><div><span>Устройство</span><b>${esc(backendDeviceId().slice(0,18))}…</b></div></div><div class="queue-actions v023">${session?'<button class="edit-btn" onclick="manualRefreshData()">Обновить</button>':`<button class="edit-btn" onclick="requestDeviceAccess()">Отправить заявку</button><button class="send-now-btn" onclick="activateApprovedDevice()">Проверить одобрение</button>`}</div>${req?`<div class="muted">Заявка: ${esc(req.slice(0,18))}…</div>`:''}</div>`;updateHoldCountdowns();if(holdTicker)clearInterval(holdTicker);holdTicker=setInterval(()=>{if(document.getElementById('sync').classList.contains('active'))updateHoldCountdowns()},1000)}
 async function simulateSync(){const a=await drafts();if(!a.length){alert('Очередь пуста.');return}if(!backendSession()){alert('Сначала подключите и активируйте это устройство.');return}await withBusy('Синхронизирую записи…',()=>syncReadyDrafts({notify:true,manual:true}))}
-function network(){const online=navigator.onLine!==false;document.getElementById('netStatus').classList.toggle('online',online);document.getElementById('netStatus').classList.toggle('offline',!online);document.getElementById('offlineBanner').classList.toggle('hidden',online);const netText=document.getElementById('netText');if(netText)netText.textContent=online?'Онлайн':'Офлайн';refreshPending();if(online&&backendSession()){setTimeout(()=>maybeBackgroundRefresh('online'),800);setTimeout(()=>ensureNomenclatureDeltaSetup(),1300);setTimeout(()=>recoverPendingAcks(),1800);setTimeout(()=>refreshPinnedOfflinePacks(),2600)}}window.addEventListener('online',network);window.addEventListener('offline',network);
-setInterval(()=>{if(backendSession()&&autoRefreshAllowedByHint())syncReadyDrafts()},30000);
+function network(){const online=navigator.onLine!==false;document.getElementById('netStatus').classList.toggle('online',online);document.getElementById('netStatus').classList.toggle('offline',!online);document.getElementById('offlineBanner').classList.toggle('hidden',online);const netText=document.getElementById('netText');if(netText)netText.textContent=online?'Онлайн':'Офлайн';refreshPending();if(online&&backendSession()){setTimeout(()=>autoRefreshData('online'),250);setTimeout(()=>syncReadyDrafts({auto:true}),700);setTimeout(()=>ensureNomenclatureDeltaSetup(),1200);setTimeout(()=>recoverPendingAcks(),1700);setTimeout(()=>refreshPinnedOfflinePacks(),2400)}}window.addEventListener('online',network);window.addEventListener('offline',network);
+let LAST_VISIBLE_REFRESH=0;document.addEventListener('visibilitychange',()=>{if(document.visibilityState!=='visible'||!backendSession())return;const now=Date.now();if(now-LAST_VISIBLE_REFRESH>30000){LAST_VISIBLE_REFRESH=now;autoRefreshData('resume').catch(()=>{});syncReadyDrafts({auto:true}).catch(()=>{});recoverPendingAcks().catch(()=>{})}});
+setInterval(()=>{if(backendSession()&&navigator.onLine!==false){syncReadyDrafts({auto:true}).catch(()=>{})}},15000);
 
 
 
@@ -4416,5 +3960,5 @@ window.applyAvailableUpdate=async function(){
 
 
 
-async function startApplication(){initTheme();purgeLegacyDemoAdminState();hydrateBackendUser();await openDB();let loaded=await loadCachedSnapshot();if(!loaded){S=emptySnapshot();window.SNAPSHOT=S;DATA_STATE.source='empty';renderCoreScreens()}network();initPwaUpdateLayer();if(backendSession()){setTimeout(async()=>{const a=await checkBackendAuth();if(a?.ok){renderCoreScreens();await refreshPending()}},150);setTimeout(()=>maybeBackgroundRefresh('startup'),650);setTimeout(()=>ensureNomenclatureDeltaSetup(),1100);setTimeout(()=>recoverPendingAcks(),1600);setTimeout(()=>refreshPinnedOfflinePacks(),2400)}else backendPing({timeoutMs:2500})}
+async function startApplication(){initTheme();purgeLegacyDemoAdminState();hydrateBackendUser();await openDB();let loaded=await loadCachedSnapshot();if(!loaded){S=emptySnapshot();window.SNAPSHOT=S;DATA_STATE.source='empty';renderCoreScreens()}network();initPwaUpdateLayer();if(backendSession()){setTimeout(()=>autoRefreshData('startup').catch(()=>{}),120);setTimeout(()=>syncReadyDrafts({auto:true}).catch(()=>{}),650);setTimeout(()=>ensureNomenclatureDeltaSetup(),1100);setTimeout(()=>recoverPendingAcks(),1600);setTimeout(()=>refreshPinnedOfflinePacks(),2400)}else backendPing({timeoutMs:2500})}
 startApplication();

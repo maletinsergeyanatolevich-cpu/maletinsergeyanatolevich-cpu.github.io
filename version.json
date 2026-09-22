@@ -1,20 +1,19 @@
 ﻿{
-  "version": "v0.3.8",
-  "buildId": "2026-09-22.1",
-  "channel": "stable",
-  "rolloutStage": "stable",
+  "version": "v0.3.9",
+  "buildId": "2026-09-22.2",
+  "channel": "step2-stage",
+  "rolloutStage": "admin1",
   "eligibleRoles": [
-    "ADMIN1",
-    "USER"
+    "ADMIN1"
   ],
   "dbSchema": 5,
-  "minBackend": "backend-0.2.8",
-  "previousBuildId": "2026-09-20.1",
+  "minBackend": "backend-0.2.9",
+  "previousBuildId": "2026-09-22.1",
   "rollback": {
-    "buildId": "2026-09-20.1",
+    "buildId": "2026-09-22.1",
     "dbSchema": 5,
     "safeWithoutDataReset": true
   },
-  "publishedAt": "2026-09-22T02:35:00Z",
-  "notes": "v0.3.8: visual диктофон без системных alert, аудио в Загрузках с прослушиванием, галерея плитками + полноэкранный просмотр + избранное, внутренний комментарий отдельно от текста публикации, права gallery.* работают для USER, короткий номер заказа 002/003 нормализуется при однозначном совпадении, media timeout увеличен."
+  "publishedAt": "2026-09-22T14:10:00Z",
+  "notes": "APP-Q014 staging: direct order creation with server numbering, AppDev issue flow, authorship/audit and delegated mutations, compact wallet obligations, simplified Uploads with auto-send, automatic startup/resume refresh. dbSchema remains 5; requires backend-0.2.9; rollback to v0.3.8 build 2026-09-22.1."
 }
