@@ -1,19 +1,17 @@
-﻿{
-  "version": "v0.3.9",
-  "buildId": "2026-09-22.2",
-  "channel": "step2-stage",
+{
+  "version": "v0.3.10",
+  "buildId": "2026-09-27.1",
+  "channel": "q014-acceptance-hotfix",
   "rolloutStage": "admin1",
-  "eligibleRoles": [
-    "ADMIN1"
-  ],
+  "eligibleRoles": ["ADMIN1"],
   "dbSchema": 5,
-  "minBackend": "backend-0.2.9",
-  "previousBuildId": "2026-09-22.1",
+  "minBackend": "backend-0.2.10",
+  "previousBuildId": "2026-09-22.2",
   "rollback": {
-    "buildId": "2026-09-22.1",
+    "buildId": "2026-09-22.2",
     "dbSchema": 5,
     "safeWithoutDataReset": true
   },
-  "publishedAt": "2026-09-22T14:10:00Z",
-  "notes": "APP-Q014 staging: direct order creation with server numbering, AppDev issue flow, authorship/audit and delegated mutations, compact wallet obligations, simplified Uploads with auto-send, automatic startup/resume refresh. dbSchema remains 5; requires backend-0.2.9; rollback to v0.3.8 build 2026-09-22.1."
+  "publishedAt": "2026-09-27T01:40:00Z",
+  "notes": "APP-Q014 acceptance hotfix: AppDev without DocumentApp OAuth dependency; shared Gallery master/candidates/server favorites; reliable startup/resume snapshot refresh; editable order deadline/price/cost/prepayment/stage/completion date. dbSchema remains 5; requires backend-0.2.10; rollback to v0.3.9 build 2026-09-22.2."
 }

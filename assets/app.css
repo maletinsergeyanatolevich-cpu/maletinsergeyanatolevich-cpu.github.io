@@ -405,3 +405,15 @@ main{padding-bottom:178px!important}
 .nav-refresh{background:#63d47d!important;color:#0b4720!important;border-color:#39b85a!important}
 .bottom.bottom-all .nav span{font-size:13.5px!important}
 @media(max-width:430px){.bottom.bottom-all .nav span{font-size:13px!important}}
+
+/* v0.3.10 — APP-Q014 acceptance hotfix */
+.detail-grid-editable .detail-editable{position:relative}
+.detail-grid-editable .detail-editable.can-edit{cursor:pointer}
+.detail-grid-editable .detail-editable.can-edit::after{content:"изменить";display:block;margin-top:4px;font-size:11px;font-weight:800;color:var(--muted)}
+.detail-grid-editable .badge{margin-left:6px}
+.protected-media{min-height:92px;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.protected-media .gallery-thumb{width:100%;height:100%;object-fit:cover}
+.appdev-media{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:10px}
+.appdev-media .protected-media{min-height:120px;padding:0}
+.appdev-media .gallery-thumb{max-height:220px;object-fit:cover}
+@media(max-width:430px){.appdev-media{grid-template-columns:1fr}.detail-grid-editable{grid-template-columns:repeat(2,minmax(0,1fr))}}
