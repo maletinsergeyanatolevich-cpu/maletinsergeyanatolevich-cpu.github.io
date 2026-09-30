@@ -2406,6 +2406,7 @@ function modal(title,body,mode=''){
  const sh=document.querySelector('#modal .sheet');if(sh){sh.className='sheet'+(mode?' '+mode:'');sh.scrollTop=0}
  document.getElementById('modal').classList.remove('hidden')
 }
+function closeModal(){document.getElementById('modal').classList.add('hidden');const sh=document.querySelector('#modal .sheet');if(sh)sh.className='sheet'}
 function quickNote(){modal('Быстрая заметка',`<div class="field"><label>Текст</label><textarea id="qText" placeholder="Что нужно запомнить / передать в систему"></textarea></div><button class="primary" onclick="saveTextDraft('note','')">Сохранить офлайн</button>`)}
 function orderNote(id){modal(`Дополнение к ${id}`,`<div class="field"><label>Комментарий</label><textarea id="qText"></textarea></div><button class="primary" onclick="saveTextDraft('order-note','${id}')">Сохранить офлайн</button>`)}
 function calcNote(id){modal(`Дополнить расчёт ${id}`,`<div class="field"><label>Изменение / уточнение</label><textarea id="qText" placeholder="Размер, материал, количество, покрытие, что пересчитать..."></textarea></div><button class="primary" onclick="saveTextDraft('calc-note','${id}')">Сохранить задание</button>`)}
@@ -2437,6 +2438,7 @@ async function handleAuthFailure(err){const code=String(err||'');if(/^(USER_DISA
 async function performRemoteWipe(){const db=await openDB();const names=['drafts','history','activity','checklists','snapshotCache'].filter(n=>db.objectStoreNames.contains(n));if(names.length){const tx=db.transaction(names,'readwrite');names.forEach(n=>tx.objectStore(n).clear());await new Promise((res,rej)=>{tx.oncomplete=res;tx.onerror=()=>rej(tx.error)})}await clearServerAccess(false,false);alert('Администратор отозвал локальные данные этого устройства. Для продолжения нужен новый доступ.')}
 function applySnapshot(snapshot){S=normalizeSnapshot(snapshot);window.SNAPSHOT=S;renderCoreScreens()}
 function syncPermissionNav(){renderBottomNav()}
+function renderCoreScreens(){syncPermissionNav();renderHome();renderOrders();renderBuy();if(document.getElementById('wallet')?.classList.contains('active'))renderWallet();if(document.getElementById('nom')?.classList.contains('active'))renderNom();if(document.getElementById('gallery')?.classList.contains('active'))renderGallery();if(document.getElementById('analytics')?.classList.contains('active'))renderAnalytics();if(document.getElementById('appdev')?.classList.contains('active'))renderAppDev();}
 async function loadCachedSnapshot(){const rec=await getSnapshotCache();if(!rec?.snapshot)return false;const cachedNomRev=Math.floor(Number(rec.snapshot?.meta?.nomenclatureRevision||0));if(cachedNomRev>localNomRevision())setLocalNomRevision(cachedNomRev);const cachedRole=String(rec.user?.role||SESSION.role||'');const recUntil=Date.parse(rec.offlineAccessUntil||'');const leaseValid=Number.isFinite(recUntil)&&recUntil>Date.now();if(cachedRole!=='ADMIN1'&&!leaseValid)return false;if(rec.user){lsSet(BACKEND_KEYS.user,JSON.stringify(rec.user));applyBackendUser(rec.user)}applySnapshot(rec.snapshot);DATA_STATE.source='cache';DATA_STATE.lastCacheAt=rec.savedAt||'';DATA_STATE.lastError='';return true}
 async function pullLiveSnapshot(opts={}){
   const token=backendSession();if(!token){DATA_STATE.lastError='NO_SESSION';return {ok:false,error:'NO_SESSION'}}
@@ -4152,3 +4154,4 @@ async function startApplication(){
  renderBottomNav();network();initPwaUpdateLayer();
  if(backendSession()){setTimeout(()=>autoRefreshData('startup').catch(()=>{}),120);setTimeout(()=>syncReadyDrafts({auto:true}).catch(()=>{}),650);setTimeout(()=>ensureNomenclatureDeltaSetup(),1100);setTimeout(()=>recoverPendingAcks(),1600);setTimeout(()=>refreshPinnedOfflinePacks(),2400)}else backendPing({timeoutMs:2500})
 }
+startApplication();
