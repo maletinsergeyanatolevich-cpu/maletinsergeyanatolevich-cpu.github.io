@@ -1,17 +1,17 @@
 {
-  "version": "v0.3.10",
-  "buildId": "2026-09-27.1",
-  "channel": "q014-acceptance-hotfix",
+  "version": "v0.3.11",
+  "buildId": "2026-09-30.1",
+  "channel": "q014-followup",
   "rolloutStage": "admin1",
   "eligibleRoles": ["ADMIN1"],
   "dbSchema": 5,
-  "minBackend": "backend-0.2.10",
-  "previousBuildId": "2026-09-22.2",
+  "minBackend": "backend-0.2.11",
+  "previousBuildId": "2026-09-27.1",
   "rollback": {
-    "buildId": "2026-09-22.2",
+    "buildId": "2026-09-27.1",
     "dbSchema": 5,
     "safeWithoutDataReset": true
   },
-  "publishedAt": "2026-09-27T01:40:00Z",
-  "notes": "APP-Q014 acceptance hotfix: AppDev without DocumentApp OAuth dependency; shared Gallery master/candidates/server favorites; reliable startup/resume snapshot refresh; editable order deadline/price/cost/prepayment/stage/completion date. dbSchema remains 5; requires backend-0.2.10; rollback to v0.3.9 build 2026-09-22.2."
+  "publishedAt": "2026-09-30T00:10:00Z",
+  "notes": "APP-Q014 follow-up: restore NOM_SYNC config; reliable refresh; AppDev/Gallery refresh on enter; immediate order redraw after mutate; Gallery tile star/info and swipe; configurable square Home tiles; six-button bottom bar; new-order form spacing."
 }

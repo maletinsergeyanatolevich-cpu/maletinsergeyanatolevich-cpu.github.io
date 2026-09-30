@@ -1,4 +1,4 @@
-﻿const APP_RELEASE=Object.freeze({version:'v0.3.10',buildId:'2026-09-27.1',channel:'q014-acceptance-hotfix',dbSchema:5,updateStrategy:'manifest-service-worker',rolloutStage:'admin1',previousBuildId:'2026-09-22.2'});window.APP_RELEASE=APP_RELEASE;
+﻿const APP_RELEASE=Object.freeze({version:'v0.3.11',buildId:'2026-09-30.1',channel:'q014-followup',dbSchema:5,updateStrategy:'manifest-service-worker',rolloutStage:'admin1',previousBuildId:'2026-09-27.1'});window.APP_RELEASE=APP_RELEASE;
 function emptySnapshot(){return {meta:{version:APP_RELEASE.version,snapshotDate:'',snapshotTime:'',timezone:'',backendConnected:false,source:'Нет загруженных бизнес-данных',schemaVersion:1},orders:[],calculations:{},wallet:{balance:0,income:0,expense:0,reserve:0,freeNow:0,expense7:0,free7:0,futureExpenses:[],transactions:[],futureTotal:0,futureIncome:0,afterObligations:0},nomenclature:[],purchaseLines:[],purchaseAggregated:[],gallery:[],appIssues:[],purchaseWarnings:[]}}
 function normalizeSnapshot(x){const b=emptySnapshot();if(!x||typeof x!=='object')return b;return {...b,...x,meta:{...b.meta,...(x.meta||{})},wallet:{...b.wallet,...(x.wallet||{})},orders:Array.isArray(x.orders)?x.orders:[],calculations:x.calculations&&typeof x.calculations==='object'?x.calculations:{},nomenclature:Array.isArray(x.nomenclature)?x.nomenclature:[],purchaseLines:Array.isArray(x.purchaseLines)?x.purchaseLines:[],purchaseAggregated:Array.isArray(x.purchaseAggregated)?x.purchaseAggregated:[],gallery:Array.isArray(x.gallery)?x.gallery:[],appIssues:Array.isArray(x.appIssues)?x.appIssues:[],purchaseWarnings:Array.isArray(x.purchaseWarnings)?x.purchaseWarnings:[]}}
 let S=emptySnapshot(); window.SNAPSHOT=S;
@@ -748,7 +748,75 @@ function backendAccessLabel(){if(backendSession())return 'сессия акти�
 
 
 const fmt=n=>n==null?'—':new Intl.NumberFormat('ru-RU',{maximumFractionDigits:2}).format(n); const rub=n=>n==null?'—':fmt(n)+' ₽'; const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
-function go(id){document.querySelectorAll('.screen').forEach(x=>x.classList.remove('active'));document.getElementById(id).classList.add('active');document.getElementById('pageTitle').textContent=titles[id]||'Производство';document.querySelectorAll('.nav').forEach(x=>x.classList.toggle('active',x.dataset.screen===id));window.scrollTo({top:0,behavior:'smooth'});if(id==='home')renderHome();if(id==='checklists')renderChecklists();if(id==='sync')renderSync();if(id==='wallet')renderWallet();if(id==='nom')renderNom();if(id==='avito')renderAvito();if(id==='gallery')renderGallery();if(id==='admin')renderAdmin();if(id==='activityLog')renderActivityLog();if(id==='analytics')renderAnalytics();if(id==='calculator')renderCalculator();if(id==='salesAnalytics')renderSalesAnalytics();if(id==='appdev')renderAppDev();}
+
+const UI_LAYOUT_KEY='prodUiLayoutV3';
+const UI_MODULES={
+ home:{label:'Главная',short:'Главная',screen:'home',perm:''},
+ orders:{label:'Заказы',short:'Заказы',screen:'orders',perm:'orders.view'},
+ wallet:{label:'Кошелёк',short:'Кошелёк',screen:'wallet',perm:'wallet.view'},
+ gallery:{label:'Галерея',short:'Галерея',screen:'gallery',perm:'gallery.view'},
+ nom:{label:'Номенклатура',short:'Номенкл.',screen:'nom',perm:'nomenclature.view'},
+ refresh:{label:'Обновить',short:'Обновить',action:'refresh',perm:''},
+ buy:{label:'Закупки',short:'Закупки',screen:'buy',perm:'purchase.view'},
+ analytics:{label:'Общая информация',short:'Общая',screen:'analytics',perm:'analytics.view'},
+ calculator:{label:'Калькулятор заказов',short:'Калькулятор',screen:'calculator',perm:'calculator.view'},
+ salesAnalytics:{label:'Аналитика продаж',short:'Аналитика',screen:'salesAnalytics',perm:'analytics.view'},
+ sync:{label:'Загрузки',short:'Загрузки',screen:'sync',perm:'sync.run'},
+ appdev:{label:'Разработка приложения',short:'Разработка',screen:'appdev',perm:'appdev.view'},
+ checklists:{label:'Чек-листы',short:'Чек-листы',screen:'checklists',perm:'checklists.view'},
+ admin:{label:'Настройки',short:'Настройки',screen:'admin',perm:'users.manage'}
+};
+const UI_DEFAULT_BOTTOM=['home','orders','wallet','gallery','nom','refresh'];
+const UI_DEFAULT_HOME=['orders','wallet','gallery','nom','refresh','buy','analytics','calculator','salesAnalytics','sync','appdev','checklists','admin'];
+function uiAllowed(id){const m=UI_MODULES[id];if(!m)return false;if(id==='home'||id==='refresh')return true;if(id==='admin')return isAdmin1()||hasPermission(m.perm);return !m.perm||hasPermission(m.perm)}
+function cleanUiIds(a){return [...new Set((Array.isArray(a)?a:[]).filter(id=>UI_MODULES[id]))]}
+function loadUiLayout(){
+ let x={};try{x=JSON.parse(lsGet(UI_LAYOUT_KEY)||'{}')||{}}catch(_){}
+ let home=cleanUiIds(x.home?.length?x.home:UI_DEFAULT_HOME),bottom=cleanUiIds(x.bottom?.length?x.bottom:UI_DEFAULT_BOTTOM).filter(uiAllowed);
+ const pool=[...UI_DEFAULT_BOTTOM,...Object.keys(UI_MODULES)].filter(uiAllowed);
+ for(const id of pool){if(bottom.length>=6)break;if(!bottom.includes(id))bottom.push(id)}
+ bottom=bottom.slice(0,6);
+ return {home,bottom};
+}
+function saveUiLayout(v){lsSet(UI_LAYOUT_KEY,JSON.stringify({home:cleanUiIds(v.home),bottom:cleanUiIds(v.bottom).slice(0,6)}))}
+function moduleRun(id){if(id==='refresh')return manualRefreshData();const m=UI_MODULES[id];if(m?.screen)go(m.screen)}
+function moduleTileHtml(id){const m=UI_MODULES[id];if(!m||!uiAllowed(id)||id==='home')return '';return `<button class="dashboard-tile module-${esc(id)}" onclick="moduleRun('${esc(id)}')"><b>${esc(m.label)}</b></button>`}
+function renderBottomNav(){
+ const nav=document.querySelector('.bottom');if(!nav)return;
+ const layout=loadUiLayout(),ids=layout.bottom.filter(uiAllowed);
+ nav.innerHTML=ids.map(id=>{const m=UI_MODULES[id];if(id==='refresh')return `<button class="nav nav-refresh" data-module="refresh" onclick="manualRefreshData()"><span>${esc(m.short)}</span></button>`;return `<button class="nav nav-${esc(id)}" data-module="${esc(id)}" data-screen="${esc(m.screen)}" onclick="go('${esc(m.screen)}')"><span>${esc(m.short)}</span></button>`}).join('');
+ const active=document.querySelector('.screen.active')?.id||'home';nav.querySelectorAll('.nav').forEach(x=>x.classList.toggle('active',x.dataset.screen===active));
+}
+let UI_LAYOUT_DRAFT=null;
+function openUiLayoutSettings(){UI_LAYOUT_DRAFT=loadUiLayout();renderUiLayoutSettings()}
+function uiArrow(section,id,dir){const a=UI_LAYOUT_DRAFT?.[section]||[],i=a.indexOf(id),j=i+dir;if(i<0||j<0||j>=a.length)return;[a[i],a[j]]=[a[j],a[i]];renderUiLayoutSettings()}
+function uiToggleHome(id,on){const a=UI_LAYOUT_DRAFT.home,i=a.indexOf(id);if(on&&i<0)a.push(id);if(!on&&i>=0)a.splice(i,1);renderUiLayoutSettings()}
+function uiToggleBottom(id,on){
+ const a=UI_LAYOUT_DRAFT.bottom,i=a.indexOf(id);
+ if(on&&i<0){if(a.length>=6){showAppToast('В нижней панели максимум 6 кнопок.','bad',3000);return}a.push(id)}
+ if(!on&&i>=0)a.splice(i,1);
+ renderUiLayoutSettings()
+}
+function uiRows(section){
+ const selected=UI_LAYOUT_DRAFT[section]||[],all=section==='bottom'?Object.keys(UI_MODULES):Object.keys(UI_MODULES).filter(x=>x!=='home');
+ const ordered=[...selected,...all.filter(x=>!selected.includes(x))].filter(uiAllowed);
+ return ordered.map(id=>{const m=UI_MODULES[id],on=selected.includes(id);return `<div class="ui-layout-row"><label><input type="checkbox" ${on?'checked':''} onchange="${section==='bottom'?'uiToggleBottom':'uiToggleHome'}('${esc(id)}',this.checked)"> <b>${esc(m.label)}</b></label><span><button type="button" onclick="uiArrow('${section}','${esc(id)}',-1)">↑</button><button type="button" onclick="uiArrow('${section}','${esc(id)}',1)">↓</button></span></div>`}).join('')
+}
+function renderUiLayoutSettings(){
+ if(!UI_LAYOUT_DRAFT)UI_LAYOUT_DRAFT=loadUiLayout();
+ modal('Настройка Главной и нижней панели',`<div class="hint">На Главной можно скрывать и менять местами плитки. Внизу — ровно до 6 кнопок в один ряд.</div><h3>Главная</h3><div class="ui-layout-list">${uiRows('home')}</div><h3>Нижняя панель</h3><div class="ui-layout-list">${uiRows('bottom')}</div><button class="primary" onclick="applyUiLayoutSettings()">Сохранить</button><button class="secondary" onclick="resetUiLayoutSettings()">По умолчанию</button>`,'layout-sheet')
+}
+function applyUiLayoutSettings(){saveUiLayout(UI_LAYOUT_DRAFT||loadUiLayout());closeModal();renderBottomNav();renderHome();showAppToast('Расположение сохранено на этом телефоне.','ok',2600)}
+function resetUiLayoutSettings(){UI_LAYOUT_DRAFT={home:[...UI_DEFAULT_HOME],bottom:[...UI_DEFAULT_BOTTOM]};renderUiLayoutSettings()}
+
+function go(id){
+ const target=document.getElementById(id);if(!target)return;
+ document.querySelectorAll('.screen').forEach(x=>x.classList.remove('active'));target.classList.add('active');
+ document.getElementById('pageTitle').textContent=titles[id]||'Производство';
+ renderBottomNav();window.scrollTo({top:0,behavior:'smooth'});
+ if(id==='home')renderHome();if(id==='checklists')renderChecklists();if(id==='sync')renderSync();if(id==='wallet')renderWallet();if(id==='nom')renderNom();if(id==='avito')renderAvito();if(id==='gallery')renderGallery();if(id==='admin')renderAdmin();if(id==='activityLog')renderActivityLog();if(id==='analytics')renderAnalytics();if(id==='calculator')renderCalculator();if(id==='salesAnalytics')renderSalesAnalytics();if(id==='appdev')renderAppDev();
+ if((id==='gallery'||id==='appdev')&&backendSession()&&navigator.onLine!==false){pullLiveSnapshot({silent:true,timeoutMs:35000}).then(d=>{if(!d?.ok)return;if(document.querySelector('.screen.active')?.id!==id)return;if(id==='gallery')renderGallery();else renderAppDev()}).catch(()=>{})}
+}
 function badge(text,kind=''){return `<span class="badge ${kind}">${esc(text)}</span>`}
 function orderImage(o,cls='order-img'){if(typeof o.image==='string'&&o.image)return `<img class="${cls}" src="${o.image}" alt="${esc(o.name)}" loading="lazy">`;const media=Array.isArray(o.images)?o.images.filter(x=>x&&typeof x==='object'&&x.mediaId):[];return media.length?`<div class="order-placeholder order-media-card" id="order-card-media-${domSafe(o.id)}"><span>📷</span><small>${media.length}</small></div>`:`<div class="order-placeholder">${esc(o.id.slice(-3))}</div>`}
 function calcFor(id){return S.calculations[id]||null}
@@ -1308,15 +1376,10 @@ async function removeChecklistItem(cid,itemId){if(!checklistPerm('checklists.edi
 
 
 function dataFreshnessHtml(){const has=(S.orders||[]).length||(S.nomenclature||[]).length;if(!has)return '<div class="sync-note"><b>Рабочих данных на устройстве пока нет.</b> Откройте «Загрузки» и выполните первое подключение.</div>';const src=DATA_STATE.source==='server'?'сервер':DATA_STATE.source==='cache'?'локальная копия':'локальные данные';const stamp=DATA_STATE.lastPullAt||DATA_STATE.lastCacheAt||'';const when=stamp?new Date(stamp).toLocaleString('ru-RU'):'';return `<div class="sync-note"><b>Данные доступны офлайн.</b> Источник: ${src}${when?' · '+esc(when):''}. Заказы: ${(S.orders||[]).length} · Номенклатура: ${(S.nomenclature||[]).length}.</div>`}
-async function renderHome(){const local=await drafts();document.getElementById('home').innerHTML=`${dataFreshnessHtml()}
-<div class="home-tiles"><button class="home-tile orders-card" onclick="go('orders')"><b>Заказы</b></button><button class="home-tile wallet-card" onclick="go('wallet')"><b>Кошелёк</b></button><button class="home-tile gallery-card" onclick="go('gallery')"><b>Галерея</b></button></div>
-<button class="wide-action buy-action" onclick="go('buy')"><b>Закупки по заказам</b></button>
-<button class="wide-action analytics-action" onclick="go('analytics')"><b>Общая информация</b></button>
-<button class="wide-action calculator-action" onclick="go('calculator')"><b>Калькулятор заказов</b></button>
-<button class="wide-action sales-analytics-action" onclick="go('salesAnalytics')"><b>Аналитика продаж</b></button>
-<button class="wide-action uploads-action" onclick="go('sync')"><b>Загрузки</b></button>
-<div class="section-title"><h2>Быстро добавить информацию</h2><span class="badge">офлайн</span></div>${homeActionGrid()}
-${isAdmin1()?`<button class="settings-button" onclick="go('admin')"><b>Настройки</b><span>пользователи · права · восстановление ADMIN1</span></button>`:''}`;}
+async function renderHome(){
+ const layout=loadUiLayout(),ids=layout.home.filter(uiAllowed).filter(id=>id!=='home');
+ document.getElementById('home').innerHTML=`${dataFreshnessHtml()}<div class="home-dashboard-grid">${ids.map(moduleTileHtml).join('')}<button class="dashboard-tile module-layout" onclick="openUiLayoutSettings()"><b>⚙ Настроить экран</b></button></div><div class="section-title"><h2>Быстро добавить информацию</h2><span class="badge">офлайн</span></div>${homeActionGrid()}`;
+}
 function uploadAttention(local){const errors=local.filter(x=>x.meta?.syncState==='error').length,ready=local.filter(x=>draftState(x)==='ready'&&x.meta?.syncState!=='error').length;return {errors,ready,total:errors+ready}}
 function homeAttentionCard(local){const up=uploadAttention(local);const noDeadline=(S.orders||[]).filter(o=>!o.deadline).length;const unknown=Object.values(S.calculations||{}).flatMap(c=>c.lines||[]).filter(l=>l.amount==null||(l.comment||'').toUpperCase().includes('ПРЕДПОЛОЖЕНИЕ')).length;const gallery=local.filter(x=>x.context==='portfolio-candidate').length;const items=[];let target='orders';if(up.errors){items.push(`${up.errors} загрузок с ошибкой / без подтверждения`);target='sync'}else if(up.ready){items.push(`${up.ready} загрузок готовы к отправке`);target='sync'}if(noDeadline)items.push(`${noDeadline} заказов без назначенного срока`);if(unknown)items.push(`${unknown} позиций расчёта требуют уточнения`);if(gallery)items.push(`${gallery} кандидатов ждут отбора в Галерею`);if(!items.length)return '';return `<button class="attention-card" onclick="go('${target}')"><span><b>Требует внимания</b><small>${items.slice(0,3).map(esc).join(' · ')}</small></span><strong>${items.length}</strong></button>`}
 const ORDER_MEDIA_CACHE='production-order-media-v1';
@@ -1479,7 +1542,11 @@ function chooseStep2Media(mode){step2MediaMode=mode;document.getElementById('ste
 function updateStep2MediaLabel(){const el=document.getElementById('step2MediaLabel');if(el)el.textContent=step2MediaFiles.length?`Выбрано фото: ${step2MediaFiles.length}`:'Фото не выбраны'}
 const step2MediaInput=document.getElementById('step2MediaInput');if(step2MediaInput)step2MediaInput.addEventListener('change',e=>{const files=[...(e.target.files||[])].slice(0,8);if(step2MediaMode==='appdev-admin'){APPDEV_ADMIN_NEW_MEDIA=files;const lab=document.getElementById('appDevAdminMediaLabel');if(lab)lab.textContent=files.length?`Новых изображений: ${files.length}`:'Новых изображений нет'}else{step2MediaFiles=files;updateStep2MediaLabel()}e.target.value=''});
 function attachmentRecords(files){return (files||[]).slice(0,8).map(f=>({name:f.name||('photo-'+Date.now()+'.jpg'),mime:f.type||'image/jpeg',size:f.size||0,blob:f}))}
-function newOrderModal(){if(!hasPermission('orders.create')){showAppToast('Нет права создавать заказы.','bad',3600);return}resetStep2Media('order');modal('Новый заказ',`<div class="field"><label>Название заказа</label><input id="newOrderTitle" placeholder="Например: Стеллаж"></div><div class="field"><label>Описание</label><textarea id="newOrderDescription" placeholder="Что нужно изготовить"></textarea></div><div class="field"><label>Сумма заказа, ₽</label><input id="newOrderPrice" inputmode="decimal" placeholder="0" oninput="syncDefaultPrepayment()"></div><div class="field"><label>Предоплата, ₽</label><input id="newOrderPrepay" inputmode="decimal" placeholder="50% по умолчанию" data-auto="1" oninput="this.dataset.auto='0'"></div><div class="hint">Пока поле предоплаты не меняли вручную, приложение подставляет 50% от суммы заказа.</div><div class="field"><label>Срок сдачи</label><input id="newOrderDeadline" type="date"></div><div class="field"><label>Комментарий</label><textarea id="newOrderComment" placeholder="Дополнительная информация"></textarea></div><button class="secondary" onclick="chooseStep2Media('order')">Добавить фото</button><div class="hint" id="step2MediaLabel">Фото не выбраны</div><button class="primary" style="margin-top:10px" onclick="saveNewOrderDraft()">Создать заказ</button><div class="hint">Сначала запись сохраняется на телефоне. Через 5 минут приложение отправит её автоматически. Номер заказа присвоит сервер без риска дублей.</div>`)}
+function newOrderModal(){
+ if(!hasPermission('orders.create')){showAppToast('Нет права создавать заказы.','bad',3600);return}
+ resetStep2Media('order');
+ modal('Новый заказ',`<div class="new-order-form"><div class="field"><label>Название заказа</label><input id="newOrderTitle" placeholder="Например: Стеллаж"></div><div class="field"><label>Описание</label><textarea id="newOrderDescription" placeholder="Что нужно изготовить"></textarea></div><div class="field"><label>Сумма заказа, ₽</label><input id="newOrderPrice" inputmode="decimal" placeholder="0" oninput="syncDefaultPrepayment()"></div><div class="field"><label>Предоплата, ₽</label><input id="newOrderPrepay" inputmode="decimal" placeholder="50% по умолчанию" data-auto="1" oninput="this.dataset.auto='0'"></div><div class="hint">Пока поле предоплаты не меняли вручную, приложение подставляет 50% от суммы заказа.</div><div class="field"><label>Срок сдачи</label><input id="newOrderDeadline" type="date"></div><div class="field"><label>Комментарий</label><textarea id="newOrderComment" placeholder="Дополнительная информация"></textarea></div><button class="secondary" onclick="chooseStep2Media('order')">Добавить фото</button><div class="hint" id="step2MediaLabel">Фото не выбраны</div><button class="primary" style="margin-top:10px" onclick="saveNewOrderDraft()">Создать заказ</button><div class="hint">Сначала запись сохраняется на телефоне. Через 5 минут приложение отправит её автоматически. Номер заказа присвоит сервер без риска дублей.</div></div>`,'new-order-sheet')
+}
 function syncDefaultPrepayment(){const price=Number(String(document.getElementById('newOrderPrice')?.value||'').replace(',','.'))||0,el=document.getElementById('newOrderPrepay');if(!el||el.dataset.auto==='0')return;el.value=price>0?String(Math.round(price*50)/100):''}
 async function saveNewOrderDraft(){const title=(document.getElementById('newOrderTitle')?.value||'').trim(),description=(document.getElementById('newOrderDescription')?.value||'').trim(),price=Number(String(document.getElementById('newOrderPrice')?.value||'').replace(',','.'))||0,preEl=document.getElementById('newOrderPrepay'),preRaw=String(preEl?.value||'').trim(),prepay=preRaw===''?(price>0?Math.round(price*50)/100:0):(Number(preRaw.replace(',','.'))||0),deadline=document.getElementById('newOrderDeadline')?.value||'',comment=(document.getElementById('newOrderComment')?.value||'').trim();if(!title){showAppToast('Укажите название заказа.','bad');return}if(prepay>price&&price>0){showAppToast('Предоплата не должна быть больше суммы заказа.','bad',4200);return}await putDraft({kind:'order-create',context:'order-create',objectId:'',text:title,attachments:attachmentRecords(step2MediaFiles),meta:{title,description,clientPrice:price||'',prepayment:prepay||0,deadline,comment}});resetStep2Media();closeModal();await refreshPending();showAppToast('Новый заказ сохранён. После подтверждения сервера ему будет присвоен номер.','ok',4600)}
 function dateInputValue(v){const s=String(v||'').trim();if(/^\d{4}-\d{2}-\d{2}$/.test(s))return s;const m=s.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);return m?m[3]+'-'+m[2]+'-'+m[1]:''}
@@ -1518,7 +1585,13 @@ async function promoteQuote(id){const a=await drafts();const q=a.find(x=>x.id===
 let activityPresetOrder='';
 function renderOrders(){document.getElementById('orders').innerHTML=`<button class="back" onclick="go('home')">← Главная</button>${hasPermission('orders.create')?'<button class="primary new-order-button" onclick="newOrderModal()">+ Новый заказ</button>':''}<div class="filters"><button class="chip active">Активные · ${S.orders.length}</button><button class="chip">По статусу</button><button class="chip">Без срока · ${S.orders.filter(o=>!o.deadline).length}</button></div>${S.orders.map(orderCard).join('')}`;setTimeout(()=>hydrateOrderCardMedia(),0)}
 function orderDetailField(label,value,id,extra=''){const canEdit=canMutateRecord('orders','update',id.createdByUserId);return `<div class="detail-editable ${canEdit?'can-edit':''}" ${canEdit?`onclick="editOrderRecord('${esc(id.id)}')" role="button" tabindex="0"`:''}><small>${esc(label)}</small><b>${value}</b>${extra||''}</div>`}
-async function openOrder(id){resetTempUrls();const o=S.orders.find(x=>x.id===id); if(!o)return; const c=calcFor(id); let calc=''; if(c){calc=`<div class="calc-head"><h3>Замороженный расчёт ${esc(c.version)}</h3><b>${rub(c.knownTotal)}</b></div><div class="hint">Цены показаны именно на дату расчёта. Текущая Номенклатура может уже отличаться — это не переписывает историю расчёта.</div><div class="calc-table">${c.lines.map(calcLine).join('')}</div>`}else calc=`<div class="risk"><b>Расчёт ещё не начат</b>${esc(o.stage||'Сначала собрать исходные данные.')}</div>`;const prepay=Number(o.received||0),prepayHtml=`<span class="badge ${prepay>0?'ok':'bad'}">${prepay>0?'получена':'нет'}</span>`;document.getElementById('orderDetail').innerHTML=`<div class="back-row"><button class="back" onclick="go('orders')">← Заказы</button><button class="back back-home-secondary" onclick="go('home')">⌂ Главная</button></div><div class="detail-head"><div class="muted">${esc(o.id)} · ${esc(o.status)}</div><h2>${esc(o.name)}</h2><div class="detail-grid detail-grid-editable">${orderDetailField('Срок',esc(o.deadline||'не назначен'),o)}${orderDetailField('Цена клиенту',o.clientPrice!=null?rub(o.clientPrice):'не задана',o)}${orderDetailField('Себестоимость расчётная',o.calcCost!=null?rub(o.calcCost):'не задана',o)}${orderDetailField('Себестоимость факт',o.actualCost!=null?rub(o.actualCost):'не задана',o)}${orderDetailField('Предоплата',o.received!=null?rub(o.received):'0 ₽',o,prepayHtml)}${orderDetailField('Этап',esc(o.stage||'—'),o)}${orderDetailField('Дата завершения',esc(o.completedAt||'—'),o)}</div></div>${orderMediaStrip(o)}<div class="desc">${esc(o.description)}</div>${calc}<div class="section-title"><h2>Добавить к заказу</h2><span class="badge">${esc(id)}</span></div>${orderActionGrid(id)}`;go('orderDetail');setTimeout(()=>hydrateOrderMedia(id),0)}
+async function openOrder(id){
+ resetTempUrls();const o=S.orders.find(x=>x.id===id);if(!o)return;const c=calcFor(id);let calc='';
+ if(c){calc=`<div class="calc-head"><h3>Замороженный расчёт ${esc(c.version)}</h3><b>${rub(c.knownTotal)}</b></div><div class="hint">Цены показаны именно на дату расчёта. Текущая Номенклатура может уже отличаться — это не переписывает историю расчёта.</div><div class="calc-table">${c.lines.map(calcLine).join('')}</div>`}else calc=`<div class="risk"><b>Расчёт ещё не начат</b>${esc(o.stage||'Сначала собрать исходные данные.')}</div>`;
+ const prepay=Number(o.received||0),prepayHtml=`<span class="badge ${prepay>0?'ok':'bad'}">${prepay>0?'получена':'нет'}</span>`;
+ document.getElementById('orderDetail').innerHTML=`<div class="back-row"><button class="back" onclick="go('orders')">← Заказы</button><button class="back back-home-secondary" onclick="go('home')">⌂ Главная</button></div><div class="detail-head"><div class="muted">${esc(o.id)} · ${esc(o.status)}</div><h2>${esc(o.name)}</h2><div class="detail-grid detail-grid-editable">${orderDetailField('Срок',esc(o.deadline||'не назначен'),o)}${orderDetailField('Цена клиенту',o.clientPrice!=null?rub(o.clientPrice):'не задана',o)}${orderDetailField('Себестоимость расчётная',o.calcCost!=null?rub(o.calcCost):'не задана',o)}${orderDetailField('Себестоимость факт',o.actualCost!=null?rub(o.actualCost):'не задана',o)}${orderDetailField('Предоплата',o.received!=null?rub(o.received):'0 ₽',o,prepayHtml)}${orderDetailField('Этап',esc(o.stage||'—'),o)}${orderDetailField('Дата завершения',esc(o.completedAt||'—'),o)}${orderDetailField('Статус заказа',esc(o.status||'—'),o)}</div></div>${orderMediaStrip(o)}<div class="desc">${esc(o.description)}</div>${calc}<div class="section-title"><h2>Добавить к заказу</h2><span class="badge">${esc(id)}</span></div>${orderActionGrid(id)}`;
+ go('orderDetail');setTimeout(()=>hydrateOrderMedia(id),0)
+}
 function calcLine(l){let change=''; if(l.price!=null&&l.currentPrice!=null&&Math.abs(l.price-l.currentPrice)>.001){change=`<div class="price-change">Сейчас в Номенклатуре: ${fmt(l.currentPrice)} ${esc(l.currentPriceBasis)} от ${esc(l.currentPriceDate)}. В этой версии расчёта сохранено: ${fmt(l.price)} ${esc(l.priceBasis)}.</div>`} let assum=''; if((l.comment||'').toUpperCase().includes('ПРЕДПОЛОЖЕНИЕ')) assum=`<div class="assumption">⚠ ${esc(l.comment)}</div>`; else if(l.amount==null) assum=`<div class="assumption unknown">⚠ Цена/позиция не определена: ${esc(l.comment||'требуется уточнение')}</div>`; return `<div class="calc-line"><div class="between"><div><div class="calc-name">${esc(l.name)}</div><div class="calc-meta">${esc(l.params)}<br>Нужно: ${fmt(l.qtyTech)} ${esc(l.unit)} · Купить: ${fmt(l.qtyBuy)} ${esc(l.buyUnit||l.unit)}${l.price!=null?` · Цена ${fmt(l.price)} ${esc(l.priceBasis||'')}`:''}${l.priceDate?` от ${esc(l.priceDate)}`:''}</div></div><div class="calc-money">${rub(l.amount)}</div></div>${change}${assum}</div>`}
 
 
@@ -1789,13 +1862,59 @@ function setGalleryFavorite(key,on){const set=galleryFavoriteKeys(),k=String(key
 let galleryLightboxKey='';
 function openGalleryLightbox(src,key){galleryLightboxKey=String(key||'');const box=document.getElementById('galleryLightbox'),img=document.getElementById('galleryLightboxImg'),star=document.getElementById('galleryLightboxStar');if(img)img.src=String(src||'');const canFav=galleryLightboxKey.startsWith('server:')||galleryLightboxKey.startsWith('local:');if(star){star.classList.toggle('hidden',!canFav);star.textContent=canFav&&galleryIsFavorite(galleryLightboxKey)?'★':'☆'}if(box)box.classList.remove('hidden')}
 function closeGalleryLightbox(){const box=document.getElementById('galleryLightbox'),img=document.getElementById('galleryLightboxImg');if(box)box.classList.add('hidden');if(img)img.removeAttribute('src');galleryLightboxKey=''}
-async function toggleGalleryLightboxFavorite(){if(!galleryLightboxKey)return;const k=galleryLightboxKey;if(k.startsWith('server:')){const g=galleryServerByKey(k);if(!g)return;const d=await backendPost({action:'gallery.update',session_token:backendSession(),device_id:backendDeviceId(),gallery_id:g.id,gallery_action:'toggle-favorite',app_version:APP_RELEASE.version},{timeoutMs:20000});if(!d?.ok){showAppToast('Не удалось изменить избранное.','bad');return}const ids=new Set(Array.isArray(g.favoriteUserIds)?g.favoriteUserIds.map(String):[]),uid=String(SESSION.userId||'');if(ids.has(uid))ids.delete(uid);else ids.add(uid);g.favoriteUserIds=[...ids];g.favoriteCount=ids.size;const star=document.getElementById('galleryLightboxStar');if(star)star.textContent=ids.has(uid)?'★':'☆';showAppToast(ids.has(uid)?'Отмечено в общем избранном':'Убрано из общего избранного','ok',1800);return}const on=!galleryIsFavorite(k);setGalleryFavorite(k,on);const star=document.getElementById('galleryLightboxStar');if(star)star.textContent=on?'★':'☆';showAppToast(on?'Добавлено в избранное':'Убрано из избранного','ok',1800)}
-function galleryServerTile(g){const key=`server:${g.id}`,note=String(g.note||g.comment||''),node='gallery-media-'+domSafe(g.id),fav=Number(g.favoriteCount||0);return `<div class="gallery-tile"><button class="gallery-thumb-button protected-media" id="${node}" onclick="openServerGalleryLightbox('${esc(g.id)}')"><span>Фото загружается…</span></button><div class="gallery-tile-text"><b>${esc(g.title||g.name||'Готовое изделие')}</b><br><span class="muted">${esc(g.orderId||'')}</span>${note?`<div class="gallery-internal-note"><b>Комментарий:</b> ${esc(note)}</div>`:''}<div class="hint">★ ${fav} · ${esc(g.createdByName||'')}</div>${galleryPubChips(key)}</div></div>`}
+async function toggleGalleryLightboxFavorite(){
+ if(!galleryLightboxKey)return;const k=galleryLightboxKey;
+ if(k.startsWith('server:')){
+   const g=galleryServerByKey(k);if(!g)return;const on=!galleryIsFavorite(k),r=await setServerFavorite(g,on);if(!r.ok){showAppToast('Не удалось изменить избранное.','bad');return}
+   const star=document.getElementById('galleryLightboxStar');if(star)star.textContent=on?'★':'☆';showAppToast(on?'Добавлено в избранное':'Убрано из избранного','ok',1800);return
+ }
+ const on=!galleryIsFavorite(k);setGalleryFavorite(k,on);const star=document.getElementById('galleryLightboxStar');if(star)star.textContent=on?'★':'☆';showAppToast(on?'Добавлено в избранное':'Убрано из избранного','ok',1800)
+}
+async function setServerFavorite(g,on){
+ const action=on?'favorite':'unfavorite';
+ const d=await backendPost({action:'gallery.update',session_token:backendSession(),device_id:backendDeviceId(),gallery_id:g.id,gallery_action:action,app_version:APP_RELEASE.version},{timeoutMs:22000});
+ if(!d?.ok)return {ok:false,error:d?.error||'GALLERY_FAVORITE_FAILED'};
+ const ids=new Set(Array.isArray(g.favoriteUserIds)?g.favoriteUserIds.map(String):[]),uid=String(SESSION.userId||'');if(on)ids.add(uid);else ids.delete(uid);g.favoriteUserIds=[...ids];g.favoriteCount=ids.size;return {ok:true,on}
+}
+async function toggleGalleryTileFavorite(id){
+ const g=(S.gallery||[]).find(x=>String(x.id)===String(id));if(!g)return;
+ const on=!galleryIsFavorite('server:'+g.id),r=await setServerFavorite(g,on);if(!r.ok){showAppToast('Не удалось изменить избранное.','bad');return}
+ await renderGallery();showAppToast(on?'Добавлено в избранное':'Убрано из избранного','ok',1800)
+}
+function galleryInfoModal(id){
+ const g=(S.gallery||[]).find(x=>String(x.id)===String(id));if(!g)return;
+ const url=String(g.driveUrl||''),fav=Number(g.favoriteCount||0);
+ modal('Информация о фото',`<div class="gallery-info-list"><div><b>Название файла</b><span>${esc(g.name||g.title||'')}</span></div><div><b>Заказ</b><span>${esc(g.orderId||'—')}</span></div><div><b>Дата</b><span>${esc(g.date||'—')}</span></div><div><b>Тип / категория</b><span>${esc([g.type,g.category].filter(Boolean).join(' · ')||'—')}</span></div><div><b>Отправил</b><span>${esc(g.createdByName||g.source||'—')}</span></div><div><b>Комментарий</b><span>${esc(g.note||g.comment||g.description||'—')}</span></div><div><b>Избранное</b><span>★ ${fav}</span></div><div><b>Google Drive</b><span class="file-meta">${esc(url||'—')}</span>${url?`<a class="secondary gallery-drive-link" href="${esc(url)}" target="_blank" rel="noopener">Открыть на Google Drive</a>`:''}</div></div>`)
+}
+async function showServerGalleryAt(index){
+ if(!GALLERY_SERVER_LIGHTBOX_IDS.length)return;const n=(index+GALLERY_SERVER_LIGHTBOX_IDS.length)%GALLERY_SERVER_LIGHTBOX_IDS.length;GALLERY_SERVER_LIGHTBOX_INDEX=n;
+ const id=GALLERY_SERVER_LIGHTBOX_IDS[n],g=(S.gallery||[]).find(x=>String(x.id)===String(id));if(!g)return;
+ const b=await galleryServerBlob(g,'manual');if(!b){showAppToast('Фото не загрузилось с сервера.','bad');return}
+ openGalleryLightbox(blobUrl(b),'server:'+g.id);
+ const counter=document.getElementById('galleryLightboxCounter');if(counter)counter.textContent=(n+1)+' / '+GALLERY_SERVER_LIGHTBOX_IDS.length;
+ const prev=document.getElementById('galleryLightboxPrev'),next=document.getElementById('galleryLightboxNext');if(prev)prev.classList.toggle('hidden',GALLERY_SERVER_LIGHTBOX_IDS.length<2);if(next)next.classList.toggle('hidden',GALLERY_SERVER_LIGHTBOX_IDS.length<2)
+}
+async function galleryLightboxPrev(){if(GALLERY_SERVER_LIGHTBOX_INDEX>=0)await showServerGalleryAt(GALLERY_SERVER_LIGHTBOX_INDEX-1)}
+async function galleryLightboxNext(){if(GALLERY_SERVER_LIGHTBOX_INDEX>=0)await showServerGalleryAt(GALLERY_SERVER_LIGHTBOX_INDEX+1)}
+function initGallerySwipe(){
+ const box=document.getElementById('galleryLightbox');if(!box||box.dataset.swipeReady==='1')return;box.dataset.swipeReady='1';
+ box.addEventListener('touchstart',e=>{GALLERY_SWIPE_START_X=e.touches?.[0]?.clientX??null},{passive:true});
+ box.addEventListener('touchend',e=>{if(GALLERY_SWIPE_START_X==null)return;const end=e.changedTouches?.[0]?.clientX??GALLERY_SWIPE_START_X,dx=end-GALLERY_SWIPE_START_X;GALLERY_SWIPE_START_X=null;if(Math.abs(dx)<55)return;if(dx<0)galleryLightboxNext();else galleryLightboxPrev()},{passive:true})
+}
+
+function galleryServerTile(g){
+ const key=`server:${g.id}`,node='gallery-media-'+domSafe(g.id),fav=galleryIsFavorite(key);
+ return `<div class="gallery-tile compact-gallery-tile"><button class="gallery-thumb-button protected-media" id="${node}" onclick="openServerGalleryLightbox('${esc(g.id)}')"><span>Фото загружается…</span></button><div class="gallery-tile-controls"><button class="gallery-circle-btn gallery-star-btn ${fav?'on':''}" onclick="toggleGalleryTileFavorite('${esc(g.id)}')" aria-label="Избранное">${fav?'★':'☆'}</button><button class="gallery-circle-btn" onclick="galleryInfoModal('${esc(g.id)}')" aria-label="Информация">i</button></div></div>`
+}
 function galleryServerCandidateItem(g){const node='gallery-media-'+domSafe(g.id),note=String(g.note||g.comment||'');return `<div class="gallery-candidate-tile"><div class="gallery-candidate-head"><span class="badge warn">кандидат</span><small>${esc(g.orderId||'без заказа')}</small></div><button class="gallery-thumb-button protected-media" id="${node}" onclick="openServerGalleryLightbox('${esc(g.id)}')"><span>Фото загружается…</span></button><div class="gallery-candidate-meta">${esc(g.date||'')}${note?`<div class="gallery-internal-note"><b>Комментарий:</b> ${esc(note)}</div>`:''}<div class="hint">отправил: ${esc(g.createdByName||'')}</div></div><div class="queue-actions">${hasPermission('gallery.approve')?`<button class="approve-btn" onclick="galleryServerApprove('${esc(g.id)}')">Одобрить</button>`:''}</div></div>`}
 async function galleryServerBlob(g,mode='auto'){if(!g?.mediaId)return null;return protectedImageBlob('gallery.media.get',{gallery_id:g.id},g.mediaId,mode)}
 async function paintGalleryServer(g,node,mode='auto'){if(!node)return false;const b=await galleryServerBlob(g,mode);if(!b)return false;const u=blobUrl(b);node.innerHTML=`<img class="gallery-thumb" src="${u}" alt="${esc(g.title||g.name||'Фото')}" loading="lazy">`;return true}
 async function hydrateGalleryServerMedia(){for(const g of (S.gallery||[])){const node=document.getElementById('gallery-media-'+domSafe(g.id));if(node)await paintGalleryServer(g,node,'auto')}}
-async function openServerGalleryLightbox(id){const g=(S.gallery||[]).find(x=>String(x.id)===String(id));if(!g)return;const b=await galleryServerBlob(g,'manual');if(!b){showAppToast('Фото не загрузилось с сервера.','bad');return}openGalleryLightbox(blobUrl(b),'server:'+g.id)}
+async function openServerGalleryLightbox(id){
+ GALLERY_SERVER_LIGHTBOX_IDS=(S.gallery||[]).filter(x=>x.approved).map(x=>String(x.id));
+ let i=GALLERY_SERVER_LIGHTBOX_IDS.indexOf(String(id));if(i<0){GALLERY_SERVER_LIGHTBOX_IDS=[String(id)];i=0}
+ await showServerGalleryAt(i)
+}
 async function galleryServerApprove(id){if(!hasPermission('gallery.approve')){showAppToast('Нет права одобрять Галерею.','bad');return}const d=await backendPost({action:'gallery.update',session_token:backendSession(),device_id:backendDeviceId(),gallery_id:id,gallery_action:'approve',app_version:APP_RELEASE.version},{timeoutMs:20000});if(!d?.ok){showAppToast('Не удалось одобрить фото.','bad');return}await pullLiveSnapshot({silent:true,timeoutMs:30000});await renderGallery();showAppToast('Фото одобрено и видно в общей Галерее.','ok')}
 function galleryLocalTile(g){const key=`local:${g.id}`,src=blobUrl(g.blob),note=String(g.meta?.note||'');return `<div class="gallery-tile"><button class="gallery-thumb-button" onclick="openGalleryLightbox('${src}','${key}')"><img class="gallery-thumb" src="${src}" alt="готовое изделие"></button><div class="gallery-tile-text"><b>${esc(g.objectId||'Готовое изделие')}</b><br><span class="muted">локально одобрено</span>${note?`<div class="gallery-internal-note"><b>Комментарий:</b> ${esc(note)}</div>`:''}${galleryPubChips(key)}</div><div class="gallery-tile-actions">${hasPermission('gallery.delete')?`<button class="mini-danger" onclick="deleteGalleryItem('${esc(g.id)}')">Удалить</button>`:''}</div></div>`}
 function galleryCandidateItem(x){const src=x.blob instanceof Blob?blobUrl(x.blob):'',note=String(x.meta?.note||'');return `<div class="gallery-candidate-tile"><div class="gallery-candidate-head"><span class="badge warn">кандидат</span><small>${esc(x.objectId||'без заказа')}</small></div>${src?`<button class="gallery-thumb-button" onclick="openGalleryLightbox('${src}','candidate:${esc(x.id)}')"><img class="gallery-thumb" src="${src}" alt="кандидат"></button>`:''}<div class="gallery-candidate-meta">${new Date(x.createdAt).toLocaleString('ru-RU')}${note?`<div class="gallery-internal-note"><b>Комментарий:</b> ${esc(note)}</div>`:''}</div><div class="queue-actions">${hasPermission('gallery.approve')?`<button class="approve-btn" onclick="approveGalleryDraft('${esc(x.id)}')">Одобрить</button>`:''}<button class="danger" onclick="deleteDraft('${esc(x.id)}')">Удалить</button></div></div>`}
@@ -1986,7 +2105,28 @@ function buyLine(l){const orders=(l.orders||[l.orderId]).filter(Boolean).join(',
 function walletObligationRow(x,i){const label=x.category||x.to||x.comment||'Обязательство';return `<div class="obligation compact-obligation"><button class="obligation-summary" onclick="toggleWalletObligation(${i})"><span><b>${esc(x.date||'без даты')} · ${esc(label)}</b>${x.orderId?`<small>заказ ${esc(x.orderId)}</small>`:''}</span><strong>${rub(x.amount||0)}</strong></button><div class="obligation-details hidden" id="wallet-obligation-${i}"><div class="muted">${esc(x.to||'')}${x.status?' · '+esc(x.status):''}</div>${x.comment?`<div>${esc(x.comment)}</div>`:''}</div></div>`}
 function toggleWalletObligation(i){document.getElementById('wallet-obligation-'+i)?.classList.toggle('hidden')}
 function walletMovementRow(x){const income=String(x.direction||'')==='income',sign=income?'+':'−',order=x.orderId?'Заказ '+esc(x.orderId):'Общие',author=x.createdByName||x.createdByUserId||'';const edit=canMutateRecord('wallet','update',x.createdByUserId),del=canMutateRecord('wallet','delete',x.createdByUserId);return `<div class="wallet-movement"><div class="between"><div><b>${esc(x.date||'—')} · ${esc(x.category||'Без категории')}</b><small>${order}${author?' · '+esc(author):''}</small></div><span class="wallet-movement-amount ${income?'income':'expense'}">${sign} ${rub(x.amount||0)}</span></div><div class="muted">${esc(x.comment||'Без комментария')}</div>${x.operationId&&(edit||del)?`<div class="record-actions">${edit?`<button onclick="editFinanceOperation('${esc(x.operationId)}')">Изменить</button>`:''}${del?`<button class="danger" onclick="deleteFinanceOperation('${esc(x.operationId)}')">Удалить</button>`:''}</div>`:''}</div>`}
-async function mutateRecord(entityType,entityId,recordAction,patch={},note=''){if(!backendSession()||navigator.onLine===false){showAppToast('Изменение требует связи с сервером.','bad',3600);return null}return withBusy(recordAction==='delete'?'Удаляю запись…':'Сохраняю изменение…',async()=>{const d=await backendPost({action:'record.mutate',session_token:backendSession(),device_id:backendDeviceId(),entity_type:entityType,entity_id:entityId,record_action:recordAction,patch,note,app_version:APP_RELEASE.version},{timeoutMs:25000});if(!d?.ok){showAppToast('Не удалось сохранить: '+String(d?.error||d?.detail||'ошибка'),'bad',5200);return d}await pullLiveSnapshot({silent:true,timeoutMs:20000});showAppToast(recordAction==='delete'?'Удалено с сохранением аудита.':'Изменение сохранено.','ok',2800);return d})}
+async function mutateRecord(entityType,entityId,recordAction,patch={},note=''){
+ if(!backendSession()||navigator.onLine===false){showAppToast('Изменение требует связи с сервером.','bad',3600);return null}
+ return withBusy(recordAction==='delete'?'Удаляю запись…':'Сохраняю изменение…',async()=>{
+   const d=await backendPost({action:'record.mutate',session_token:backendSession(),device_id:backendDeviceId(),entity_type:entityType,entity_id:entityId,record_action:recordAction,patch,note,app_version:APP_RELEASE.version},{timeoutMs:30000});
+   if(!d?.ok){showAppToast('Не удалось сохранить: '+String(d?.error||d?.detail||'ошибка'),'bad',5200);return d}
+   if(entityType==='order'){
+     const i=(S.orders||[]).findIndex(x=>String(x.id)===String(entityId));
+     if(i>=0&&recordAction==='update'){
+       const o={...S.orders[i]};
+       if(patch.title!=null)o.name=patch.title;if(patch.description!=null)o.description=patch.description;if(patch.client_price!=null)o.clientPrice=Number(patch.client_price)||0;
+       if(patch.received!=null)o.received=Number(patch.received)||0;if(patch.calc_cost!=null)o.calcCost=Number(patch.calc_cost)||0;if(patch.actual_cost!=null)o.actualCost=Number(patch.actual_cost)||0;
+       if(patch.deadline!=null)o.deadline=patch.deadline;if(patch.stage!=null)o.stage=patch.stage;if(patch.completed_at!=null)o.completedAt=patch.completed_at;if(patch.comment!=null)o.comment=patch.comment;
+       S.orders[i]=o;window.SNAPSHOT=S;putSnapshotCache(S).catch(()=>{});
+     }else if(i>=0&&recordAction==='delete'){S.orders.splice(i,1);window.SNAPSHOT=S;putSnapshotCache(S).catch(()=>{})}
+     renderOrders();if(document.getElementById('orderDetail')?.classList.contains('active')&&recordAction!=='delete')await openOrder(entityId);
+   }
+   const snap=await pullLiveSnapshot({silent:true,timeoutMs:35000});
+   if(entityType==='order'){renderOrders();if(document.getElementById('orderDetail')?.classList.contains('active')&&recordAction!=='delete')await openOrder(entityId)}
+   showAppToast(recordAction==='delete'?'Удалено с сохранением аудита.':(snap?.ok?'Изменение сохранено и обновлено.':'Изменение сохранено на сервере.'),'ok',3000);
+   return d
+ })
+}
 function editFinanceOperation(id){const x=(S.wallet.transactions||[]).find(t=>String(t.operationId)===String(id));if(!x)return;modal('Изменить операцию',`<div class="field"><label>Тип</label><select id="finEditType"><option value="Расход" ${x.direction==='expense'?'selected':''}>Расход</option><option value="Приход" ${x.direction==='income'?'selected':''}>Доход</option></select></div><div class="field"><label>Сумма</label><input id="finEditAmount" inputmode="decimal" value="${esc(x.amount||'')}"></div><div class="field"><label>№ заказа</label><input id="finEditOrder" value="${esc(x.orderId||'')}"></div><div class="field"><label>Комментарий</label><textarea id="finEditComment">${esc(x.comment||'')}</textarea></div><button class="primary" onclick="saveFinanceOperation('${esc(id)}')">Сохранить</button>`)}
 async function saveFinanceOperation(id){const amount=Number(String(document.getElementById('finEditAmount')?.value||'').replace(',','.'));if(!(amount>0)){showAppToast('Укажите сумму больше 0.','bad');return}const rawOrder=(document.getElementById('finEditOrder')?.value||'').trim(),ref=orderRefResolve(rawOrder);if(ref.error){showAppToast(ref.error,'bad',5200);return}const patch={type:document.getElementById('finEditType')?.value||'Расход',amount,order_id:ref.id,comment:(document.getElementById('finEditComment')?.value||'').trim()};closeModal();await mutateRecord('finance',id,'update',patch)}
 async function deleteFinanceOperation(id){if(!confirm('Удалить финансовую операцию? Строка останется в аудите и перестанет входить в Кошелёк.'))return;await mutateRecord('finance',id,'delete',{},'Удалено из приложения')}
@@ -2261,7 +2401,12 @@ function nomCard(n){const info=nomListInfo(n);return `<article class="nom-card n
 function nomDetail(id){const n=S.nomenclature.find(x=>x.id===id);if(!n)return;const pp=profilePrices(n),wp=woodPrices(n),sp=sheetPrices(n);let priceBlock;if(pp)priceBlock=`<div class="field"><label>Цена трубы при базе ${fmt(n.price)} ₽/кг</label><b>1 м — ${rub(pp.perM)} · 6 м — ${rub(pp.per6)}</b><div class="muted">Масса: ${fmt(n.massPerM)} кг/м · база цены: ${esc(n.priceDate)}</div></div>`;else if(wp)priceBlock=`<div class="field"><label>Цена погонного материала</label><b>1 м — ${rub(wp.p1)}</b><div>2 м — ${rub(wp.p2)} · 4 м — ${rub(wp.p4)} · 6 м — ${rub(wp.p6)}</div><div class="hint">Это стоимость указанной длины по цене за метр. Наличие именно 2/4/6 м зависит от позиции и поставщика: ${esc(n.comment||'проверить у поставщика')}.</div></div>`;else if(sp)priceBlock=`<div class="field"><label>Цена листового материала</label><b>${esc(n.buyUnit==='щит'||n.calcUnit==='щит'?'Щит':'Лист')} — ${rub(sp.unit)} · 1 м² — ${rub(sp.perM2)}</b><div class="muted">Расчётная площадь позиции: ${fmt(sp.area)} м² · цена от ${esc(n.priceDate||'—')}</div></div>`;else priceBlock=`<div class="field"><label>Текущая цена</label><b>${n.price==null?'—':fmt(n.price)+' '+esc(n.priceBasis)}</b> <span class="muted">${esc(n.priceDate)}</span></div>`;modal('Номенклатура',`<div class="field"><label>ID</label><b>${esc(n.id)}</b></div><div class="field"><label>Наименование</label><b>${esc(n.name)}</b></div><div class="field"><label>Характеристика</label><div>${esc(n.spec||'—')}</div></div>${priceBlock}<div class="field"><label>Единица</label><div>Расчёт: ${esc(n.calcUnit||'—')} · закупка: ${esc(n.buyUnit||'—')}</div></div>${n.massPerM&&!pp?`<div class="field"><label>Масса 1 м</label><div>${fmt(n.massPerM)} кг/м</div></div>`:''}<div class="field"><label>Поставщик / источник</label><div>${esc(n.supplier||n.source||'—')}</div></div><button class="quick-action-wide nom-edit-btn" onclick="nomCorrection('${esc(n.id)}')"><span class="action-label">Исправить / уточнить</span><span class="action-icon" aria-hidden="true">✎</span></button>`,'nom-detail-sheet')}
 function nomCorrection(id){const n=S.nomenclature.find(x=>x.id===id);if(!n)return;modal('Исправление Номенклатуры',`<div class="hint">Текущую карточку мы не переписываем на телефоне. Ваше уточнение сохраняется как отдельная заметка, привязанная к позиции <b>${esc(n.name)}</b>, и проходит обычную безопасную синхронизацию.</div><div class="field"><label>Что изменить / что стало известно</label><textarea id="nomCorrectionText" placeholder="Например: цена теперь 95 ₽/кг; другой поставщик; характеристика указана неверно..."></textarea></div><button class="primary" onclick="saveNomCorrection('${esc(n.id)}')">Сохранить исправление</button>`,'nom-correction-sheet')}
 async function saveNomCorrection(id){const n=S.nomenclature.find(x=>x.id===id);const text=(document.getElementById('nomCorrectionText')?.value||'').trim();if(!n||!text)return;await putDraft({kind:'note',objectId:id,text:`Номенклатура: ${n.name}. ${text}`,context:'nomenclature',meta:{nomenclatureId:id,nomenclatureName:n.name,correction:true}});closeModal();await refreshPending();alert('Исправление сохранено как заметка по Номенклатуре. Оно появилось в «Загрузках» и не изменит исходную карточку до обработки.')}
-function modal(title,body,mode=''){document.getElementById('modalTitle').textContent=title;document.getElementById('modalBody').innerHTML=body;const sh=document.querySelector('#modal .sheet');if(sh)sh.className='sheet'+(mode?' '+mode:'');document.getElementById('modal').classList.remove('hidden')}function closeModal(){document.getElementById('modal').classList.add('hidden');const sh=document.querySelector('#modal .sheet');if(sh)sh.className='sheet'}
+function modal(title,body,mode=''){
+ document.getElementById('modalTitle').textContent=title;document.getElementById('modalBody').innerHTML=body;
+ const sh=document.querySelector('#modal .sheet');if(sh){sh.className='sheet'+(mode?' '+mode:'');sh.scrollTop=0}
+ document.getElementById('modal').classList.remove('hidden')
+}
+function closeModal(){document.getElementById('modal').classList.add('hidden');const sh=document.querySelector('#modal .sheet');if(sh)sh.className='sheet'}
 function quickNote(){modal('Быстрая заметка',`<div class="field"><label>Текст</label><textarea id="qText" placeholder="Что нужно запомнить / передать в систему"></textarea></div><button class="primary" onclick="saveTextDraft('note','')">Сохранить офлайн</button>`)}
 function orderNote(id){modal(`Дополнение к ${id}`,`<div class="field"><label>Комментарий</label><textarea id="qText"></textarea></div><button class="primary" onclick="saveTextDraft('order-note','${id}')">Сохранить офлайн</button>`)}
 function calcNote(id){modal(`Дополнить расчёт ${id}`,`<div class="field"><label>Изменение / уточнение</label><textarea id="qText" placeholder="Размер, материал, количество, покрытие, что пересчитать..."></textarea></div><button class="primary" onclick="saveTextDraft('calc-note','${id}')">Сохранить задание</button>`)}
@@ -2292,7 +2437,8 @@ async function clearServerAccess(clearDevice=false,preserveSnapshot=true){lsDel(
 async function handleAuthFailure(err){const code=String(err||'');if(/^(USER_DISABLED|DEVICE_REVOKED)$/.test(code)){await clearServerAccess(false,false);return 'cleared'}if(/^SESSION_/.test(code)){await clearServerAccess(false,true);return 'preserved'}return 'ignored'}
 async function performRemoteWipe(){const db=await openDB();const names=['drafts','history','activity','checklists','snapshotCache'].filter(n=>db.objectStoreNames.contains(n));if(names.length){const tx=db.transaction(names,'readwrite');names.forEach(n=>tx.objectStore(n).clear());await new Promise((res,rej)=>{tx.oncomplete=res;tx.onerror=()=>rej(tx.error)})}await clearServerAccess(false,false);alert('Администратор отозвал локальные данные этого устройства. Для продолжения нужен новый доступ.')}
 function applySnapshot(snapshot){S=normalizeSnapshot(snapshot);window.SNAPSHOT=S;renderCoreScreens()}
-function syncPermissionNav(){const b=document.querySelector('.nav-appdev');if(b)b.classList.toggle('hidden',!hasPermission('appdev.view'))}function renderCoreScreens(){syncPermissionNav();renderHome();renderOrders();renderBuy();if(document.getElementById('wallet')?.classList.contains('active'))renderWallet();if(document.getElementById('nom')?.classList.contains('active'))renderNom();if(document.getElementById('gallery')?.classList.contains('active'))renderGallery();if(document.getElementById('analytics')?.classList.contains('active'))renderAnalytics();if(document.getElementById('appdev')?.classList.contains('active'))renderAppDev();}
+function syncPermissionNav(){renderBottomNav()}
+function renderCoreScreens(){syncPermissionNav();renderHome();renderOrders();renderBuy();if(document.getElementById('wallet')?.classList.contains('active'))renderWallet();if(document.getElementById('nom')?.classList.contains('active'))renderNom();if(document.getElementById('gallery')?.classList.contains('active'))renderGallery();if(document.getElementById('analytics')?.classList.contains('active'))renderAnalytics();if(document.getElementById('appdev')?.classList.contains('active'))renderAppDev();}
 async function loadCachedSnapshot(){const rec=await getSnapshotCache();if(!rec?.snapshot)return false;const cachedNomRev=Math.floor(Number(rec.snapshot?.meta?.nomenclatureRevision||0));if(cachedNomRev>localNomRevision())setLocalNomRevision(cachedNomRev);const cachedRole=String(rec.user?.role||SESSION.role||'');const recUntil=Date.parse(rec.offlineAccessUntil||'');const leaseValid=Number.isFinite(recUntil)&&recUntil>Date.now();if(cachedRole!=='ADMIN1'&&!leaseValid)return false;if(rec.user){lsSet(BACKEND_KEYS.user,JSON.stringify(rec.user));applyBackendUser(rec.user)}applySnapshot(rec.snapshot);DATA_STATE.source='cache';DATA_STATE.lastCacheAt=rec.savedAt||'';DATA_STATE.lastError='';return true}
 async function pullLiveSnapshot(opts={}){
   const token=backendSession();if(!token){DATA_STATE.lastError='NO_SESSION';return {ok:false,error:'NO_SESSION'}}
@@ -2302,38 +2448,56 @@ async function pullLiveSnapshot(opts={}){
   try{
     const body={action:'snapshot.pull',session_token:token,device_id:backendDeviceId(),app_version:APP_RELEASE.version};
     if(canOmit)body.omit_nomenclature=true;
-    const d=await backendPost(body,{timeoutMs:Number(opts.timeoutMs||15000)});
+    const d=await backendPost(body,{timeoutMs:Number(opts.timeoutMs||30000)});
     if(d?.ok&&d.snapshot){
-      lsSet(BACKEND_KEYS.offlineUntil,d.offline_access_until||lsGet(BACKEND_KEYS.offlineUntil));lsSet(BACKEND_KEYS.user,JSON.stringify(d.user||{}));applyBackendUser(d.user||{});
-      const raw={...d.snapshot,meta:{...(d.snapshot.meta||{})}};const omitted=raw.meta?.nomenclatureOmitted===true;
+      lsSet(BACKEND_KEYS.offlineUntil,d.offline_access_until||lsGet(BACKEND_KEYS.offlineUntil));
+      lsSet(BACKEND_KEYS.user,JSON.stringify(d.user||{}));applyBackendUser(d.user||{});
+      const raw={...d.snapshot,meta:{...(d.snapshot.meta||{})}},omitted=raw.meta?.nomenclatureOmitted===true;
       if(omitted){raw.nomenclature=Array.isArray(S.nomenclature)?S.nomenclature:[];raw.meta.serverNomenclatureRevision=Math.floor(Number(raw.meta.nomenclatureRevision||0));raw.meta.nomenclatureRevision=localRev}
       const next=normalizeSnapshot(raw);
       if(isAdmin1()&&next.orders.length===0&&next.nomenclature.length===0){DATA_STATE.lastError='EMPTY_SERVER_SNAPSHOT';return {...d,ok:false,error:'EMPTY_SERVER_SNAPSHOT'}}
       if(!omitted){const rev=Math.floor(Number(next.meta?.nomenclatureRevision||0));if(rev>0)setLocalNomRevision(rev)}
       await putSnapshotCache(next);applySnapshot(next);DATA_STATE.source=omitted?'server+nom-delta':'server';DATA_STATE.lastPullAt=new Date().toISOString();DATA_STATE.lastError='';
-      if(omitted&&!opts.skipNomDelta){const delta=await pullNomenclatureDelta({silent:true,allowFullFallback:true,timeoutMs:15000});return {...d,snapshot:window.SNAPSHOT,nomDelta:delta}}
-      return {...d,snapshot:next};
+      let delta=null;
+      if(omitted&&!opts.skipNomDelta){
+        try{delta=await pullNomenclatureDelta({silent:true,allowFullFallback:true,timeoutMs:22000})}
+        catch(e){delta={ok:false,error:String(e?.message||e)}}
+      }
+      return {...d,ok:true,snapshot:window.SNAPSHOT,nomDelta:delta};
     }
     const err=backendErrorCode(d,'SNAPSHOT_PULL_FAILED');DATA_STATE.lastError=err;
     if(d?.wipe_on_next_online){await performRemoteWipe();return {ok:false,error:'REMOTE_WIPE_COMPLETED'}}
-    if(/^(SESSION_|USER_|DEVICE_)/.test(err))await handleAuthFailure(err);if(!opts.silent)alert('Не удалось получить данные: '+err);return {...d,error:err};
+    if(/^(SESSION_|USER_|DEVICE_)/.test(err))await handleAuthFailure(err);
+    if(!opts.silent)showAppToast('Не удалось получить данные: '+err,'bad',4200);
+    return {...d,error:err};
   }catch(e){
-    DATA_STATE.lastError=String(e?.name==='AbortError'?'SNAPSHOT_TIMEOUT':(e?.message||e));const cached=await loadCachedSnapshot();if(!cached&&!opts.silent)alert('Сервер недоступен. Локального снимка пока нет.');return {ok:false,error:DATA_STATE.lastError,cached};
+    DATA_STATE.lastError=String(e?.name==='AbortError'?'SNAPSHOT_TIMEOUT':(e?.message||e));
+    const cached=await loadCachedSnapshot();
+    if(!cached&&!opts.silent)showAppToast('Сервер недоступен. Локального снимка пока нет.','bad',4200);
+    return {ok:false,error:DATA_STATE.lastError,cached};
   }
 }
 async function refreshBackendData(){
   if(!backendSession())return {ok:false,error:'NO_SESSION'};
-  let d=await pullLiveSnapshot({silent:true,timeoutMs:30000});
+  let d=await pullLiveSnapshot({silent:true,timeoutMs:35000});
   if(d?.ok)return d;
   const err=String(d?.error||'');
   if(navigator.onLine!==false&&!/^(SESSION_|USER_|DEVICE_)/.test(err)){
-    await new Promise(r=>setTimeout(r,1400));
-    d=await pullLiveSnapshot({silent:true,timeoutMs:30000});
+    await new Promise(r=>setTimeout(r,1200));
+    d=await pullLiveSnapshot({silent:true,timeoutMs:35000});
   }
   return d||{ok:false,error:'SNAPSHOT_PULL_FAILED'};
 }
-async function maybeBackgroundRefresh(reason='auto'){if(DATA_STATE.refreshing||!backendSession())return {ok:false,error:'NO_SESSION_OR_BUSY'};DATA_STATE.refreshing=true;try{const probe=await probeStableNetwork();if(!probe?.ok)return probe;const auth=await checkBackendAuth();if(!auth?.ok){await loadCachedSnapshot();return auth}const d=await pullLiveSnapshot({silent:true,timeoutMs:12000});if(d?.ok)syncReadyDrafts().catch(()=>{});return d}finally{DATA_STATE.refreshing=false}}
-const HOLD_MS=5*60*1000;
+async function maybeBackgroundRefresh(reason='auto'){
+  if(DATA_STATE.refreshing||!backendSession())return {ok:false,error:'NO_SESSION_OR_BUSY'};
+  DATA_STATE.refreshing=true;
+  try{
+    if(navigator.onLine===false)return {ok:false,error:'OFFLINE'};
+    const d=await refreshBackendData();
+    if(d?.ok)syncReadyDrafts({auto:true}).catch(()=>{});
+    return d;
+  }finally{DATA_STATE.refreshing=false}
+}
 function draftState(x){if(x.status==='ready'||x.status==='send-now')return 'ready';if(!x.holdUntil)return 'ready';return Date.now()<new Date(x.holdUntil).getTime()?'hold':'ready'}
 function holdText(x){if(draftState(x)==='ready')return 'Готово к отправке';const ms=Math.max(0,new Date(x.holdUntil).getTime()-Date.now()),s=Math.ceil(ms/1000),m=Math.floor(s/60),ss=String(s%60).padStart(2,'0');return `До отправки ${m}:${ss}`}
 async function putDraft(d){const db=await openDB();const tx=db.transaction('drafts','readwrite');const now=new Date();const rec={id:crypto.randomUUID(),createdAt:now.toISOString(),holdUntil:new Date(now.getTime()+HOLD_MS).toISOString(),status:'hold',...d};tx.objectStore('drafts').put(rec);await new Promise((res,rej)=>{tx.oncomplete=res;tx.onerror=()=>rej(tx.error)});await logActivity('created',rec);return rec}
@@ -3984,5 +4148,10 @@ window.applyAvailableUpdate=async function(){
 
 
 
-async function startApplication(){initTheme();purgeLegacyDemoAdminState();hydrateBackendUser();await openDB();let loaded=await loadCachedSnapshot();if(!loaded){S=emptySnapshot();window.SNAPSHOT=S;DATA_STATE.source='empty';renderCoreScreens()}network();initPwaUpdateLayer();if(backendSession()){setTimeout(()=>autoRefreshData('startup').catch(()=>{}),120);setTimeout(()=>syncReadyDrafts({auto:true}).catch(()=>{}),650);setTimeout(()=>ensureNomenclatureDeltaSetup(),1100);setTimeout(()=>recoverPendingAcks(),1600);setTimeout(()=>refreshPinnedOfflinePacks(),2400)}else backendPing({timeoutMs:2500})}
+async function startApplication(){
+ initTheme();purgeLegacyDemoAdminState();hydrateBackendUser();await openDB();initGallerySwipe();
+ let loaded=await loadCachedSnapshot();if(!loaded){S=emptySnapshot();window.SNAPSHOT=S;DATA_STATE.source='empty';renderCoreScreens()}
+ renderBottomNav();network();initPwaUpdateLayer();
+ if(backendSession()){setTimeout(()=>autoRefreshData('startup').catch(()=>{}),120);setTimeout(()=>syncReadyDrafts({auto:true}).catch(()=>{}),650);setTimeout(()=>ensureNomenclatureDeltaSetup(),1100);setTimeout(()=>recoverPendingAcks(),1600);setTimeout(()=>refreshPinnedOfflinePacks(),2400)}else backendPing({timeoutMs:2500})
+}
 startApplication();
