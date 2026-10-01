@@ -456,7 +456,63 @@ async function draftToEvent(x){const ev={event_id:x.id,event_type:x.kind||'unkno
 async function checkEventStatus(eventId,token){if(!eventId||!token||navigator.onLine===false)return {ok:false,received:false,error:'OFFLINE_OR_NO_SESSION'};try{const d=await backendPost({action:'event.status',session_token:token,device_id:backendDeviceId(),event_id:eventId,app_version:APP_RELEASE.version},{timeoutMs:10000});if(d?.ok&&d?.received)return {event_id:eventId,ok:true,server_received:true,received:true,status:'synced',confirmed_by:'event.status',detail:d.detail||null};return {event_id:eventId,ok:!!d?.ok,server_received:false,received:false,status:d?.status||'not_found',error:d?.error||''}}catch(e){return {event_id:eventId,ok:false,server_received:false,received:false,error:String(e?.message||e)}}}
 async function syncEventWithRetry(x,token,maxAttempts=2){let last={event_id:x.id,ok:false,error:'NO_ACK'};const prior=String(x.meta?.syncState||'');if(['sending','confirming','error'].includes(prior)){const seen=await checkEventStatus(x.id,token);if(seen?.server_received)return seen}const ev=await draftToEvent(x);for(let attempt=1;attempt<=maxAttempts;attempt++){try{const current=await getDraft(x.id);if(current){current.meta={...(current.meta||{}),syncState:attempt===1?'sending':'confirming',syncAttempt:attempt,lastSyncAttemptAt:new Date().toISOString(),lastSyncError:''};await updateDraft(current)}const d=await backendPost({action:'sync.push',session_token:token,device_id:backendDeviceId(),events:[ev],app_version:APP_RELEASE.version},{timeoutMs:heavyDraft(x)?60000:25000});const r=d?.results?.[0]||{event_id:x.id,ok:false,error:d?.error||'NO_RESULT'};last=r;if(r?.ok&&r?.server_received)return r;if(r?.error&&String(r.error).startsWith('PERMISSION_DENIED'))return r}catch(e){last={event_id:x.id,ok:false,error:String(e?.message||e)}}const seen=await checkEventStatus(x.id,token);if(seen?.server_received)return seen;if(attempt<maxAttempts)await sleep(1500*attempt)}return last}
 async function recoverPendingAcks(){if(backendState.recovering||backendState.syncing||navigator.onLine===false)return {ok:false,error:'BUSY_OR_OFFLINE'};const token=backendSession();if(!token)return {ok:false,error:'NO_SESSION'};backendState.recovering=true;let recovered=0;try{const all=await drafts();const pending=all.filter(x=>draftState(x)==='ready'&&['sending','confirming','error'].includes(String(x.meta?.syncState||'')));for(const x of pending){const r=await checkEventStatus(x.id,token);if(r?.server_received){await rememberDelivered(x,r);await deleteDraftDirect(x.id);recovered++;continue}if(['sending','confirming'].includes(String(x.meta?.syncState||''))){const rec=await getDraft(x.id);if(rec){rec.meta={...(rec.meta||{}),syncState:'error',lastSyncError:'Сервер пока не подтвердил запись. Можно проверить ещё раз или повторить отправку.'};await updateDraft(rec)}}}if(recovered||pending.length){await refreshPending();if(document.getElementById('sync').classList.contains('active'))await renderSync()}return {ok:true,recovered}}finally{backendState.recovering=false}}
-async function syncReadyDrafts(opts={}){if(backendState.syncing)return {ok:false,error:'SYNC_BUSY'};if(!navigator.onLine)return {ok:false,error:'OFFLINE'};const token=backendSession();if(!token)return {ok:false,error:'NO_SESSION'};backendState.syncing=true;try{const all=await drafts();let ready=all.filter(x=>draftState(x)==='ready');if(opts.auto===true){const now=Date.now();ready=ready.filter(x=>{const st=String(x.meta?.syncState||'');if(st!=='error')return true;const err=String(x.meta?.lastSyncError||'');if(/^PERMISSION_DENIED|MUTATION_DENIED|MEDIA_TOO_LARGE/.test(err))return false;const at=Date.parse(x.meta?.lastSyncAttemptAt||'');return !Number.isFinite(at)||now-at>=60000})}const heavyReady=ready.filter(heavyDraft);if(opts.manual===true&&heavyReady.length&&!wifiConfirmed()&&!allowHeavyManual())ready=ready.filter(x=>!heavyDraft(x));if(opts.manual!==true&&!wifiConfirmed())ready=ready.filter(x=>!heavyDraft(x));const waitingHeavy=heavyReady.filter(x=>!ready.includes(x)).length;if(!ready.length){if(opts.notify&&waitingHeavy)alert('Тяжёлые файлы ждут Wi‑Fi либо ручной отправки. Текстовые записи при устойчивой сети отправляются отдельно.');return {ok:true,count:0,results:[],waitingHeavy}};const results=[];for(const x of ready){let r;try{await logActivity(x.meta?.syncState==='error'?'ack_recheck':'sync_started',x);r=await syncEventWithRetry(x,token,2);results.push(r);if(r?.ok&&r?.server_received){await rememberDelivered(x,r);await deleteDraftDirect(x.id)}else{const rec=await getDraft(x.id);if(rec){rec.meta={...(rec.meta||{}),syncState:'error',lastSyncError:String(r?.error||'Сервер не подтвердил приём')};await updateDraft(rec);await logActivity('sync_error',rec,rec.meta.lastSyncError)}}}catch(e){r={event_id:x.id,ok:false,error:String(e?.message||e)};results.push(r);const rec=await getDraft(x.id);if(rec){rec.meta={...(rec.meta||{}),syncState:'error',lastSyncError:r.error};await updateDraft(rec);await logActivity('sync_error',rec,r.error)}}}await refreshPending();if(results.some(r=>r?.ok&&r?.server_received&&(r?.operation_id||r?.order_id))){await autoRefreshData('post-sync')}if(document.getElementById('sync').classList.contains('active'))await renderSync();if(document.getElementById('appdev')?.classList.contains('active'))await renderAppDev();if(opts.notify){const ok=results.filter(r=>r?.ok&&r?.server_received).length;const bad=results.length-ok;alert(waitingHeavy?`Синхронизация: подтверждено ${ok}${bad?`, требуют проверки ${bad}`:''}. Тяжёлых файлов ждут Wi‑Fi: ${waitingHeavy}.`:ok&&bad===0?`Сервер подтвердил приём: ${ok}. Записи перенесены в историю.`:`Синхронизация: подтверждено ${ok}${bad?`, требуют проверки ${bad}`:''}. Неподтверждённые записи остаются локально.`)}return {ok:true,count:results.length,results,waitingHeavy}}finally{backendState.syncing=false}}
+async function syncReadyDrafts(opts={}){
+  if(backendState.syncing)return {ok:false,error:'SYNC_BUSY'};
+  if(navigator.onLine===false)return {ok:false,error:'OFFLINE'};
+  const token=backendSession();if(!token)return {ok:false,error:'NO_SESSION'};
+  backendState.syncing=true;
+  try{
+    const all=await drafts();let ready=all.filter(x=>draftState(x)==='ready');
+    if(opts.auto===true){
+      const now=Date.now();
+      ready=ready.filter(x=>{
+        const st=String((x.meta&&x.meta.syncState)||'');if(st!=='error')return true;
+        const err=String((x.meta&&x.meta.lastSyncError)||'');
+        if(/^PERMISSION_DENIED|MUTATION_DENIED|MEDIA_TOO_LARGE/.test(err))return false;
+        const at=Date.parse((x.meta&&x.meta.lastSyncAttemptAt)||'');
+        return !Number.isFinite(at)||now-at>=60000;
+      });
+    }
+    const heavyReady=ready.filter(heavyDraft),heavyOk=heavyAutoAllowed();
+    if(opts.manual===true&&heavyReady.length&&!heavyOk&&!allowHeavyManual())ready=ready.filter(x=>!heavyDraft(x));
+    if(opts.manual!==true&&!heavyOk)ready=ready.filter(x=>!heavyDraft(x));
+    const waitingHeavy=heavyReady.filter(x=>!ready.includes(x)).length;
+    if(!ready.length){
+      if(waitingHeavy)registerDraftBackgroundSync().catch(()=>{});
+      if(opts.notify&&waitingHeavy)alert('Тяжёлые файлы сохранены на телефоне и ждут устойчивой сети. Их можно отправить вручную.');
+      return {ok:true,count:0,results:[],waitingHeavy};
+    }
+    const results=[];
+    for(const x of ready){
+      let r;
+      try{
+        await logActivity((x.meta&&x.meta.syncState)==='error'?'ack_recheck':'sync_started',x);
+        r=await syncEventWithRetry(x,token,2);results.push(r);
+        if(r&&r.ok&&r.server_received){await rememberDelivered(x,r);await deleteDraftDirect(x.id)}
+        else{
+          const rec=await getDraft(x.id);
+          if(rec){rec.meta={...(rec.meta||{}),syncState:'error',lastSyncError:String((r&&r.error)||'Сервер не подтвердил приём')};await updateDraft(rec);await logActivity('sync_error',rec,rec.meta.lastSyncError)}
+        }
+      }catch(e){
+        r={event_id:x.id,ok:false,error:String((e&&e.message)||e)};results.push(r);
+        const rec=await getDraft(x.id);
+        if(rec){rec.meta={...(rec.meta||{}),syncState:'error',lastSyncError:r.error};await updateDraft(rec);await logActivity('sync_error',rec,r.error)}
+      }
+    }
+    await refreshPending();
+    if(results.some(r=>r&&r.ok&&r.server_received))autoRefreshData('post-sync').catch(()=>{});
+    if(results.some(r=>!(r&&r.ok&&r.server_received))||waitingHeavy)registerDraftBackgroundSync().catch(()=>{});
+    if(document.getElementById('sync')?.classList.contains('active'))await renderSync();
+    if(document.getElementById('appdev')?.classList.contains('active'))await renderAppDev();
+    if(opts.notify){
+      const ok=results.filter(r=>r&&r.ok&&r.server_received).length,bad=results.length-ok;
+      if(waitingHeavy)alert('Синхронизация: подтверждено '+ok+(bad?', требуют проверки '+bad:'')+'. Тяжёлых файлов ждут устойчивой сети: '+waitingHeavy+'.');
+      else if(ok&&bad===0)alert('Сервер подтвердил приём: '+ok+'. Записи перенесены в историю.');
+      else alert('Синхронизация: подтверждено '+ok+(bad?', требуют проверки '+bad:'')+'. Неподтверждённые записи остаются локально.');
+    }
+    return {ok:true,count:results.length,results,waitingHeavy};
+  }finally{backendState.syncing=false}
+}
 async function syncDraftById(id){const token=backendSession();if(!token)return {ok:false,error:'NO_SESSION'};const x=await getDraft(id);if(!x||draftState(x)!=='ready'||!navigator.onLine)return {ok:false,error:'NOT_READY'};if(heavyDraft(x)&&!wifiConfirmed()&&!allowHeavyManual())return {ok:false,error:'WAIT_WIFI'};const seen=await checkEventStatus(x.id,token);if(seen?.server_received){await rememberDelivered(x,seen);await deleteDraftDirect(x.id);await refreshPending();if(document.getElementById('sync').classList.contains('active'))await renderSync();return seen}await logActivity(x.meta?.syncState==='error'?'ack_recheck':'sync_started',x);const r=await syncEventWithRetry(x,token,2);if(r?.ok&&r?.server_received){await rememberDelivered(x,r);await deleteDraftDirect(x.id);await refreshPending();if(document.getElementById('sync').classList.contains('active'))await renderSync();return r}const rec=await getDraft(id);if(rec){rec.meta={...(rec.meta||{}),syncState:'error',lastSyncError:String(r?.error||'Сервер не подтвердил приём')};await updateDraft(rec);await logActivity('sync_error',rec,rec.meta.lastSyncError)}await refreshPending();if(document.getElementById('sync').classList.contains('active'))await renderSync();return r}
 function backendAccessLabel(){if(backendSession())return 'сессия активна';if(lsGet(BACKEND_KEYS.request))return 'заявка PENDING / ждёт одобрения';return 'устройство не подключено'}
 
