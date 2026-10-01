@@ -472,6 +472,22 @@ function activationSecret(){let v=lsGet(BACKEND_KEYS.secret);if(!v){v=randomSecr
 async function sha256HexBrowser(text){if(!crypto.subtle)throw new Error('WEB_CRYPTO_UNAVAILABLE');const b=new TextEncoder().encode(String(text));const d=await crypto.subtle.digest('SHA-256',b);return [...new Uint8Array(d)].map(x=>x.toString(16).padStart(2,'0')).join('')}
 async function backendPost(body,opts={}){const timeoutMs=Math.max(1500,Number(opts.timeoutMs||20000));const ctrl=typeof AbortController!=='undefined'?new AbortController():null;const timer=ctrl?setTimeout(()=>ctrl.abort(),timeoutMs):null;try{const r=await fetch(BACKEND_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(body),redirect:'follow',cache:'no-store',signal:ctrl?.signal});const txt=await r.text();let data;try{data=JSON.parse(txt)}catch(_){throw new Error('BAD_BACKEND_RESPONSE')};return data}finally{if(timer)clearTimeout(timer)}}
 async function backendPing(opts={}){const timeoutMs=Math.max(1200,Number(opts.timeoutMs||3500));const ctrl=typeof AbortController!=='undefined'?new AbortController():null;const timer=ctrl?setTimeout(()=>ctrl.abort(),timeoutMs):null;const started=performance.now();try{const r=await fetch(BACKEND_URL+'?action=ping',{cache:'no-store',redirect:'follow',signal:ctrl?.signal});const d=await r.json();const latency=Math.round(performance.now()-started);backendState.ping=d?.ok?'ok':'error';backendState.lastError=d?.ok?'':String(d?.error||'PING_FAILED');return {...d,latencyMs:latency}}catch(e){backendState.ping='error';backendState.lastError=String(e?.name==='AbortError'?'PING_TIMEOUT':(e?.message||e));return {ok:false,error:backendState.lastError,latencyMs:Math.round(performance.now()-started)}}finally{if(timer)clearTimeout(timer)}}
+async function registerDraftBackgroundSync(){
+  if(!('serviceWorker' in navigator)||location.protocol==='file:')return false;
+  try{
+    const reg=window.__PROD_SW_REG||await navigator.serviceWorker.ready;
+    if(reg&&reg.sync&&reg.sync.register){try{await reg.sync.register(BG_SYNC_TAG)}catch(_){}}
+    return true;
+  }catch(_){return false}
+}
+function heavyAutoAllowed(){
+  const n=networkHints();
+  if(!n.online||n.saveData)return false;
+  if(['slow-2g','2g'].includes(n.effectiveType))return false;
+  if(n.rtt>1800)return false;
+  if(n.downlink>0&&n.downlink<0.35)return false;
+  return true;
+}
 function networkHints(){const c=navigator.connection||navigator.mozConnection||navigator.webkitConnection||null;return {online:navigator.onLine!==false,saveData:!!c?.saveData,type:String(c?.type||''),effectiveType:String(c?.effectiveType||''),rtt:Number(c?.rtt||0),downlink:Number(c?.downlink||0)}}
 function autoRefreshAllowedByHint(){const n=networkHints();if(!n.online||n.saveData)return false;if(['slow-2g','2g'].includes(n.effectiveType))return false;if(n.rtt>1400)return false;if(n.downlink>0&&n.downlink<0.45)return false;return true}
 function heavyDraft(x){return !!(x?.blob instanceof Blob)||Array.isArray(x?.attachments)&&x.attachments.some(a=>a?.blob instanceof Blob)||['photo','audio','document'].includes(String(x?.kind||''))}
@@ -2503,7 +2519,23 @@ async function maybeBackgroundRefresh(reason='auto'){
 }
 function draftState(x){if(x.status==='ready'||x.status==='send-now')return 'ready';if(!x.holdUntil)return 'ready';return Date.now()<new Date(x.holdUntil).getTime()?'hold':'ready'}
 function holdText(x){if(draftState(x)==='ready')return 'Готово к отправке';const ms=Math.max(0,new Date(x.holdUntil).getTime()-Date.now()),s=Math.ceil(ms/1000),m=Math.floor(s/60),ss=String(s%60).padStart(2,'0');return `До отправки ${m}:${ss}`}
-async function putDraft(d){const db=await openDB();const tx=db.transaction('drafts','readwrite');const now=new Date();const rec={id:crypto.randomUUID(),createdAt:now.toISOString(),holdUntil:new Date(now.getTime()+HOLD_MS).toISOString(),status:'hold',...d};tx.objectStore('drafts').put(rec);await new Promise((res,rej)=>{tx.oncomplete=res;tx.onerror=()=>rej(tx.error)});await logActivity('created',rec);return rec}
+async function putDraft(d){
+  const now=new Date(),eventId=String((d&&d.id)||crypto.randomUUID());
+  const rec={id:eventId,createdAt:now.toISOString(),holdUntil:new Date(now.getTime()+HOLD_MS).toISOString(),status:'hold',...d,id:eventId};
+  try{
+    const db=await openDB(),tx=db.transaction('drafts','readwrite');
+    tx.objectStore('drafts').put(rec);
+    await new Promise((res,rej)=>{tx.oncomplete=()=>res(true);tx.onerror=()=>rej(tx.error||new Error('IDB_DRAFT_WRITE_FAILED'));tx.onabort=()=>rej(tx.error||new Error('IDB_DRAFT_WRITE_ABORTED'))});
+  }catch(e){
+    const msg=String((e&&e.message)||e||'IDB_DRAFT_WRITE_FAILED');
+    showAppToast('Не удалось сохранить на телефоне. Данные не отправлены: '+msg,'bad',5200);
+    throw e;
+  }
+  try{await logActivity('created',rec)}catch(_){}
+  registerDraftBackgroundSync().catch(()=>{});
+  showAppToast('Сохранено на телефоне. Отправится автоматически при устойчивой связи.','ok',3600);
+  return rec;
+}
 async function getDraft(id){const db=await openDB();const tx=db.transaction('drafts','readonly');const r=tx.objectStore('drafts').get(id);return new Promise((res,rej)=>{r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})}
 async function updateDraft(rec){const db=await openDB();const tx=db.transaction('drafts','readwrite');tx.objectStore('drafts').put(rec);return new Promise((res,rej)=>{tx.oncomplete=res;tx.onerror=()=>rej(tx.error)})}
 async function drafts(){const db=await openDB();const tx=db.transaction('drafts','readonly');const r=tx.objectStore('drafts').getAll();return new Promise((res,rej)=>{r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})}
