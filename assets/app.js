@@ -1,4 +1,4 @@
-﻿const APP_RELEASE=Object.freeze({version:'v0.3.11',buildId:'2026-09-30.1',channel:'q014-followup',dbSchema:5,updateStrategy:'manifest-service-worker',rolloutStage:'admin1',previousBuildId:'2026-09-27.1'});window.APP_RELEASE=APP_RELEASE;
+﻿const APP_RELEASE=Object.freeze({version:'v0.3.12',buildId:'2026-10-01.1',channel:'q015-stage2a',dbSchema:5,updateStrategy:'manifest-service-worker',rolloutStage:'admin1',previousBuildId:'2026-09-30.1'});window.APP_RELEASE=APP_RELEASE;
 function emptySnapshot(){return {meta:{version:APP_RELEASE.version,snapshotDate:'',snapshotTime:'',timezone:'',backendConnected:false,source:'Нет загруженных бизнес-данных',schemaVersion:1},orders:[],calculations:{},wallet:{balance:0,income:0,expense:0,reserve:0,freeNow:0,expense7:0,free7:0,futureExpenses:[],transactions:[],futureTotal:0,futureIncome:0,afterObligations:0},nomenclature:[],purchaseLines:[],purchaseAggregated:[],gallery:[],appIssues:[],purchaseWarnings:[]}}
 function normalizeSnapshot(x){const b=emptySnapshot();if(!x||typeof x!=='object')return b;return {...b,...x,meta:{...b.meta,...(x.meta||{})},wallet:{...b.wallet,...(x.wallet||{})},orders:Array.isArray(x.orders)?x.orders:[],calculations:x.calculations&&typeof x.calculations==='object'?x.calculations:{},nomenclature:Array.isArray(x.nomenclature)?x.nomenclature:[],purchaseLines:Array.isArray(x.purchaseLines)?x.purchaseLines:[],purchaseAggregated:Array.isArray(x.purchaseAggregated)?x.purchaseAggregated:[],gallery:Array.isArray(x.gallery)?x.gallery:[],appIssues:Array.isArray(x.appIssues)?x.appIssues:[],purchaseWarnings:Array.isArray(x.purchaseWarnings)?x.purchaseWarnings:[]}}
 let S=emptySnapshot(); window.SNAPSHOT=S;
@@ -264,6 +264,9 @@ const BACKEND_URL='https://script.google.com/macros/s/AKfycbw9LwsZcvSylhVtZPNL2_
 const BACKEND_KEYS={device:'prodDeviceId',secret:'prodActivationSecret',request:'prodAccessRequestId',session:'prodSessionToken',sessionId:'prodSessionId',offlineUntil:'prodOfflineUntil',user:'prodBackendUser',nomRev:'prodNomRevision',nomSetup:'prodNomDeltaSetup'};
 let backendState={ping:'unknown',lastError:'',syncing:false,recovering:false};
 const DATA_STATE={source:'',lastCacheAt:'',lastPullAt:'',lastAttemptAt:'',lastError:'',network:'unknown',refreshing:false};
+const HOLD_MS=5*60*1000;
+const BG_SYNC_TAG='prod-draft-sync';
+const BG_PERIODIC_TAG='prod-draft-periodic';
 let BUSY_COUNT=0;
 function setBusy(text='Выполняю…'){BUSY_COUNT++;const box=document.getElementById('busyOverlay'),label=document.getElementById('busyText');if(label)label.textContent=text;if(box)box.classList.remove('hidden')}
 function clearBusy(){BUSY_COUNT=Math.max(0,BUSY_COUNT-1);if(BUSY_COUNT===0)document.getElementById('busyOverlay')?.classList.add('hidden')}
@@ -295,71 +298,20 @@ function orderRefResolve(raw){
 }
 let LAST_AUTO_REFRESH_ERROR_AT=0,AUTO_REFRESH_PROMISE=null;
 async function autoRefreshData(reason='auto'){if(!backendSession()||navigator.onLine===false)return {ok:false,error:'NO_SESSION_OR_OFFLINE'};if(AUTO_REFRESH_PROMISE)return AUTO_REFRESH_PROMISE;AUTO_REFRESH_PROMISE=(async()=>{const d=await refreshBackendData();if(d?.ok){if(document.getElementById('sync')?.classList.contains('active'))await renderSync();return d}const now=Date.now();if(now-LAST_AUTO_REFRESH_ERROR_AT>60000){LAST_AUTO_REFRESH_ERROR_AT=now;showAppToast('Не получилось обновить данные. Показываю последние сохранённые.','bad',4200)}return d})();try{return await AUTO_REFRESH_PROMISE}finally{AUTO_REFRESH_PROMISE=null}}
-async function manualRefreshData(){if(!backendSession()){showAppToast('Сначала подключите и активируйте устройство.','bad',3600);return {ok:false,error:'NO_SESSION'}}return withBusy('Обновляю данные…',async()=>{const d=await refreshBackendData();if(document.getElementById('sync')?.classList.contains('active'))await renderSync();showAppToast(d?.ok?'Данные обновлены.':'Не получилось обновить данные.',''+(d?.ok?'ok':'bad'),3200);return d})}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+async function manualRefreshData(){
+  if(!backendSession()){showAppToast('Сначала подключите и активируйте устройство.','bad',3600);return {ok:false,error:'NO_SESSION'}}
+  return withBusy('Отправляю очередь и обновляю данные…',async()=>{
+    await recoverPendingAcks().catch(()=>({ok:false}));
+    const pushed=await syncReadyDrafts({manual:true,notify:false,reason:'manual-refresh'}).catch(e=>({ok:false,error:String((e&&e.message)||e)}));
+    const pulled=await refreshBackendData();
+    if(document.getElementById('sync')?.classList.contains('active'))await renderSync();
+    if(document.getElementById('appdev')?.classList.contains('active'))await renderAppDev();
+    const sent=Number((pushed&&pushed.results&&pushed.results.filter(x=>x&&x.ok&&x.server_received).length)||0);
+    if(pulled&&pulled.ok)showAppToast(sent?('Отправлено: '+sent+'. Данные обновлены.'):'Данные обновлены. Очередь проверена.','ok',3600);
+    else showAppToast(sent?('Отправлено: '+sent+'. Получить свежий снимок пока не удалось.'):'Очередь проверена, но свежие данные пока не получены.','bad',4200);
+    return {ok:!!(pulled&&pulled.ok),pushed,pulled};
+  })
+}
 function localNomRevision(){const n=Math.floor(Number(lsGet(BACKEND_KEYS.nomRev)||0));return Number.isFinite(n)&&n>0?n:0}
 function setLocalNomRevision(v){const n=Math.floor(Number(v||0));if(n>0)lsSet(BACKEND_KEYS.nomRev,String(n));return n}
 async function ensureNomenclatureDeltaSetup(){
@@ -469,12 +421,31 @@ function activationSecret(){let v=lsGet(BACKEND_KEYS.secret);if(!v){v=randomSecr
 async function sha256HexBrowser(text){if(!crypto.subtle)throw new Error('WEB_CRYPTO_UNAVAILABLE');const b=new TextEncoder().encode(String(text));const d=await crypto.subtle.digest('SHA-256',b);return [...new Uint8Array(d)].map(x=>x.toString(16).padStart(2,'0')).join('')}
 async function backendPost(body,opts={}){const timeoutMs=Math.max(1500,Number(opts.timeoutMs||20000));const ctrl=typeof AbortController!=='undefined'?new AbortController():null;const timer=ctrl?setTimeout(()=>ctrl.abort(),timeoutMs):null;try{const r=await fetch(BACKEND_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(body),redirect:'follow',cache:'no-store',signal:ctrl?.signal});const txt=await r.text();let data;try{data=JSON.parse(txt)}catch(_){throw new Error('BAD_BACKEND_RESPONSE')};return data}finally{if(timer)clearTimeout(timer)}}
 async function backendPing(opts={}){const timeoutMs=Math.max(1200,Number(opts.timeoutMs||3500));const ctrl=typeof AbortController!=='undefined'?new AbortController():null;const timer=ctrl?setTimeout(()=>ctrl.abort(),timeoutMs):null;const started=performance.now();try{const r=await fetch(BACKEND_URL+'?action=ping',{cache:'no-store',redirect:'follow',signal:ctrl?.signal});const d=await r.json();const latency=Math.round(performance.now()-started);backendState.ping=d?.ok?'ok':'error';backendState.lastError=d?.ok?'':String(d?.error||'PING_FAILED');return {...d,latencyMs:latency}}catch(e){backendState.ping='error';backendState.lastError=String(e?.name==='AbortError'?'PING_TIMEOUT':(e?.message||e));return {ok:false,error:backendState.lastError,latencyMs:Math.round(performance.now()-started)}}finally{if(timer)clearTimeout(timer)}}
+async function registerDraftBackgroundSync(){
+  if(!('serviceWorker' in navigator)||location.protocol==='file:')return false;
+  try{
+    const reg=window.__PROD_SW_REG||await navigator.serviceWorker.ready;
+    if(reg&&reg.sync&&reg.sync.register){try{await reg.sync.register(BG_SYNC_TAG)}catch(_){}}
+    return true;
+  }catch(_){return false}
+}
+function heavyAutoAllowed(){
+  const n=networkHints();
+  if(!n.online||n.saveData)return false;
+  if(['slow-2g','2g'].includes(n.effectiveType))return false;
+  if(n.rtt>1800)return false;
+  if(n.downlink>0&&n.downlink<0.35)return false;
+  return true;
+}
 function networkHints(){const c=navigator.connection||navigator.mozConnection||navigator.webkitConnection||null;return {online:navigator.onLine!==false,saveData:!!c?.saveData,type:String(c?.type||''),effectiveType:String(c?.effectiveType||''),rtt:Number(c?.rtt||0),downlink:Number(c?.downlink||0)}}
 function autoRefreshAllowedByHint(){const n=networkHints();if(!n.online||n.saveData)return false;if(['slow-2g','2g'].includes(n.effectiveType))return false;if(n.rtt>1400)return false;if(n.downlink>0&&n.downlink<0.45)return false;return true}
 function heavyDraft(x){return !!(x?.blob instanceof Blob)||Array.isArray(x?.attachments)&&x.attachments.some(a=>a?.blob instanceof Blob)||['photo','audio','document'].includes(String(x?.kind||''))}
 function wifiConfirmed(){const t=networkHints().type.toLowerCase();return t==='wifi'||t==='ethernet'}
 function heavyNetworkLabel(){const n=networkHints();return wifiConfirmed()?'Wi‑Fi':(n.type?n.type:'тип сети не определяется браузером')}
-function allowHeavyManual(){if(wifiConfirmed())return true;return confirm('Тяжёлые файлы автоматически отправляются только при Wi‑Fi. Сейчас '+heavyNetworkLabel()+'. Отправить выбранные файлы через текущую сеть вручную?')}
+function allowHeavyManual(){
+  if(heavyAutoAllowed())return true;
+  return confirm('Сеть сейчас выглядит нестабильной для тяжёлых файлов ('+heavyNetworkLabel()+'). Файл уже сохранён на телефоне. Попробовать отправить через текущую сеть вручную?');
+}
 async function probeStableNetwork(){if(!autoRefreshAllowedByHint()){DATA_STATE.network='poor-or-offline';return {ok:false,error:'NETWORK_HINT_POOR'}}const p=await backendPing({timeoutMs:3000});if(!p?.ok){DATA_STATE.network='poor-or-offline';return p}if(Number(p.latencyMs||0)>2500){DATA_STATE.network='slow';return {ok:false,error:'NETWORK_SLOW',latencyMs:p.latencyMs}}DATA_STATE.network='good';return p}
 async function requestDeviceAccess(){const name=prompt('Имя пользователя для заявки на доступ','Сергей');if(!name)return;try{const secret=activationSecret();const hash=await sha256HexBrowser(secret);setBusy('Отправляю заявку…');const d=await backendPost({action:'access.request',device_id:backendDeviceId(),device_name:navigator.userAgent.slice(0,120),name:name.trim(),app_version:APP_RELEASE.version,activation_hash:hash});if(d?.ok){lsSet(BACKEND_KEYS.request,d.request_id||'');alert(d.status==='PENDING'?'Заявка отправлена. Статус: PENDING. Теперь ADMIN1 должен одобрить это устройство.':'Заявка найдена. Статус: '+String(d.status||''));}else alert('Backend: '+String(d?.error||'ошибка заявки'));await renderSync()}catch(e){alert('Не удалось отправить заявку: '+String(e?.message||e));}finally{clearBusy()}}
 async function activateApprovedDevice(){const req=lsGet(BACKEND_KEYS.request);if(!req){alert('Сначала отправьте заявку на доступ.');return}try{setBusy('Проверяю одобрение…');const d=await backendPost({action:'access.activate',access_request_id:req,device_id:backendDeviceId(),device_name:navigator.userAgent.slice(0,120),activation_secret:activationSecret()});if(d?.ok&&d.session_token){lsSet(BACKEND_KEYS.session,d.session_token);lsSet(BACKEND_KEYS.sessionId,d.session_id||'');lsSet(BACKEND_KEYS.offlineUntil,d.offline_access_until||'');lsSet(BACKEND_KEYS.user,JSON.stringify(d.user||{}));applyBackendUser(d.user||{});const pulled=await pullLiveSnapshot({silent:true});alert(pulled?.ok?'Устройство активировано. Реальные данные загружены с сервера.':'Устройство активировано. Серверная сессия есть, но данные пока не загружены.');}else if(d?.status){alert('Заявка ещё не одобрена. Статус: '+d.status)}else alert('Backend: '+String(d?.error||'активация не выполнена'));await renderSync()}catch(e){alert('Ошибка активации: '+String(e?.message||e));}finally{clearBusy()}}
@@ -488,7 +459,63 @@ async function draftToEvent(x){const ev={event_id:x.id,event_type:x.kind||'unkno
 async function checkEventStatus(eventId,token){if(!eventId||!token||navigator.onLine===false)return {ok:false,received:false,error:'OFFLINE_OR_NO_SESSION'};try{const d=await backendPost({action:'event.status',session_token:token,device_id:backendDeviceId(),event_id:eventId,app_version:APP_RELEASE.version},{timeoutMs:10000});if(d?.ok&&d?.received)return {event_id:eventId,ok:true,server_received:true,received:true,status:'synced',confirmed_by:'event.status',detail:d.detail||null};return {event_id:eventId,ok:!!d?.ok,server_received:false,received:false,status:d?.status||'not_found',error:d?.error||''}}catch(e){return {event_id:eventId,ok:false,server_received:false,received:false,error:String(e?.message||e)}}}
 async function syncEventWithRetry(x,token,maxAttempts=2){let last={event_id:x.id,ok:false,error:'NO_ACK'};const prior=String(x.meta?.syncState||'');if(['sending','confirming','error'].includes(prior)){const seen=await checkEventStatus(x.id,token);if(seen?.server_received)return seen}const ev=await draftToEvent(x);for(let attempt=1;attempt<=maxAttempts;attempt++){try{const current=await getDraft(x.id);if(current){current.meta={...(current.meta||{}),syncState:attempt===1?'sending':'confirming',syncAttempt:attempt,lastSyncAttemptAt:new Date().toISOString(),lastSyncError:''};await updateDraft(current)}const d=await backendPost({action:'sync.push',session_token:token,device_id:backendDeviceId(),events:[ev],app_version:APP_RELEASE.version},{timeoutMs:heavyDraft(x)?60000:25000});const r=d?.results?.[0]||{event_id:x.id,ok:false,error:d?.error||'NO_RESULT'};last=r;if(r?.ok&&r?.server_received)return r;if(r?.error&&String(r.error).startsWith('PERMISSION_DENIED'))return r}catch(e){last={event_id:x.id,ok:false,error:String(e?.message||e)}}const seen=await checkEventStatus(x.id,token);if(seen?.server_received)return seen;if(attempt<maxAttempts)await sleep(1500*attempt)}return last}
 async function recoverPendingAcks(){if(backendState.recovering||backendState.syncing||navigator.onLine===false)return {ok:false,error:'BUSY_OR_OFFLINE'};const token=backendSession();if(!token)return {ok:false,error:'NO_SESSION'};backendState.recovering=true;let recovered=0;try{const all=await drafts();const pending=all.filter(x=>draftState(x)==='ready'&&['sending','confirming','error'].includes(String(x.meta?.syncState||'')));for(const x of pending){const r=await checkEventStatus(x.id,token);if(r?.server_received){await rememberDelivered(x,r);await deleteDraftDirect(x.id);recovered++;continue}if(['sending','confirming'].includes(String(x.meta?.syncState||''))){const rec=await getDraft(x.id);if(rec){rec.meta={...(rec.meta||{}),syncState:'error',lastSyncError:'Сервер пока не подтвердил запись. Можно проверить ещё раз или повторить отправку.'};await updateDraft(rec)}}}if(recovered||pending.length){await refreshPending();if(document.getElementById('sync').classList.contains('active'))await renderSync()}return {ok:true,recovered}}finally{backendState.recovering=false}}
-async function syncReadyDrafts(opts={}){if(backendState.syncing)return {ok:false,error:'SYNC_BUSY'};if(!navigator.onLine)return {ok:false,error:'OFFLINE'};const token=backendSession();if(!token)return {ok:false,error:'NO_SESSION'};backendState.syncing=true;try{const all=await drafts();let ready=all.filter(x=>draftState(x)==='ready');if(opts.auto===true){const now=Date.now();ready=ready.filter(x=>{const st=String(x.meta?.syncState||'');if(st!=='error')return true;const err=String(x.meta?.lastSyncError||'');if(/^PERMISSION_DENIED|MUTATION_DENIED|MEDIA_TOO_LARGE/.test(err))return false;const at=Date.parse(x.meta?.lastSyncAttemptAt||'');return !Number.isFinite(at)||now-at>=60000})}const heavyReady=ready.filter(heavyDraft);if(opts.manual===true&&heavyReady.length&&!wifiConfirmed()&&!allowHeavyManual())ready=ready.filter(x=>!heavyDraft(x));if(opts.manual!==true&&!wifiConfirmed())ready=ready.filter(x=>!heavyDraft(x));const waitingHeavy=heavyReady.filter(x=>!ready.includes(x)).length;if(!ready.length){if(opts.notify&&waitingHeavy)alert('Тяжёлые файлы ждут Wi‑Fi либо ручной отправки. Текстовые записи при устойчивой сети отправляются отдельно.');return {ok:true,count:0,results:[],waitingHeavy}};const results=[];for(const x of ready){let r;try{await logActivity(x.meta?.syncState==='error'?'ack_recheck':'sync_started',x);r=await syncEventWithRetry(x,token,2);results.push(r);if(r?.ok&&r?.server_received){await rememberDelivered(x,r);await deleteDraftDirect(x.id)}else{const rec=await getDraft(x.id);if(rec){rec.meta={...(rec.meta||{}),syncState:'error',lastSyncError:String(r?.error||'Сервер не подтвердил приём')};await updateDraft(rec);await logActivity('sync_error',rec,rec.meta.lastSyncError)}}}catch(e){r={event_id:x.id,ok:false,error:String(e?.message||e)};results.push(r);const rec=await getDraft(x.id);if(rec){rec.meta={...(rec.meta||{}),syncState:'error',lastSyncError:r.error};await updateDraft(rec);await logActivity('sync_error',rec,r.error)}}}await refreshPending();if(results.some(r=>r?.ok&&r?.server_received&&(r?.operation_id||r?.order_id))){await autoRefreshData('post-sync')}if(document.getElementById('sync').classList.contains('active'))await renderSync();if(document.getElementById('appdev')?.classList.contains('active'))await renderAppDev();if(opts.notify){const ok=results.filter(r=>r?.ok&&r?.server_received).length;const bad=results.length-ok;alert(waitingHeavy?`Синхронизация: подтверждено ${ok}${bad?`, требуют проверки ${bad}`:''}. Тяжёлых файлов ждут Wi‑Fi: ${waitingHeavy}.`:ok&&bad===0?`Сервер подтвердил приём: ${ok}. Записи перенесены в историю.`:`Синхронизация: подтверждено ${ok}${bad?`, требуют проверки ${bad}`:''}. Неподтверждённые записи остаются локально.`)}return {ok:true,count:results.length,results,waitingHeavy}}finally{backendState.syncing=false}}
+async function syncReadyDrafts(opts={}){
+  if(backendState.syncing)return {ok:false,error:'SYNC_BUSY'};
+  if(navigator.onLine===false)return {ok:false,error:'OFFLINE'};
+  const token=backendSession();if(!token)return {ok:false,error:'NO_SESSION'};
+  backendState.syncing=true;
+  try{
+    const all=await drafts();let ready=all.filter(x=>draftState(x)==='ready');
+    if(opts.auto===true){
+      const now=Date.now();
+      ready=ready.filter(x=>{
+        const st=String((x.meta&&x.meta.syncState)||'');if(st!=='error')return true;
+        const err=String((x.meta&&x.meta.lastSyncError)||'');
+        if(/^PERMISSION_DENIED|MUTATION_DENIED|MEDIA_TOO_LARGE/.test(err))return false;
+        const at=Date.parse((x.meta&&x.meta.lastSyncAttemptAt)||'');
+        return !Number.isFinite(at)||now-at>=60000;
+      });
+    }
+    const heavyReady=ready.filter(heavyDraft),heavyOk=heavyAutoAllowed();
+    if(opts.manual===true&&heavyReady.length&&!heavyOk&&!allowHeavyManual())ready=ready.filter(x=>!heavyDraft(x));
+    if(opts.manual!==true&&!heavyOk)ready=ready.filter(x=>!heavyDraft(x));
+    const waitingHeavy=heavyReady.filter(x=>!ready.includes(x)).length;
+    if(!ready.length){
+      if(waitingHeavy)registerDraftBackgroundSync().catch(()=>{});
+      if(opts.notify&&waitingHeavy)alert('Тяжёлые файлы сохранены на телефоне и ждут устойчивой сети. Их можно отправить вручную.');
+      return {ok:true,count:0,results:[],waitingHeavy};
+    }
+    const results=[];
+    for(const x of ready){
+      let r;
+      try{
+        await logActivity((x.meta&&x.meta.syncState)==='error'?'ack_recheck':'sync_started',x);
+        r=await syncEventWithRetry(x,token,2);results.push(r);
+        if(r&&r.ok&&r.server_received){await rememberDelivered(x,r);await deleteDraftDirect(x.id)}
+        else{
+          const rec=await getDraft(x.id);
+          if(rec){rec.meta={...(rec.meta||{}),syncState:'error',lastSyncError:String((r&&r.error)||'Сервер не подтвердил приём')};await updateDraft(rec);await logActivity('sync_error',rec,rec.meta.lastSyncError)}
+        }
+      }catch(e){
+        r={event_id:x.id,ok:false,error:String((e&&e.message)||e)};results.push(r);
+        const rec=await getDraft(x.id);
+        if(rec){rec.meta={...(rec.meta||{}),syncState:'error',lastSyncError:r.error};await updateDraft(rec);await logActivity('sync_error',rec,r.error)}
+      }
+    }
+    await refreshPending();
+    if(results.some(r=>r&&r.ok&&r.server_received))autoRefreshData('post-sync').catch(()=>{});
+    if(results.some(r=>!(r&&r.ok&&r.server_received))||waitingHeavy)registerDraftBackgroundSync().catch(()=>{});
+    if(document.getElementById('sync')?.classList.contains('active'))await renderSync();
+    if(document.getElementById('appdev')?.classList.contains('active'))await renderAppDev();
+    if(opts.notify){
+      const ok=results.filter(r=>r&&r.ok&&r.server_received).length,bad=results.length-ok;
+      if(waitingHeavy)alert('Синхронизация: подтверждено '+ok+(bad?', требуют проверки '+bad:'')+'. Тяжёлых файлов ждут устойчивой сети: '+waitingHeavy+'.');
+      else if(ok&&bad===0)alert('Сервер подтвердил приём: '+ok+'. Записи перенесены в историю.');
+      else alert('Синхронизация: подтверждено '+ok+(bad?', требуют проверки '+bad:'')+'. Неподтверждённые записи остаются локально.');
+    }
+    return {ok:true,count:results.length,results,waitingHeavy};
+  }finally{backendState.syncing=false}
+}
 async function syncDraftById(id){const token=backendSession();if(!token)return {ok:false,error:'NO_SESSION'};const x=await getDraft(id);if(!x||draftState(x)!=='ready'||!navigator.onLine)return {ok:false,error:'NOT_READY'};if(heavyDraft(x)&&!wifiConfirmed()&&!allowHeavyManual())return {ok:false,error:'WAIT_WIFI'};const seen=await checkEventStatus(x.id,token);if(seen?.server_received){await rememberDelivered(x,seen);await deleteDraftDirect(x.id);await refreshPending();if(document.getElementById('sync').classList.contains('active'))await renderSync();return seen}await logActivity(x.meta?.syncState==='error'?'ack_recheck':'sync_started',x);const r=await syncEventWithRetry(x,token,2);if(r?.ok&&r?.server_received){await rememberDelivered(x,r);await deleteDraftDirect(x.id);await refreshPending();if(document.getElementById('sync').classList.contains('active'))await renderSync();return r}const rec=await getDraft(id);if(rec){rec.meta={...(rec.meta||{}),syncState:'error',lastSyncError:String(r?.error||'Сервер не подтвердил приём')};await updateDraft(rec);await logActivity('sync_error',rec,rec.meta.lastSyncError)}await refreshPending();if(document.getElementById('sync').classList.contains('active'))await renderSync();return r}
 function backendAccessLabel(){if(backendSession())return 'сессия активна';if(lsGet(BACKEND_KEYS.request))return 'заявка PENDING / ждёт одобрения';return 'устройство не подключено'}
 
@@ -2493,14 +2520,30 @@ async function maybeBackgroundRefresh(reason='auto'){
   DATA_STATE.refreshing=true;
   try{
     if(navigator.onLine===false)return {ok:false,error:'OFFLINE'};
-    const d=await refreshBackendData();
-    if(d?.ok)syncReadyDrafts({auto:true}).catch(()=>{});
-    return d;
+    recoverPendingAcks().catch(()=>{});
+    syncReadyDrafts({auto:true,reason}).catch(()=>{});
+    return await refreshBackendData();
   }finally{DATA_STATE.refreshing=false}
 }
 function draftState(x){if(x.status==='ready'||x.status==='send-now')return 'ready';if(!x.holdUntil)return 'ready';return Date.now()<new Date(x.holdUntil).getTime()?'hold':'ready'}
 function holdText(x){if(draftState(x)==='ready')return 'Готово к отправке';const ms=Math.max(0,new Date(x.holdUntil).getTime()-Date.now()),s=Math.ceil(ms/1000),m=Math.floor(s/60),ss=String(s%60).padStart(2,'0');return `До отправки ${m}:${ss}`}
-async function putDraft(d){const db=await openDB();const tx=db.transaction('drafts','readwrite');const now=new Date();const rec={id:crypto.randomUUID(),createdAt:now.toISOString(),holdUntil:new Date(now.getTime()+HOLD_MS).toISOString(),status:'hold',...d};tx.objectStore('drafts').put(rec);await new Promise((res,rej)=>{tx.oncomplete=res;tx.onerror=()=>rej(tx.error)});await logActivity('created',rec);return rec}
+async function putDraft(d){
+  const now=new Date(),eventId=String((d&&d.id)||crypto.randomUUID());
+  const rec={id:eventId,createdAt:now.toISOString(),holdUntil:new Date(now.getTime()+HOLD_MS).toISOString(),status:'hold',...d,id:eventId};
+  try{
+    const db=await openDB(),tx=db.transaction('drafts','readwrite');
+    tx.objectStore('drafts').put(rec);
+    await new Promise((res,rej)=>{tx.oncomplete=()=>res(true);tx.onerror=()=>rej(tx.error||new Error('IDB_DRAFT_WRITE_FAILED'));tx.onabort=()=>rej(tx.error||new Error('IDB_DRAFT_WRITE_ABORTED'))});
+  }catch(e){
+    const msg=String((e&&e.message)||e||'IDB_DRAFT_WRITE_FAILED');
+    showAppToast('Не удалось сохранить на телефоне. Данные не отправлены: '+msg,'bad',5200);
+    throw e;
+  }
+  try{await logActivity('created',rec)}catch(_){}
+  registerDraftBackgroundSync().catch(()=>{});
+  showAppToast('Сохранено на телефоне. Отправится автоматически при устойчивой связи.','ok',3600);
+  return rec;
+}
 async function getDraft(id){const db=await openDB();const tx=db.transaction('drafts','readonly');const r=tx.objectStore('drafts').get(id);return new Promise((res,rej)=>{r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})}
 async function updateDraft(rec){const db=await openDB();const tx=db.transaction('drafts','readwrite');tx.objectStore('drafts').put(rec);return new Promise((res,rej)=>{tx.oncomplete=res;tx.onerror=()=>rej(tx.error)})}
 async function drafts(){const db=await openDB();const tx=db.transaction('drafts','readonly');const r=tx.objectStore('drafts').getAll();return new Promise((res,rej)=>{r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})}
@@ -3328,266 +3371,34 @@ function updateHoldCountdowns(){document.querySelectorAll('[data-hold-until]').f
 function setSyncView(v){syncView=v;renderSync()}
 async function renderSync(){resetTempUrls();const a=await drafts(),hist=(await sentHistory()).sort((x,y)=>String(y.sentAt||'').localeCompare(String(x.sentAt||''))),holdItems=a.filter(x=>draftState(x)==='hold'),errorItems=a.filter(x=>x.meta?.syncState==='error'),readyItems=a.filter(x=>draftState(x)==='ready'&&x.meta?.syncState!=='error'),req=lsGet(BACKEND_KEYS.request),session=backendSession();let body='';if(syncView==='history')body=hist.length?hist.slice(0,100).map(historyItem).join(''):'<div class="muted">История пока пуста.</div>';else{const items=syncView==='errors'?errorItems:syncView==='hold'?holdItems:readyItems;body=items.length?items.sort((x,y)=>String(y.createdAt).localeCompare(String(x.createdAt))).map(queueItem).join(''):'<div class="muted">Здесь сейчас пусто.</div>'}document.getElementById('sync').innerHTML=`<button class="back" onclick="go('home')">← Главная</button><div class="sync-tabs"><button class="${syncView==='ready'?'active':''}" onclick="setSyncView('ready')"><b>${readyItems.length}</b><span>готовы</span></button><button class="${syncView==='errors'?'active error':''}" onclick="setSyncView('errors')"><b>${errorItems.length}</b><span>ошибки</span></button><button class="${syncView==='hold'?'active':''}" onclick="setSyncView('hold')"><b>${holdItems.length}</b><span>5 минут</span></button><button class="${syncView==='history'?'active':''}" onclick="setSyncView('history')"><b>${hist.length}</b><span>история</span></button></div><div class="section-title"><h2>${syncView==='history'?'История':syncView==='errors'?'Требуют проверки':syncView==='hold'?'Ожидают автоотправки':'Готовы к отправке'}</h2><span class="badge">${navigator.onLine?'онлайн':'офлайн'}</span></div>${body}<div class="settings-block sync-connection"><h3>Подключение устройства</h3><div class="sync-list"><div><span>Доступ</span><b>${esc(backendAccessLabel())}</b></div><div><span>Устройство</span><b>${esc(backendDeviceId().slice(0,18))}…</b></div></div><div class="queue-actions v023">${session?'<button class="edit-btn" onclick="manualRefreshData()">Обновить</button>':`<button class="edit-btn" onclick="requestDeviceAccess()">Отправить заявку</button><button class="send-now-btn" onclick="activateApprovedDevice()">Проверить одобрение</button>`}</div>${req?`<div class="muted">Заявка: ${esc(req.slice(0,18))}…</div>`:''}</div>`;updateHoldCountdowns();if(holdTicker)clearInterval(holdTicker);holdTicker=setInterval(()=>{if(document.getElementById('sync').classList.contains('active'))updateHoldCountdowns()},1000)}
 async function simulateSync(){const a=await drafts();if(!a.length){alert('Очередь пуста.');return}if(!backendSession()){alert('Сначала подключите и активируйте это устройство.');return}await withBusy('Синхронизирую записи…',()=>syncReadyDrafts({notify:true,manual:true}))}
-function network(){const online=navigator.onLine!==false;document.getElementById('netStatus').classList.toggle('online',online);document.getElementById('netStatus').classList.toggle('offline',!online);document.getElementById('offlineBanner').classList.toggle('hidden',online);const netText=document.getElementById('netText');if(netText)netText.textContent=online?'Онлайн':'Офлайн';refreshPending();if(online&&backendSession()){setTimeout(()=>autoRefreshData('online'),250);setTimeout(()=>syncReadyDrafts({auto:true}),700);setTimeout(()=>ensureNomenclatureDeltaSetup(),1200);setTimeout(()=>recoverPendingAcks(),1700);setTimeout(()=>refreshPinnedOfflinePacks(),2400)}}window.addEventListener('online',network);window.addEventListener('offline',network);
-let LAST_VISIBLE_REFRESH=0;document.addEventListener('visibilitychange',()=>{if(document.visibilityState!=='visible'||!backendSession())return;const now=Date.now();if(now-LAST_VISIBLE_REFRESH>30000){LAST_VISIBLE_REFRESH=now;autoRefreshData('resume').catch(()=>{});syncReadyDrafts({auto:true}).catch(()=>{});recoverPendingAcks().catch(()=>{})}});
-setInterval(()=>{if(backendSession()&&navigator.onLine!==false){syncReadyDrafts({auto:true}).catch(()=>{})}},15000);
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-const updateState={manifest:null};
+function runResumeSync(reason='resume'){
+  if(!backendSession()||navigator.onLine===false)return;
+  recoverPendingAcks().catch(()=>{});
+  syncReadyDrafts({auto:true,reason}).catch(()=>{});
+  autoRefreshData(reason).catch(()=>{});
+}
+function network(){
+  const online=navigator.onLine!==false;
+  document.getElementById('netStatus')?.classList.toggle('online',online);
+  document.getElementById('netStatus')?.classList.toggle('offline',!online);
+  document.getElementById('offlineBanner')?.classList.toggle('hidden',online);
+  const netText=document.getElementById('netText');if(netText)netText.textContent=online?'Онлайн':'Офлайн';
+  refreshPending().catch(()=>{});
+  if(online&&backendSession()){
+    setTimeout(()=>runResumeSync('online'),250);
+    setTimeout(()=>ensureNomenclatureDeltaSetup().catch(()=>{}),1200);
+    setTimeout(()=>refreshPinnedOfflinePacks().catch(()=>{}),2400);
+  }
+}
+window.addEventListener('online',network);
+window.addEventListener('offline',network);
+let LAST_VISIBLE_REFRESH=0;
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState!=='visible'||!backendSession())return;
+  const now=Date.now();if(now-LAST_VISIBLE_REFRESH>30000){LAST_VISIBLE_REFRESH=now;runResumeSync('visibility')}
+});
+window.addEventListener('pageshow',()=>runResumeSync('pageshow'));
+setInterval(()=>{if(backendSession()&&navigator.onLine!==false)syncReadyDrafts({auto:true,reason:'foreground-timer'}).catch(()=>{})},15000);
 function updateEligible(v={}){const stage=String(v.rolloutStage||v.releaseStage||'stable').toLowerCase();if(stage==='paused')return false;if(stage==='admin1')return isAdmin1();return true}
 function showUpdateBanner(v={}){if(!updateEligible(v))return;updateState.manifest=v||{};window.__PROD_UPDATE_READY=true;const box=document.getElementById('updateBanner');const text=document.getElementById('updateText');if(text)text.textContent=`Доступно обновление${v?.buildId?' · '+v.buildId:''}`;if(box)box.classList.remove('hidden')}
 document.addEventListener('production:update-ready',e=>showUpdateBanner(e.detail||{}));
@@ -3853,8 +3664,7 @@ async function initPwaUpdateLayer(){
     const reg=await navigator.serviceWorker.register('./sw.js',{scope:'./',updateViaCache:'none'});
     window.__PROD_SW_REG=reg;
     reg.addEventListener('updatefound',()=>{
-      const w=reg.installing;
-      if(!w)return;
+      const w=reg.installing;if(!w)return;
       w.addEventListener('statechange',()=>{
         if(w.state==='installed' && navigator.serviceWorker.controller){
           window.__PROD_UPDATE_READY=true;
@@ -3862,8 +3672,16 @@ async function initPwaUpdateLayer(){
         }
       });
     });
+    if(!window.__PROD_SW_MESSAGE_READY){
+      window.__PROD_SW_MESSAGE_READY=true;
+      navigator.serviceWorker.addEventListener('message',e=>{
+        if(e.data&&e.data.type==='PROD_SYNC_DRAFTS')runResumeSync(String(e.data.reason||'service-worker'));
+      });
+    }
     navigator.serviceWorker.addEventListener('controllerchange',()=>location.reload());
     try{await reg.update()}catch(_){}
+    if(reg.periodicSync&&reg.periodicSync.register){try{await reg.periodicSync.register(BG_PERIODIC_TAG,{minInterval:15*60*1000})}catch(_){}}
+    registerDraftBackgroundSync().catch(()=>{});
     fetch('./version.json',{cache:'no-store'}).then(r=>r.ok?r.json():null).then(v=>{
       if(v&&v.buildId){updateState.manifest=v;if(v.buildId!==APP_RELEASE.buildId&&updateEligible(v)){window.__PROD_UPDATE_READY=true;document.dispatchEvent(new CustomEvent('production:update-ready',{detail:v}))}}
     }).catch(()=>{});
@@ -3873,285 +3691,27 @@ window.applyAvailableUpdate=async function(){
   setBusy('Устанавливаю обновление…');
   const manifest=updateState.manifest||{};
   if(!updateEligible(manifest)){clearBusy();alert('Это обновление пока доступно только ADMIN1.');return}
-  const reg=window.__PROD_SW_REG;
-  if(!reg){location.reload();return}
+  const reg=window.__PROD_SW_REG;if(!reg){location.reload();return}
   const activateWaiting=()=>{if(reg.waiting){reg.waiting.postMessage({type:'SKIP_WAITING'});return true}return false};
-  if(activateWaiting()) return;
+  if(activateWaiting())return;
   try{await reg.update()}catch(_){}
-  if(activateWaiting()) return;
+  if(activateWaiting())return;
   const w=reg.installing;
   if(w){
     const deadline=setTimeout(()=>{if(!activateWaiting())location.reload()},6000);
-    w.addEventListener('statechange',()=>{
-      if(w.state==='installed'){
-        clearTimeout(deadline);
-        if(!activateWaiting())location.reload();
-      }
-    },{once:false});
+    w.addEventListener('statechange',()=>{if(w.state==='installed'){clearTimeout(deadline);if(!activateWaiting())location.reload()}},{once:false});
     return;
   }
   location.reload();
 };
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 async function startApplication(){
- initTheme();purgeLegacyDemoAdminState();hydrateBackendUser();await openDB();initGallerySwipe();
- let loaded=await loadCachedSnapshot();if(!loaded){S=emptySnapshot();window.SNAPSHOT=S;DATA_STATE.source='empty';renderCoreScreens()}
- renderBottomNav();network();initPwaUpdateLayer();
- if(backendSession()){setTimeout(()=>autoRefreshData('startup').catch(()=>{}),120);setTimeout(()=>syncReadyDrafts({auto:true}).catch(()=>{}),650);setTimeout(()=>ensureNomenclatureDeltaSetup(),1100);setTimeout(()=>recoverPendingAcks(),1600);setTimeout(()=>refreshPinnedOfflinePacks(),2400)}else backendPing({timeoutMs:2500})
+  initTheme();purgeLegacyDemoAdminState();hydrateBackendUser();await openDB();initGallerySwipe();
+  let loaded=await loadCachedSnapshot();if(!loaded){S=emptySnapshot();window.SNAPSHOT=S;DATA_STATE.source='empty';renderCoreScreens()}
+  renderBottomNav();network();initPwaUpdateLayer();
+  if(backendSession()){
+    setTimeout(()=>runResumeSync('startup'),120);
+    setTimeout(()=>ensureNomenclatureDeltaSetup().catch(()=>{}),1100);
+    setTimeout(()=>refreshPinnedOfflinePacks().catch(()=>{}),2400);
+  }else backendPing({timeoutMs:2500});
 }
 startApplication();
