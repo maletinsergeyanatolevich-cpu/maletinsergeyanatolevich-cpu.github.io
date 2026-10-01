@@ -1,19 +1,19 @@
 {
-  "version": "v0.3.16",
-  "buildId": "2026-10-01.5",
-  "channel": "q015-phase-b",
+  "version": "v0.3.17",
+  "buildId": "2026-10-01.6",
+  "channel": "q015-phase-c",
   "rolloutStage": "admin1",
   "eligibleRoles": [
     "ADMIN1"
   ],
   "dbSchema": 5,
-  "minBackend": "backend-0.2.15",
-  "previousBuildId": "2026-10-01.4",
+  "minBackend": "backend-0.2.16",
+  "previousBuildId": "2026-10-01.5",
   "rollback": {
-    "buildId": "2026-10-01.4",
+    "buildId": "2026-10-01.5",
     "dbSchema": 5,
     "safeWithoutDataReset": true
   },
-  "publishedAt": "2026-10-01T05:10:00Z",
-  "notes": "APP-Q015 Phase B: existing order/finance edits are offline-first, record_version conflict guard, field-level stale detection, ADMIN1 conflict center."
+  "publishedAt": "2026-10-01T09:55:00Z",
+  "notes": "APP-Q015 Phase C: Finance-derived order received/debt/direct cost, finance mismatch visibility, order-linked income/expense actions, planned edit+actualize, movement classification."
 }
