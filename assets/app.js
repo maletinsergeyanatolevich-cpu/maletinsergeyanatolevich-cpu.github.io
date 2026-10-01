@@ -3368,266 +3368,34 @@ function updateHoldCountdowns(){document.querySelectorAll('[data-hold-until]').f
 function setSyncView(v){syncView=v;renderSync()}
 async function renderSync(){resetTempUrls();const a=await drafts(),hist=(await sentHistory()).sort((x,y)=>String(y.sentAt||'').localeCompare(String(x.sentAt||''))),holdItems=a.filter(x=>draftState(x)==='hold'),errorItems=a.filter(x=>x.meta?.syncState==='error'),readyItems=a.filter(x=>draftState(x)==='ready'&&x.meta?.syncState!=='error'),req=lsGet(BACKEND_KEYS.request),session=backendSession();let body='';if(syncView==='history')body=hist.length?hist.slice(0,100).map(historyItem).join(''):'<div class="muted">История пока пуста.</div>';else{const items=syncView==='errors'?errorItems:syncView==='hold'?holdItems:readyItems;body=items.length?items.sort((x,y)=>String(y.createdAt).localeCompare(String(x.createdAt))).map(queueItem).join(''):'<div class="muted">Здесь сейчас пусто.</div>'}document.getElementById('sync').innerHTML=`<button class="back" onclick="go('home')">← Главная</button><div class="sync-tabs"><button class="${syncView==='ready'?'active':''}" onclick="setSyncView('ready')"><b>${readyItems.length}</b><span>готовы</span></button><button class="${syncView==='errors'?'active error':''}" onclick="setSyncView('errors')"><b>${errorItems.length}</b><span>ошибки</span></button><button class="${syncView==='hold'?'active':''}" onclick="setSyncView('hold')"><b>${holdItems.length}</b><span>5 минут</span></button><button class="${syncView==='history'?'active':''}" onclick="setSyncView('history')"><b>${hist.length}</b><span>история</span></button></div><div class="section-title"><h2>${syncView==='history'?'История':syncView==='errors'?'Требуют проверки':syncView==='hold'?'Ожидают автоотправки':'Готовы к отправке'}</h2><span class="badge">${navigator.onLine?'онлайн':'офлайн'}</span></div>${body}<div class="settings-block sync-connection"><h3>Подключение устройства</h3><div class="sync-list"><div><span>Доступ</span><b>${esc(backendAccessLabel())}</b></div><div><span>Устройство</span><b>${esc(backendDeviceId().slice(0,18))}…</b></div></div><div class="queue-actions v023">${session?'<button class="edit-btn" onclick="manualRefreshData()">Обновить</button>':`<button class="edit-btn" onclick="requestDeviceAccess()">Отправить заявку</button><button class="send-now-btn" onclick="activateApprovedDevice()">Проверить одобрение</button>`}</div>${req?`<div class="muted">Заявка: ${esc(req.slice(0,18))}…</div>`:''}</div>`;updateHoldCountdowns();if(holdTicker)clearInterval(holdTicker);holdTicker=setInterval(()=>{if(document.getElementById('sync').classList.contains('active'))updateHoldCountdowns()},1000)}
 async function simulateSync(){const a=await drafts();if(!a.length){alert('Очередь пуста.');return}if(!backendSession()){alert('Сначала подключите и активируйте это устройство.');return}await withBusy('Синхронизирую записи…',()=>syncReadyDrafts({notify:true,manual:true}))}
-function network(){const online=navigator.onLine!==false;document.getElementById('netStatus').classList.toggle('online',online);document.getElementById('netStatus').classList.toggle('offline',!online);document.getElementById('offlineBanner').classList.toggle('hidden',online);const netText=document.getElementById('netText');if(netText)netText.textContent=online?'Онлайн':'Офлайн';refreshPending();if(online&&backendSession()){setTimeout(()=>autoRefreshData('online'),250);setTimeout(()=>syncReadyDrafts({auto:true}),700);setTimeout(()=>ensureNomenclatureDeltaSetup(),1200);setTimeout(()=>recoverPendingAcks(),1700);setTimeout(()=>refreshPinnedOfflinePacks(),2400)}}window.addEventListener('online',network);window.addEventListener('offline',network);
-let LAST_VISIBLE_REFRESH=0;document.addEventListener('visibilitychange',()=>{if(document.visibilityState!=='visible'||!backendSession())return;const now=Date.now();if(now-LAST_VISIBLE_REFRESH>30000){LAST_VISIBLE_REFRESH=now;autoRefreshData('resume').catch(()=>{});syncReadyDrafts({auto:true}).catch(()=>{});recoverPendingAcks().catch(()=>{})}});
-setInterval(()=>{if(backendSession()&&navigator.onLine!==false){syncReadyDrafts({auto:true}).catch(()=>{})}},15000);
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-const updateState={manifest:null};
+function runResumeSync(reason='resume'){
+  if(!backendSession()||navigator.onLine===false)return;
+  recoverPendingAcks().catch(()=>{});
+  syncReadyDrafts({auto:true,reason}).catch(()=>{});
+  autoRefreshData(reason).catch(()=>{});
+}
+function network(){
+  const online=navigator.onLine!==false;
+  document.getElementById('netStatus')?.classList.toggle('online',online);
+  document.getElementById('netStatus')?.classList.toggle('offline',!online);
+  document.getElementById('offlineBanner')?.classList.toggle('hidden',online);
+  const netText=document.getElementById('netText');if(netText)netText.textContent=online?'Онлайн':'Офлайн';
+  refreshPending().catch(()=>{});
+  if(online&&backendSession()){
+    setTimeout(()=>runResumeSync('online'),250);
+    setTimeout(()=>ensureNomenclatureDeltaSetup().catch(()=>{}),1200);
+    setTimeout(()=>refreshPinnedOfflinePacks().catch(()=>{}),2400);
+  }
+}
+window.addEventListener('online',network);
+window.addEventListener('offline',network);
+let LAST_VISIBLE_REFRESH=0;
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState!=='visible'||!backendSession())return;
+  const now=Date.now();if(now-LAST_VISIBLE_REFRESH>30000){LAST_VISIBLE_REFRESH=now;runResumeSync('visibility')}
+});
+window.addEventListener('pageshow',()=>runResumeSync('pageshow'));
+setInterval(()=>{if(backendSession()&&navigator.onLine!==false)syncReadyDrafts({auto:true,reason:'foreground-timer'}).catch(()=>{})},15000);
 function updateEligible(v={}){const stage=String(v.rolloutStage||v.releaseStage||'stable').toLowerCase();if(stage==='paused')return false;if(stage==='admin1')return isAdmin1();return true}
 function showUpdateBanner(v={}){if(!updateEligible(v))return;updateState.manifest=v||{};window.__PROD_UPDATE_READY=true;const box=document.getElementById('updateBanner');const text=document.getElementById('updateText');if(text)text.textContent=`Доступно обновление${v?.buildId?' · '+v.buildId:''}`;if(box)box.classList.remove('hidden')}
 document.addEventListener('production:update-ready',e=>showUpdateBanner(e.detail||{}));
@@ -3893,8 +3661,7 @@ async function initPwaUpdateLayer(){
     const reg=await navigator.serviceWorker.register('./sw.js',{scope:'./',updateViaCache:'none'});
     window.__PROD_SW_REG=reg;
     reg.addEventListener('updatefound',()=>{
-      const w=reg.installing;
-      if(!w)return;
+      const w=reg.installing;if(!w)return;
       w.addEventListener('statechange',()=>{
         if(w.state==='installed' && navigator.serviceWorker.controller){
           window.__PROD_UPDATE_READY=true;
@@ -3902,8 +3669,16 @@ async function initPwaUpdateLayer(){
         }
       });
     });
+    if(!window.__PROD_SW_MESSAGE_READY){
+      window.__PROD_SW_MESSAGE_READY=true;
+      navigator.serviceWorker.addEventListener('message',e=>{
+        if(e.data&&e.data.type==='PROD_SYNC_DRAFTS')runResumeSync(String(e.data.reason||'service-worker'));
+      });
+    }
     navigator.serviceWorker.addEventListener('controllerchange',()=>location.reload());
     try{await reg.update()}catch(_){}
+    if(reg.periodicSync&&reg.periodicSync.register){try{await reg.periodicSync.register(BG_PERIODIC_TAG,{minInterval:15*60*1000})}catch(_){}}
+    registerDraftBackgroundSync().catch(()=>{});
     fetch('./version.json',{cache:'no-store'}).then(r=>r.ok?r.json():null).then(v=>{
       if(v&&v.buildId){updateState.manifest=v;if(v.buildId!==APP_RELEASE.buildId&&updateEligible(v)){window.__PROD_UPDATE_READY=true;document.dispatchEvent(new CustomEvent('production:update-ready',{detail:v}))}}
     }).catch(()=>{});
@@ -3913,285 +3688,27 @@ window.applyAvailableUpdate=async function(){
   setBusy('Устанавливаю обновление…');
   const manifest=updateState.manifest||{};
   if(!updateEligible(manifest)){clearBusy();alert('Это обновление пока доступно только ADMIN1.');return}
-  const reg=window.__PROD_SW_REG;
-  if(!reg){location.reload();return}
+  const reg=window.__PROD_SW_REG;if(!reg){location.reload();return}
   const activateWaiting=()=>{if(reg.waiting){reg.waiting.postMessage({type:'SKIP_WAITING'});return true}return false};
-  if(activateWaiting()) return;
+  if(activateWaiting())return;
   try{await reg.update()}catch(_){}
-  if(activateWaiting()) return;
+  if(activateWaiting())return;
   const w=reg.installing;
   if(w){
     const deadline=setTimeout(()=>{if(!activateWaiting())location.reload()},6000);
-    w.addEventListener('statechange',()=>{
-      if(w.state==='installed'){
-        clearTimeout(deadline);
-        if(!activateWaiting())location.reload();
-      }
-    },{once:false});
+    w.addEventListener('statechange',()=>{if(w.state==='installed'){clearTimeout(deadline);if(!activateWaiting())location.reload()}},{once:false});
     return;
   }
   location.reload();
 };
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 async function startApplication(){
- initTheme();purgeLegacyDemoAdminState();hydrateBackendUser();await openDB();initGallerySwipe();
- let loaded=await loadCachedSnapshot();if(!loaded){S=emptySnapshot();window.SNAPSHOT=S;DATA_STATE.source='empty';renderCoreScreens()}
- renderBottomNav();network();initPwaUpdateLayer();
- if(backendSession()){setTimeout(()=>autoRefreshData('startup').catch(()=>{}),120);setTimeout(()=>syncReadyDrafts({auto:true}).catch(()=>{}),650);setTimeout(()=>ensureNomenclatureDeltaSetup(),1100);setTimeout(()=>recoverPendingAcks(),1600);setTimeout(()=>refreshPinnedOfflinePacks(),2400)}else backendPing({timeoutMs:2500})
+  initTheme();purgeLegacyDemoAdminState();hydrateBackendUser();await openDB();initGallerySwipe();
+  let loaded=await loadCachedSnapshot();if(!loaded){S=emptySnapshot();window.SNAPSHOT=S;DATA_STATE.source='empty';renderCoreScreens()}
+  renderBottomNav();network();initPwaUpdateLayer();
+  if(backendSession()){
+    setTimeout(()=>runResumeSync('startup'),120);
+    setTimeout(()=>ensureNomenclatureDeltaSetup().catch(()=>{}),1100);
+    setTimeout(()=>refreshPinnedOfflinePacks().catch(()=>{}),2400);
+  }else backendPing({timeoutMs:2500});
 }
 startApplication();
