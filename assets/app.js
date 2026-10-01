@@ -298,71 +298,20 @@ function orderRefResolve(raw){
 }
 let LAST_AUTO_REFRESH_ERROR_AT=0,AUTO_REFRESH_PROMISE=null;
 async function autoRefreshData(reason='auto'){if(!backendSession()||navigator.onLine===false)return {ok:false,error:'NO_SESSION_OR_OFFLINE'};if(AUTO_REFRESH_PROMISE)return AUTO_REFRESH_PROMISE;AUTO_REFRESH_PROMISE=(async()=>{const d=await refreshBackendData();if(d?.ok){if(document.getElementById('sync')?.classList.contains('active'))await renderSync();return d}const now=Date.now();if(now-LAST_AUTO_REFRESH_ERROR_AT>60000){LAST_AUTO_REFRESH_ERROR_AT=now;showAppToast('Не получилось обновить данные. Показываю последние сохранённые.','bad',4200)}return d})();try{return await AUTO_REFRESH_PROMISE}finally{AUTO_REFRESH_PROMISE=null}}
-async function manualRefreshData(){if(!backendSession()){showAppToast('Сначала подключите и активируйте устройство.','bad',3600);return {ok:false,error:'NO_SESSION'}}return withBusy('Обновляю данные…',async()=>{const d=await refreshBackendData();if(document.getElementById('sync')?.classList.contains('active'))await renderSync();showAppToast(d?.ok?'Данные обновлены.':'Не получилось обновить данные.',''+(d?.ok?'ok':'bad'),3200);return d})}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+async function manualRefreshData(){
+  if(!backendSession()){showAppToast('Сначала подключите и активируйте устройство.','bad',3600);return {ok:false,error:'NO_SESSION'}}
+  return withBusy('Отправляю очередь и обновляю данные…',async()=>{
+    await recoverPendingAcks().catch(()=>({ok:false}));
+    const pushed=await syncReadyDrafts({manual:true,notify:false,reason:'manual-refresh'}).catch(e=>({ok:false,error:String((e&&e.message)||e)}));
+    const pulled=await refreshBackendData();
+    if(document.getElementById('sync')?.classList.contains('active'))await renderSync();
+    if(document.getElementById('appdev')?.classList.contains('active'))await renderAppDev();
+    const sent=Number((pushed&&pushed.results&&pushed.results.filter(x=>x&&x.ok&&x.server_received).length)||0);
+    if(pulled&&pulled.ok)showAppToast(sent?('Отправлено: '+sent+'. Данные обновлены.'):'Данные обновлены. Очередь проверена.','ok',3600);
+    else showAppToast(sent?('Отправлено: '+sent+'. Получить свежий снимок пока не удалось.'):'Очередь проверена, но свежие данные пока не получены.','bad',4200);
+    return {ok:!!(pulled&&pulled.ok),pushed,pulled};
+  })
+}
 function localNomRevision(){const n=Math.floor(Number(lsGet(BACKEND_KEYS.nomRev)||0));return Number.isFinite(n)&&n>0?n:0}
 function setLocalNomRevision(v){const n=Math.floor(Number(v||0));if(n>0)lsSet(BACKEND_KEYS.nomRev,String(n));return n}
 async function ensureNomenclatureDeltaSetup(){
@@ -2512,9 +2461,9 @@ async function maybeBackgroundRefresh(reason='auto'){
   DATA_STATE.refreshing=true;
   try{
     if(navigator.onLine===false)return {ok:false,error:'OFFLINE'};
-    const d=await refreshBackendData();
-    if(d?.ok)syncReadyDrafts({auto:true}).catch(()=>{});
-    return d;
+    recoverPendingAcks().catch(()=>{});
+    syncReadyDrafts({auto:true,reason}).catch(()=>{});
+    return await refreshBackendData();
   }finally{DATA_STATE.refreshing=false}
 }
 function draftState(x){if(x.status==='ready'||x.status==='send-now')return 'ready';if(!x.holdUntil)return 'ready';return Date.now()<new Date(x.holdUntil).getTime()?'hold':'ready'}
