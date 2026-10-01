@@ -1,5 +1,5 @@
 ﻿'use strict';
-const BUILD='2026-09-30.1';
+const BUILD='2026-10-01.1';
 const CACHE='production-pwa-'+BUILD;
 const APP_SHELL=[
   './','./index.html','./assets/app.css','./assets/media.css','./assets/app.js','./bootstrap.js',
@@ -62,4 +62,17 @@ self.addEventListener('fetch',event=>{
     if(fresh.ok) await c.put(req,fresh.clone());
     return fresh;
   })());
+});
+async function notifyDraftSyncClients(reason){
+  const list=await self.clients.matchAll({type:'window',includeUncontrolled:true});
+  for(const client of list){client.postMessage({type:'PROD_SYNC_DRAFTS',reason:reason||'service-worker'});}
+  return list.length;
+}
+self.addEventListener('sync',event=>{
+  if(event.tag!=='prod-draft-sync')return;
+  event.waitUntil(notifyDraftSyncClients('background-sync'));
+});
+self.addEventListener('periodicsync',event=>{
+  if(event.tag!=='prod-draft-periodic')return;
+  event.waitUntil(notifyDraftSyncClients('periodic-sync'));
 });
