@@ -1,19 +1,19 @@
 {
-  "version": "v0.3.13",
-  "buildId": "2026-10-01.2",
-  "channel": "q015-stage2b",
+  "version": "v0.3.14",
+  "buildId": "2026-10-01.3",
+  "channel": "q015-stage2b-followup",
   "rolloutStage": "admin1",
   "eligibleRoles": [
     "ADMIN1"
   ],
   "dbSchema": 5,
-  "minBackend": "backend-0.2.12",
-  "previousBuildId": "2026-10-01.1",
+  "minBackend": "backend-0.2.13",
+  "previousBuildId": "2026-10-01.2",
   "rollback": {
-    "buildId": "2026-10-01.1",
+    "buildId": "2026-10-01.2",
     "dbSchema": 5,
     "safeWithoutDataReset": true
   },
-  "publishedAt": "2026-10-01T03:05:00Z",
-  "notes": "APP-Q015 Stage 2B: AppDev active/archive lifecycle, date-desc sorting, work/fixed/archive/delete actions with audit-preserving backend contract, and 3-column centered Home tiles."
+  "publishedAt": "2026-10-01T03:40:00Z",
+  "notes": "APP-Q015 Stage 2B follow-up: enforce 3-column mobile Home tiles, compact AppDev pencil action menu, optimistic Gallery favorite, Gallery info actions edit/delete/share."
 }
