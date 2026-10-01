@@ -440,3 +440,7 @@ main{padding-bottom:178px!important}
 
 /* v0.3.13 — APP-Q015 Stage 2B */
 .appdev-tabs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:12px 0}.appdev-tabs button{border:1px solid var(--line);border-radius:13px;padding:10px 8px;background:#fff;font-weight:800}.appdev-tabs button.active{box-shadow:0 0 0 2px rgba(0,0,0,.08);background:#f2eee8}.appdev-tabs b{margin-left:4px}.appdev-actions{display:flex;flex-wrap:wrap;gap:7px}.appdev-actions button{flex:1 1 108px}.appdev-card{margin-bottom:10px}
+
+/* v0.3.14 — APP-Q015 Stage 2B follow-up */
+@media(max-width:430px){.home-dashboard-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:7px!important}.dashboard-tile{min-height:82px!important;padding:7px!important;border-radius:14px!important}.dashboard-tile b{font-size:13px!important;line-height:1.1!important}}
+.appdev-card{position:relative;padding-right:48px}.appdev-card-menu{position:absolute;right:8px;bottom:8px}.appdev-pencil{width:38px;height:38px;border-radius:50%;border:1px solid var(--line);background:var(--card);font-size:22px;font-weight:900;display:grid;place-items:center}.appdev-action-sheet{display:grid;gap:9px}.appdev-action-sheet button{width:100%;min-height:45px}.gallery-info-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:12px}.gallery-info-actions a{display:flex;align-items:center;justify-content:center;text-decoration:none}.gallery-info-actions .primary,.gallery-info-actions .danger,.gallery-info-actions .secondary{min-height:44px}
