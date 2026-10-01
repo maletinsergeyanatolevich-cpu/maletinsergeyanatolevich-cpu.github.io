@@ -1,4 +1,4 @@
-﻿const APP_RELEASE=Object.freeze({version:'v0.3.13',buildId:'2026-10-01.2',channel:'q015-stage2b',dbSchema:5,updateStrategy:'manifest-service-worker',rolloutStage:'admin1',previousBuildId:'2026-10-01.1'});window.APP_RELEASE=APP_RELEASE;
+﻿const APP_RELEASE=Object.freeze({version:'v0.3.14',buildId:'2026-10-01.3',channel:'q015-stage2b-followup',dbSchema:5,updateStrategy:'manifest-service-worker',rolloutStage:'admin1',previousBuildId:'2026-10-01.2'});window.APP_RELEASE=APP_RELEASE;
 function emptySnapshot(){return {meta:{version:APP_RELEASE.version,snapshotDate:'',snapshotTime:'',timezone:'',backendConnected:false,source:'Нет загруженных бизнес-данных',schemaVersion:1},orders:[],calculations:{},wallet:{balance:0,income:0,expense:0,reserve:0,freeNow:0,expense7:0,free7:0,futureExpenses:[],transactions:[],futureTotal:0,futureIncome:0,afterObligations:0},nomenclature:[],purchaseLines:[],purchaseAggregated:[],gallery:[],appIssues:[],purchaseWarnings:[]}}
 function normalizeSnapshot(x){const b=emptySnapshot();if(!x||typeof x!=='object')return b;return {...b,...x,meta:{...b.meta,...(x.meta||{})},wallet:{...b.wallet,...(x.wallet||{})},orders:Array.isArray(x.orders)?x.orders:[],calculations:x.calculations&&typeof x.calculations==='object'?x.calculations:{},nomenclature:Array.isArray(x.nomenclature)?x.nomenclature:[],purchaseLines:Array.isArray(x.purchaseLines)?x.purchaseLines:[],purchaseAggregated:Array.isArray(x.purchaseAggregated)?x.purchaseAggregated:[],gallery:Array.isArray(x.gallery)?x.gallery:[],appIssues:Array.isArray(x.appIssues)?x.appIssues:[],purchaseWarnings:Array.isArray(x.purchaseWarnings)?x.purchaseWarnings:[]}}
 let S=emptySnapshot(); window.SNAPSHOT=S;
@@ -1892,10 +1892,11 @@ function closeGalleryLightbox(){const box=document.getElementById('galleryLightb
 async function toggleGalleryLightboxFavorite(){
  if(!galleryLightboxKey)return;const k=galleryLightboxKey;
  if(k.startsWith('server:')){
-   const g=galleryServerByKey(k);if(!g)return;const on=!galleryIsFavorite(k),r=await setServerFavorite(g,on);if(!r.ok){showAppToast('Не удалось изменить избранное.','bad');return}
-   const star=document.getElementById('galleryLightboxStar');if(star)star.textContent=on?'★':'☆';showAppToast(on?'Добавлено в избранное':'Убрано из избранного','ok',1800);return
+   const g=galleryServerByKey(k);if(!g)return;const before=galleryIsFavorite(k),on=!before;applyGalleryFavoriteLocal(g,on);
+   const r=await setServerFavorite(g,on);if(!r.ok){applyGalleryFavoriteLocal(g,before);showAppToast('Не удалось изменить избранное.','bad');return}
+   showAppToast(on?'Добавлено в избранное':'Убрано из избранного','ok',1600);return
  }
- const on=!galleryIsFavorite(k);setGalleryFavorite(k,on);const star=document.getElementById('galleryLightboxStar');if(star)star.textContent=on?'★':'☆';showAppToast(on?'Добавлено в избранное':'Убрано из избранного','ok',1800)
+ const on=!galleryIsFavorite(k);setGalleryFavorite(k,on);const star=document.getElementById('galleryLightboxStar');if(star)star.textContent=on?'★':'☆';showAppToast(on?'Добавлено в избранное':'Убрано из избранного','ok',1600)
 }
 async function setServerFavorite(g,on){
  const action=on?'favorite':'unfavorite';
@@ -1903,15 +1904,50 @@ async function setServerFavorite(g,on){
  if(!d?.ok)return {ok:false,error:d?.error||'GALLERY_FAVORITE_FAILED'};
  const ids=new Set(Array.isArray(g.favoriteUserIds)?g.favoriteUserIds.map(String):[]),uid=String(SESSION.userId||'');if(on)ids.add(uid);else ids.delete(uid);g.favoriteUserIds=[...ids];g.favoriteCount=ids.size;return {ok:true,on}
 }
+function applyGalleryFavoriteLocal(g,on){
+ const ids=new Set(Array.isArray(g.favoriteUserIds)?g.favoriteUserIds.map(String):[]),uid=String(SESSION.userId||'');
+ if(on)ids.add(uid);else ids.delete(uid);g.favoriteUserIds=[...ids];g.favoriteCount=ids.size;
+ const b=document.getElementById('gallery-star-'+domSafe(g.id));if(b){b.textContent=on?'★':'☆';b.classList.toggle('on',on)}
+ const lb=document.getElementById('galleryLightboxStar');if(lb&&galleryLightboxKey==='server:'+g.id)lb.textContent=on?'★':'☆'
+}
 async function toggleGalleryTileFavorite(id){
  const g=(S.gallery||[]).find(x=>String(x.id)===String(id));if(!g)return;
- const on=!galleryIsFavorite('server:'+g.id),r=await setServerFavorite(g,on);if(!r.ok){showAppToast('Не удалось изменить избранное.','bad');return}
- await renderGallery();showAppToast(on?'Добавлено в избранное':'Убрано из избранного','ok',1800)
+ const before=galleryIsFavorite('server:'+g.id),on=!before;applyGalleryFavoriteLocal(g,on);
+ const r=await setServerFavorite(g,on);
+ if(!r.ok){applyGalleryFavoriteLocal(g,before);showAppToast('Не удалось изменить избранное.','bad');return}
+ showAppToast(on?'Добавлено в избранное':'Убрано из избранного','ok',1600)
 }
 function galleryInfoModal(id){
  const g=(S.gallery||[]).find(x=>String(x.id)===String(id));if(!g)return;
- const url=String(g.driveUrl||''),fav=Number(g.favoriteCount||0);
- modal('Информация о фото',`<div class="gallery-info-list"><div><b>Название файла</b><span>${esc(g.name||g.title||'')}</span></div><div><b>Заказ</b><span>${esc(g.orderId||'—')}</span></div><div><b>Дата</b><span>${esc(g.date||'—')}</span></div><div><b>Тип / категория</b><span>${esc([g.type,g.category].filter(Boolean).join(' · ')||'—')}</span></div><div><b>Отправил</b><span>${esc(g.createdByName||g.source||'—')}</span></div><div><b>Комментарий</b><span>${esc(g.note||g.comment||g.description||'—')}</span></div><div><b>Избранное</b><span>★ ${fav}</span></div><div><b>Google Drive</b><span class="file-meta">${esc(url||'—')}</span>${url?`<a class="secondary gallery-drive-link" href="${esc(url)}" target="_blank" rel="noopener">Открыть на Google Drive</a>`:''}</div></div>`)
+ const url=String(g.driveUrl||''),fav=Number(g.favoriteCount||0),canEdit=isAdmin1()||hasPermission('gallery.edit'),canDelete=isAdmin1()||hasPermission('gallery.delete');
+ modal('Информация о фото',`<div class="gallery-info-list"><div><b>Название файла</b><span>${esc(g.name||g.title||'')}</span></div><div><b>Заказ</b><span>${esc(g.orderId||'—')}</span></div><div><b>Дата</b><span>${esc(g.date||'—')}</span></div><div><b>Тип / категория</b><span>${esc([g.type,g.category].filter(Boolean).join(' · ')||'—')}</span></div><div><b>Отправил</b><span>${esc(g.createdByName||g.source||'—')}</span></div><div><b>Комментарий</b><span>${esc(g.note||g.comment||g.description||'—')}</span></div><div><b>Избранное</b><span>★ ${fav}</span></div></div><div class="gallery-info-actions"><button class="secondary" onclick="closeModal();toggleGalleryTileFavorite('${esc(g.id)}')">☆ / ★ Избранное</button>${canEdit?`<button class="secondary" onclick="galleryEditModal('${esc(g.id)}')">✎ Редактировать</button>`:''}${canDelete?`<button class="danger" onclick="deleteServerGallery('${esc(g.id)}')">Удалить</button>`:''}<button class="primary" onclick="shareServerGallery('${esc(g.id)}')">Поделиться</button>${url?`<a class="secondary gallery-drive-link" href="${esc(url)}" target="_blank" rel="noopener">Google Drive</a>`:''}</div>`)
+}
+function galleryEditModal(id){
+ const g=(S.gallery||[]).find(x=>String(x.id)===String(id));if(!g)return;
+ modal('Редактировать фото',`<div class="field"><label>Название</label><input id="galleryEditTitle" value="${esc(g.name||g.title||'')}"></div><div class="field"><label>№ заказа</label><input id="galleryEditOrder" value="${esc(g.orderId||'')}"></div><div class="field"><label>Категория</label><input id="galleryEditCategory" value="${esc(g.category||'Галерея')}"></div><div class="field"><label>Комментарий</label><textarea id="galleryEditComment">${esc(g.note||g.comment||g.description||'')}</textarea></div><button class="primary" onclick="saveGalleryEdit('${esc(g.id)}')">Сохранить</button>`)
+}
+async function saveGalleryEdit(id){
+ const body={action:'gallery.update',session_token:backendSession(),device_id:backendDeviceId(),gallery_id:id,gallery_action:'edit',title:(document.getElementById('galleryEditTitle')?.value||'').trim(),order_id:(document.getElementById('galleryEditOrder')?.value||'').trim(),category:(document.getElementById('galleryEditCategory')?.value||'').trim(),comment:(document.getElementById('galleryEditComment')?.value||'').trim(),app_version:APP_RELEASE.version};
+ closeModal();await withBusy('Сохраняю фото…',async()=>{const d=await backendPost(body,{timeoutMs:22000});if(!d?.ok){showAppToast('Не удалось сохранить: '+String(d?.error||''),'bad');return}await pullLiveSnapshot({silent:true});await renderGallery();showAppToast('Изменения сохранены.','ok')})
+}
+async function deleteServerGallery(id){
+ if(!confirm('Убрать это фото из Галереи? Запись останется в аудите и на Google Drive.'))return;
+ closeModal();await withBusy('Удаляю из Галереи…',async()=>{const d=await backendPost({action:'gallery.update',session_token:backendSession(),device_id:backendDeviceId(),gallery_id:id,gallery_action:'delete',app_version:APP_RELEASE.version},{timeoutMs:22000});if(!d?.ok){showAppToast('Не удалось удалить: '+String(d?.error||''),'bad');return}await pullLiveSnapshot({silent:true});await renderGallery();showAppToast('Фото убрано из Галереи.','ok')})
+}
+async function shareServerGallery(id){
+ const g=(S.gallery||[]).find(x=>String(x.id)===String(id));if(!g)return;
+ await withBusy('Готовлю фото…',async()=>{
+   const b=await galleryServerBlob(g,'manual');
+   const title=g.name||g.title||'Фото';
+   if(b&&navigator.share){
+     try{
+       const ext=(b.type||'image/jpeg').includes('png')?'png':'jpg',file=new File([b],String(title).replace(/[\\/:*?"<>|]+/g,'_')+'.'+ext,{type:b.type||'image/jpeg'});
+       if(!navigator.canShare||navigator.canShare({files:[file]})){await navigator.share({title,files:[file]});return}
+     }catch(e){if(String(e?.name||'')==='AbortError')return}
+   }
+   if(navigator.share){try{await navigator.share({title,text:g.comment||g.description||'',url:g.driveUrl||location.href});return}catch(e){if(String(e?.name||'')==='AbortError')return}}
+   showAppToast('Системное меню «Поделиться» недоступно на этом устройстве.','bad',4200)
+ })
 }
 async function showServerGalleryAt(index){
  if(!GALLERY_SERVER_LIGHTBOX_IDS.length)return;const n=(index+GALLERY_SERVER_LIGHTBOX_IDS.length)%GALLERY_SERVER_LIGHTBOX_IDS.length;GALLERY_SERVER_LIGHTBOX_INDEX=n;
@@ -1931,7 +1967,7 @@ function initGallerySwipe(){
 
 function galleryServerTile(g){
  const key=`server:${g.id}`,node='gallery-media-'+domSafe(g.id),fav=galleryIsFavorite(key);
- return `<div class="gallery-tile compact-gallery-tile"><button class="gallery-thumb-button protected-media" id="${node}" onclick="openServerGalleryLightbox('${esc(g.id)}')"><span>Фото загружается…</span></button><div class="gallery-tile-controls"><button class="gallery-circle-btn gallery-star-btn ${fav?'on':''}" onclick="toggleGalleryTileFavorite('${esc(g.id)}')" aria-label="Избранное">${fav?'★':'☆'}</button><button class="gallery-circle-btn" onclick="galleryInfoModal('${esc(g.id)}')" aria-label="Информация">i</button></div></div>`
+ return `<div class="gallery-tile compact-gallery-tile"><button class="gallery-thumb-button protected-media" id="${node}" onclick="openServerGalleryLightbox('${esc(g.id)}')"><span>Фото загружается…</span></button><div class="gallery-tile-controls"><button class="gallery-circle-btn gallery-star-btn ${fav?'on':''}" id="gallery-star-${domSafe(g.id)}" onclick="toggleGalleryTileFavorite('${esc(g.id)}')" aria-label="Избранное">${fav?'★':'☆'}</button><button class="gallery-circle-btn" onclick="galleryInfoModal('${esc(g.id)}')" aria-label="Информация">i</button></div></div>`
 }
 function galleryServerCandidateItem(g){const node='gallery-media-'+domSafe(g.id),note=String(g.note||g.comment||'');return `<div class="gallery-candidate-tile"><div class="gallery-candidate-head"><span class="badge warn">кандидат</span><small>${esc(g.orderId||'без заказа')}</small></div><button class="gallery-thumb-button protected-media" id="${node}" onclick="openServerGalleryLightbox('${esc(g.id)}')"><span>Фото загружается…</span></button><div class="gallery-candidate-meta">${esc(g.date||'')}${note?`<div class="gallery-internal-note"><b>Комментарий:</b> ${esc(note)}</div>`:''}<div class="hint">отправил: ${esc(g.createdByName||'')}</div></div><div class="queue-actions">${hasPermission('gallery.approve')?`<button class="approve-btn" onclick="galleryServerApprove('${esc(g.id)}')">Одобрить</button>`:''}</div></div>`}
 async function galleryServerBlob(g,mode='auto'){if(!g?.mediaId)return null;return protectedImageBlob('gallery.media.get',{gallery_id:g.id},g.mediaId,mode)}
@@ -1979,17 +2015,21 @@ function appDevIssueCard(x){
   const when=x.updated_at||x.created_at||'';
   let actions='';
   if(admin){
-    const a=[];
-    a.push(`<button onclick="appDevAdminModal('${esc(key)}')">Редактировать</button>`);
-    if(!x.issue_id&&!/ОТКЛОНЕНО|УДАЛЕНО/i.test(status))a.push(`<button class="approve-btn" onclick="appDevAction('${esc(key)}','approve')">Принять</button>`);
-    if(!isArchived&&!isWork)a.push(`<button onclick="appDevAction('${esc(key)}','work')">В работу</button>`);
-    if(!isArchived&&!isFixed)a.push(`<button class="approve-btn" onclick="appDevAction('${esc(key)}','fixed')">Исправлено</button>`);
-    if(!isArchived)a.push(`<button onclick="appDevAction('${esc(key)}','archive')">Архив</button>`);
-    if(isArchived)a.push(`<button onclick="appDevAction('${esc(key)}','reopen')">Вернуть в работу</button>`);
-    if(!/УДАЛЕНО/i.test(status))a.push(`<button class="danger" onclick="appDevAction('${esc(key)}','delete')">Удалить</button>`);
-    actions=`<div class="record-actions appdev-actions">${a.join('')}</div>`;
+    actions=`<div class="appdev-card-menu"><button class="appdev-pencil" onclick="appDevActionsModal('${esc(key)}')" aria-label="Действия с замечанием">✎</button></div>`;
   }
   return `<article class="appdev-card"><div class="between"><div><b>${esc(x.issue_id||x.local_id||'замечание')}</b><small>${esc(x.created_by_name||x.created_by_user_id||'')} · ${x.created_at?new Date(x.created_at).toLocaleString('ru-RU'):''}</small></div><span class="badge ${appDevStatusClass(status)}">${esc(status)}</span></div><h3>${esc(x.title||'Замечание')}</h3><div class="appdev-text">${esc(x.working_text||x.original_text||'')}</div>${media.length?`<div class="appdev-media">${media.map((u,i)=>{const mid=driveIdFromClientUrl(u),node='appdev-media-'+domSafe(key)+'-'+i;return mid?`<button class="protected-media" id="${node}" onclick="openAppDevServerMedia('${esc(key)}','${esc(mid)}')"><span>Скриншот ${i+1} загружается…</span></button>`:`<button onclick="window.open('${esc(u)}','_blank')">Скриншот ${i+1}</button>`}).join('')}</div>`:''}${x.admin_note?`<div class="hint"><b>Комментарий по исправлению:</b> ${esc(x.admin_note)}</div>`:''}<div class="hint">Последнее изменение: ${when?new Date(when).toLocaleString('ru-RU'):'—'}${who?' · '+esc(who):''}</div>${actions}</article>`;
+}
+function appDevActionsModal(key){
+  const x=(S.appIssues||[]).find(i=>String(i.issue_id||i.local_id)===String(key));if(!x)return;
+  const status=String(x.status||'НА РАССМОТРЕНИИ'),isArchived=appDevIsArchive(x),isFixed=/ИСПРАВЛЕНО/i.test(status),isWork=/В РАБОТЕ/i.test(status);
+  const a=[`<button class="secondary" onclick="closeModal();appDevAdminModal('${esc(key)}')">✎ Редактировать</button>`];
+  if(!x.issue_id&&!/ОТКЛОНЕНО|УДАЛЕНО/i.test(status))a.push(`<button class="secondary" onclick="closeModal();appDevAction('${esc(key)}','approve')">Принять</button>`);
+  if(!isArchived&&!isWork)a.push(`<button class="secondary" onclick="closeModal();appDevAction('${esc(key)}','work')">В работу</button>`);
+  if(!isArchived&&!isFixed)a.push(`<button class="secondary" onclick="closeModal();appDevAction('${esc(key)}','fixed')">Исправлено</button>`);
+  if(!isArchived)a.push(`<button class="secondary" onclick="closeModal();appDevAction('${esc(key)}','archive')">В архив</button>`);
+  if(isArchived)a.push(`<button class="secondary" onclick="closeModal();appDevAction('${esc(key)}','reopen')">Вернуть в работу</button>`);
+  if(!/УДАЛЕНО/i.test(status))a.push(`<button class="danger" onclick="closeModal();appDevAction('${esc(key)}','delete')">Удалить</button>`);
+  modal('Действия с замечанием',`<div class="appdev-action-sheet"><div class="hint">Статус: <b>${esc(status)}</b></div>${a.join('')}</div>`)
 }
 async function hydrateAppDevMedia(){for(const x of (S.appIssues||[])){const key=x.issue_id||x.local_id||'',media=Array.isArray(x.media_urls)?x.media_urls:[];for(let i=0;i<media.length;i++){const mid=driveIdFromClientUrl(media[i]),node=document.getElementById('appdev-media-'+domSafe(key)+'-'+i);if(!mid||!node)continue;const b=await appDevServerBlob(key,mid,'auto');if(b)node.innerHTML=`<img class="gallery-thumb" src="${blobUrl(b)}" alt="Скриншот ${i+1}" loading="lazy">`}}}
 async function openAppDevServerMedia(key,mediaId){const b=await appDevServerBlob(key,mediaId,'manual');if(!b){showAppToast('Скриншот не загрузился.','bad');return}openGalleryLightbox(blobUrl(b),'appdev:'+key+':'+mediaId)}
