@@ -2278,7 +2278,7 @@ function applyOptimisticMutation(entityType,entityId,recordAction,patch){
 async function mutateRecord(entityType,entityId,recordAction,patch={},note=''){
  const source=mutationSourceRecord(entityType,entityId),baseRecordVersion=Number(source?.recordVersion||0),baseValues=mutationBaseValues(entityType,source,patch),text=(recordAction==='delete'?'Удаление/архивирование ':'Изменение ')+(entityType==='order'?'заказа ':'финансовой операции ')+entityId;
  let rec;try{rec=await putDraft({kind:'record-mutation',context:entityType==='order'?'order-edit':'wallet-edit',objectId:entityId,text,holdUntil:'',status:'ready',meta:{entityType,entityId,recordAction,patch,note,baseRecordVersion,baseValues,syncState:'local'}})}catch(e){return {ok:false,error:String(e?.message||e)}}
- applyOptimisticMutation(entityType,entityId,recordAction,patch);await refreshPending();showAppToast('Изменение сохранено на телефоне. Синхронизация идёт в фоне.','ok',3400);
+ applyOptimisticMutation(entityType,entityId,recordAction,patch);await refreshPending();if(entityType==='order')renderOrders();if(entityType==='finance')renderWallet();showAppToast('Изменение сохранено на телефоне. Синхронизация идёт в фоне.','ok',3400);
  if(backendSession()&&navigator.onLine!==false)setTimeout(async()=>{const r=await syncDraftById(rec.id);await refreshPending();if(r?.processing_status==='pending_review'){showAppToast('Конфликт изменений: сервер ничего не перезаписал. Решение доступно ADMIN1.','bad',6000);if(isAdmin1()){adminState.loaded=false;loadAdminData(true).catch(()=>{})}}else if(r?.ok&&r?.server_received){await pullLiveSnapshot({silent:true});if(entityType==='order')renderOrders();if(entityType==='finance')renderWallet()}},0);
  return {ok:true,local:true,event_id:rec.id}
 }
