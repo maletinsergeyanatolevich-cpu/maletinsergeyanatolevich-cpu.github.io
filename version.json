@@ -1,17 +1,19 @@
 {
-  "version": "v0.3.12",
-  "buildId": "2026-10-01.1",
-  "channel": "q015-stage2a",
+  "version": "v0.3.13",
+  "buildId": "2026-10-01.2",
+  "channel": "q015-stage2b",
   "rolloutStage": "admin1",
-  "eligibleRoles": ["ADMIN1"],
+  "eligibleRoles": [
+    "ADMIN1"
+  ],
   "dbSchema": 5,
-  "minBackend": "backend-0.2.11",
-  "previousBuildId": "2026-09-30.1",
+  "minBackend": "backend-0.2.12",
+  "previousBuildId": "2026-10-01.1",
   "rollback": {
-    "buildId": "2026-09-30.1",
+    "buildId": "2026-10-01.1",
     "dbSchema": 5,
     "safeWithoutDataReset": true
   },
-  "publishedAt": "2026-10-01T01:30:00Z",
-  "notes": "APP-Q015 Stage 2A critical offline-first recovery: restore HOLD_MS, explicit local save result, ACK-safe retries, stable mobile/Wi-Fi media sync, manual/online/resume/startup/foreground/service-worker sync fallbacks."
+  "publishedAt": "2026-10-01T03:05:00Z",
+  "notes": "APP-Q015 Stage 2B: AppDev active/archive lifecycle, date-desc sorting, work/fixed/archive/delete actions with audit-preserving backend contract, and 3-column centered Home tiles."
 }
