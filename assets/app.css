@@ -454,3 +454,12 @@ main{padding-bottom:178px!important}
 .conflict-card{border:1px solid var(--line);border-radius:14px;padding:12px;margin-top:10px;background:var(--card)}
 .conflict-fields{display:grid;gap:8px;margin:10px 0}.conflict-fields>div{border:1px solid var(--line);border-radius:10px;padding:9px;display:grid;gap:3px}.conflict-fields span{font-size:12px;color:var(--muted)}
 .conflict-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}.conflict-actions button{min-height:44px}
+
+/* v0.3.17 — APP-Q015 Phase C */
+.order-money-mini{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;margin-top:7px}.order-money-mini span{font-size:11px;color:var(--muted);display:grid;gap:2px}.order-money-mini b{font-size:12px;color:var(--text)}
+.finance-mismatch{margin:8px 0 10px;padding:9px 10px;border-radius:11px;border:1px solid var(--line);background:#fff2c9;font-size:12px;line-height:1.35}
+.order-finance-readonly{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin:10px 0}.order-finance-readonly>div{border:1px solid var(--line);border-radius:11px;padding:9px;background:var(--card);display:grid;gap:3px}.order-finance-readonly span{font-size:11px;color:var(--muted)}.order-finance-readonly b{font-size:15px}
+.order-finance-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0}.order-finance-actions button{min-height:42px;border:1px solid var(--line);border-radius:12px;background:var(--card);font-weight:850}
+.finance-class-badge{display:inline-flex;width:max-content;margin:3px 0;padding:2px 6px;border:1px solid var(--line);border-radius:999px;font-size:10px;font-weight:800;background:#f4f1ec}
+.future-row-actions{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:7px}.future-row-actions button{min-height:40px}
+@media(max-width:430px){.order-money-mini,.order-finance-readonly{grid-template-columns:1fr 1fr}.order-money-mini span:last-child,.order-finance-readonly>div:last-child{grid-column:1/-1}}
