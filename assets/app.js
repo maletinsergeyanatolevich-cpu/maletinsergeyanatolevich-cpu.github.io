@@ -1,4 +1,4 @@
-﻿const APP_RELEASE=Object.freeze({version:'v0.3.11',buildId:'2026-09-30.1',channel:'q014-followup',dbSchema:5,updateStrategy:'manifest-service-worker',rolloutStage:'admin1',previousBuildId:'2026-09-27.1'});window.APP_RELEASE=APP_RELEASE;
+﻿const APP_RELEASE=Object.freeze({version:'v0.3.12',buildId:'2026-10-01.1',channel:'q015-stage2a',dbSchema:5,updateStrategy:'manifest-service-worker',rolloutStage:'admin1',previousBuildId:'2026-09-30.1'});window.APP_RELEASE=APP_RELEASE;
 function emptySnapshot(){return {meta:{version:APP_RELEASE.version,snapshotDate:'',snapshotTime:'',timezone:'',backendConnected:false,source:'Нет загруженных бизнес-данных',schemaVersion:1},orders:[],calculations:{},wallet:{balance:0,income:0,expense:0,reserve:0,freeNow:0,expense7:0,free7:0,futureExpenses:[],transactions:[],futureTotal:0,futureIncome:0,afterObligations:0},nomenclature:[],purchaseLines:[],purchaseAggregated:[],gallery:[],appIssues:[],purchaseWarnings:[]}}
 function normalizeSnapshot(x){const b=emptySnapshot();if(!x||typeof x!=='object')return b;return {...b,...x,meta:{...b.meta,...(x.meta||{})},wallet:{...b.wallet,...(x.wallet||{})},orders:Array.isArray(x.orders)?x.orders:[],calculations:x.calculations&&typeof x.calculations==='object'?x.calculations:{},nomenclature:Array.isArray(x.nomenclature)?x.nomenclature:[],purchaseLines:Array.isArray(x.purchaseLines)?x.purchaseLines:[],purchaseAggregated:Array.isArray(x.purchaseAggregated)?x.purchaseAggregated:[],gallery:Array.isArray(x.gallery)?x.gallery:[],appIssues:Array.isArray(x.appIssues)?x.appIssues:[],purchaseWarnings:Array.isArray(x.purchaseWarnings)?x.purchaseWarnings:[]}}
 let S=emptySnapshot(); window.SNAPSHOT=S;
@@ -264,6 +264,9 @@ const BACKEND_URL='https://script.google.com/macros/s/AKfycbw9LwsZcvSylhVtZPNL2_
 const BACKEND_KEYS={device:'prodDeviceId',secret:'prodActivationSecret',request:'prodAccessRequestId',session:'prodSessionToken',sessionId:'prodSessionId',offlineUntil:'prodOfflineUntil',user:'prodBackendUser',nomRev:'prodNomRevision',nomSetup:'prodNomDeltaSetup'};
 let backendState={ping:'unknown',lastError:'',syncing:false,recovering:false};
 const DATA_STATE={source:'',lastCacheAt:'',lastPullAt:'',lastAttemptAt:'',lastError:'',network:'unknown',refreshing:false};
+const HOLD_MS=5*60*1000;
+const BG_SYNC_TAG='prod-draft-sync';
+const BG_PERIODIC_TAG='prod-draft-periodic';
 let BUSY_COUNT=0;
 function setBusy(text='Выполняю…'){BUSY_COUNT++;const box=document.getElementById('busyOverlay'),label=document.getElementById('busyText');if(label)label.textContent=text;if(box)box.classList.remove('hidden')}
 function clearBusy(){BUSY_COUNT=Math.max(0,BUSY_COUNT-1);if(BUSY_COUNT===0)document.getElementById('busyOverlay')?.classList.add('hidden')}
