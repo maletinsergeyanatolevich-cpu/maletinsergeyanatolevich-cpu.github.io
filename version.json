@@ -1,19 +1,19 @@
 {
-  "version": "v0.3.17",
-  "buildId": "2026-10-01.6",
-  "channel": "q015-phase-c",
+  "version": "v0.3.18",
+  "buildId": "2026-10-05.1",
+  "channel": "q025-wallet-balance",
   "rolloutStage": "admin1",
   "eligibleRoles": [
     "ADMIN1"
   ],
   "dbSchema": 5,
-  "minBackend": "backend-0.2.16",
-  "previousBuildId": "2026-10-01.5",
+  "minBackend": "backend-0.2.17",
+  "previousBuildId": "2026-10-01.6",
   "rollback": {
-    "buildId": "2026-10-01.5",
+    "buildId": "2026-10-01.6",
     "dbSchema": 5,
     "safeWithoutDataReset": true
   },
-  "publishedAt": "2026-10-01T09:55:00Z",
-  "notes": "APP-Q015 Phase C: Finance-derived order received/debt/direct cost, finance mismatch visibility, order-linked income/expense actions, planned edit+actualize, movement classification."
+  "publishedAt": "2026-10-05T00:00:00Z",
+  "notes": "Q-025: Wallet Balance screen, owner debts Sergey/Evgeny, owner withdrawals, future income/expense moved to Balance, period business income/expense, owner-funded expense source."
 }
