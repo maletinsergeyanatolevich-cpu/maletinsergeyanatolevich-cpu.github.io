@@ -2,9 +2,9 @@
   "version": "v0.3.19",
   "buildId": "2026-10-05.2",
   "channel": "q025-net-position-hotfix",
-  "rolloutStage": "admin1",
+  "rolloutStage": "stable",
   "eligibleRoles": [
-    "ADMIN1"
+    "ALL_AUTHORIZED"
   ],
   "dbSchema": 5,
   "minBackend": "backend-0.2.18",
@@ -15,5 +15,5 @@
     "safeWithoutDataReset": true
   },
   "publishedAt": "2026-10-05T10:45:00Z",
-  "notes": "Q-025 hotfix: Wallet primary Balance is clean net position; current owner debt is only the uncovered personal funding after available production cash, while gross owner contribution history remains auditable."
+  "notes": "Q-025 hotfix: Wallet primary Balance is clean net position; current owner debt is only the uncovered personal funding after available production cash, while gross owner contribution history remains auditable. Global rollout to all authorized users."
 }
