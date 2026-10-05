@@ -2324,7 +2324,9 @@ let WALLET_VIEW='main';
 function setWalletView(v){WALLET_VIEW=v==='balance'?'balance':'main';renderWallet()}
 function walletOwnerKey(owner){return owner==='sergey'?'Сергей':'Евгений'}
 function walletTxOwnerMatch(x,owner){
- const name=walletOwnerKey(owner).toLowerCase(),hay=[x.counterparty,x.subcategory,x.comment].join(' ').toLowerCase();return hay.includes(name.toLowerCase().slice(0,5))
+ const key=owner==='sergey'?'серге':'евген',primary=[x.counterparty,x.subcategory].join(' ').toLowerCase();
+ if(primary.includes('серге')||primary.includes('евген'))return primary.includes(key);
+ const fallback=[x.comment].join(' ').toLowerCase();return fallback.includes(key)
 }
 function walletPeriodTransactions(kind){
  const tx=Array.isArray(S.wallet.transactions)?S.wallet.transactions:[];
