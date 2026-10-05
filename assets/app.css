@@ -463,3 +463,15 @@ main{padding-bottom:178px!important}
 .finance-class-badge{display:inline-flex;width:max-content;margin:3px 0;padding:2px 6px;border:1px solid var(--line);border-radius:999px;font-size:10px;font-weight:800;background:#f4f1ec}
 .future-row-actions{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:7px}.future-row-actions button{min-height:40px}
 @media(max-width:430px){.order-money-mini,.order-finance-readonly{grid-template-columns:1fr 1fr}.order-money-mini span:last-child,.order-finance-readonly>div:last-child{grid-column:1/-1}}
+
+/* v0.3.18 — Q-025 Wallet balance */
+.wallet-balance-main-button{width:100%;text-align:left;border:1px solid var(--line);cursor:pointer}
+.wallet-balance-main-button small{display:block;margin-top:6px;color:var(--muted);font-size:12px}
+.wallet-position-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:10px 0 14px}
+.wallet-position-grid>div{border:1px solid var(--line);border-radius:14px;padding:11px;background:var(--card);display:grid;gap:5px}
+.wallet-position-grid span{font-size:11px;color:var(--muted)}.wallet-position-grid b{font-size:18px}.wallet-position-grid .negative b{color:#a52a2a}
+.wallet-balance-list{display:grid;gap:8px}.wallet-balance-row{width:100%;border:1px solid var(--line);border-radius:14px;background:var(--card);padding:11px 12px;display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:9px;align-items:center;text-align:left}
+.wallet-balance-row span{display:grid;gap:3px}.wallet-balance-row small{color:var(--muted);font-size:11px}.wallet-balance-row strong{font-size:16px}.wallet-balance-row i{font-size:22px;font-style:normal;color:var(--muted)}
+.owner-summary-value{font-size:28px;font-weight:950;margin-bottom:10px}.owner-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}.owner-actions button{min-height:43px;border:1px solid var(--line);border-radius:12px;background:var(--card);font-weight:850}
+.wallet-ledger-list{display:grid;gap:8px}
+@media(max-width:430px){.wallet-position-grid{grid-template-columns:1fr}.owner-actions{grid-template-columns:1fr}}
