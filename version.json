@@ -1,19 +1,19 @@
 {
-  "version": "v0.3.18",
-  "buildId": "2026-10-05.1",
-  "channel": "q025-wallet-balance",
-  "rolloutStage": "admin1",
+  "version": "v0.3.19",
+  "buildId": "2026-10-05.2",
+  "channel": "q025-net-position-hotfix",
+  "rolloutStage": "stable",
   "eligibleRoles": [
-    "ADMIN1"
+    "ALL_AUTHORIZED"
   ],
   "dbSchema": 5,
-  "minBackend": "backend-0.2.17",
-  "previousBuildId": "2026-10-01.6",
+  "minBackend": "backend-0.2.18",
+  "previousBuildId": "2026-10-05.1",
   "rollback": {
-    "buildId": "2026-10-01.6",
+    "buildId": "2026-10-05.1",
     "dbSchema": 5,
     "safeWithoutDataReset": true
   },
-  "publishedAt": "2026-10-05T00:00:00Z",
-  "notes": "Q-025: Wallet Balance screen, owner debts Sergey/Evgeny, owner withdrawals, future income/expense moved to Balance, period business income/expense, owner-funded expense source."
+  "publishedAt": "2026-10-05T10:45:00Z",
+  "notes": "Q-025 hotfix: Wallet primary Balance is clean net position; current owner debt is only the uncovered personal funding after available production cash, while gross owner contribution history remains auditable. Global rollout to all authorized users."
 }

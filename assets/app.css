@@ -475,3 +475,8 @@ main{padding-bottom:178px!important}
 .owner-summary-value{font-size:28px;font-weight:950;margin-bottom:10px}.owner-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}.owner-actions button{min-height:43px;border:1px solid var(--line);border-radius:12px;background:var(--card);font-weight:850}
 .wallet-ledger-list{display:grid;gap:8px}
 @media(max-width:430px){.wallet-position-grid{grid-template-columns:1fr}.owner-actions{grid-template-columns:1fr}}
+
+/* v0.3.19 — Q-025 net position hotfix */
+.wallet-balance-main-button.negative .value{color:#a52a2a}
+.wallet-net-explain,.owner-gross-note{margin:8px 0 12px;padding:9px 10px;border:1px solid var(--line);border-radius:11px;background:var(--card);font-size:12px;line-height:1.4;color:var(--muted)}
+.owner-gross-note b{color:var(--text)}
