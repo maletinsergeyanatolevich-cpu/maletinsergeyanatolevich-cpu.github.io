@@ -485,3 +485,16 @@ main{padding-bottom:178px!important}
 .transfer-progress{margin:8px 0 10px;padding:9px 11px;border:1px solid var(--line);border-radius:12px;background:var(--card);font-size:12px;line-height:1.45;display:grid;gap:3px}
 .transfer-progress.hidden{display:none}
 .transfer-progress>div{white-space:normal;overflow-wrap:anywhere}
+
+
+/* v0.3.24 — Q-029 W0 order edit affordance + finance-action contrast */
+#orderDetail .order-edit-main{width:100%;min-height:52px;margin:0 0 12px;border:2px solid #9b5f36;border-radius:13px;background:#fff3e8!important;color:#6f3512!important;font-size:17px;font-weight:950;box-shadow:0 2px 7px rgba(0,0,0,.08)}
+#orderDetail .order-finance-actions button{min-height:52px!important;background:#fff7ef!important;color:#5d3218!important;border:2px solid #e1ad82!important;font-size:16px!important;font-weight:950!important;box-shadow:0 2px 6px rgba(0,0,0,.08)}
+#orderDetail .order-finance-actions button:active,#orderDetail .order-edit-main:active{transform:scale(.985)}
+#orderDetail .order-text-section{margin:11px 0}
+#orderDetail .order-text-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 2px 6px}
+#orderDetail .order-text-head>b{font-size:18px}
+#orderDetail .order-text-head button{border:1px solid #d8a87e;border-radius:10px;background:#fff3e8;color:#6f3512;min-height:40px;padding:8px 11px;font-size:15px;font-weight:900}
+#orderDetail .order-comment-text{background:#fff;border:1px solid var(--line);border-radius:14px;padding:13px 14px;font-size:17px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}
+html[data-theme="dark"] #orderDetail .order-edit-main,html[data-theme="dark"] #orderDetail .order-finance-actions button,html[data-theme="dark"] #orderDetail .order-text-head button{background:#3f2e24!important;color:#ffd7b8!important;border-color:#8c6247!important}
+html[data-theme="dark"] #orderDetail .order-comment-text{background:#1b2026!important;color:#f2f4f6!important;border-color:#313942!important}
