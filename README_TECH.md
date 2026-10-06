@@ -235,3 +235,11 @@ Previous v0.3.2/v0.3.3 updater could detect a newer version.json but, when no wa
 - activation/request actions reuse the existing busy overlay;
 - backend requirement raised to 0.2.8; dbSchema remains 5;
 - rollback to build 2026-09-19.3 is safe without IndexedDB reset.
+
+
+## v0.3.21 / build 2026-10-06.2 — Q-029 W0 connection hotfix
+- Core sync sends only light/non-media outbox records before snapshot refresh.
+- Heavy media uploads are deferred to background media stage after core data is ready.
+- Foreground 15s timer no longer starts heavy uploads.
+- Ordinary snapshot pulls are coalesced; cross-page startup timestamps reduce duplicate pulls after service-worker reload.
+- ADMIN1 canary; backend minimum remains backend-0.2.20; dbSchema remains 5.
