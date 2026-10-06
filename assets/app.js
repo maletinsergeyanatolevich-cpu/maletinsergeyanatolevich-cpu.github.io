@@ -1,4 +1,4 @@
-﻿const APP_RELEASE=Object.freeze({version:'v0.3.19',buildId:'2026-10-05.2',channel:'q025-net-position-hotfix',dbSchema:5,updateStrategy:'manifest-service-worker',rolloutStage:'stable',previousBuildId:'2026-10-05.1'});window.APP_RELEASE=APP_RELEASE;
+﻿const APP_RELEASE=Object.freeze({version:'v0.3.20',buildId:'2026-10-06.1',channel:'q029-w0-performance',dbSchema:5,updateStrategy:'manifest-service-worker',rolloutStage:'admin1',previousBuildId:'2026-10-05.2'});window.APP_RELEASE=APP_RELEASE;
 function emptySnapshot(){return {meta:{version:APP_RELEASE.version,snapshotDate:'',snapshotTime:'',timezone:'',backendConnected:false,source:'Нет загруженных бизнес-данных',schemaVersion:1},orders:[],archivedOrders:[],plannedFinance:[],calculations:{},wallet:{balance:0,income:0,expense:0,reserve:0,freeNow:0,expense7:0,free7:0,futureExpenses:[],transactions:[],futureTotal:0,futureIncome:0,ownerDebt:0,ownerDebtSergey:0,ownerDebtEvgeny:0,ownerDebtTotal:0,ownerGrossDebtSergey:0,ownerGrossDebtEvgeny:0,ownerGrossDebtTotal:0,netPosition:0,afterObligations:0},nomenclature:[],purchaseLines:[],purchaseAggregated:[],gallery:[],appIssues:[],purchaseWarnings:[]}}
 function normalizeSnapshot(x){const b=emptySnapshot();if(!x||typeof x!=='object')return b;return {...b,...x,meta:{...b.meta,...(x.meta||{})},wallet:{...b.wallet,...(x.wallet||{})},orders:Array.isArray(x.orders)?x.orders:[],archivedOrders:Array.isArray(x.archivedOrders)?x.archivedOrders:[],plannedFinance:Array.isArray(x.plannedFinance)?x.plannedFinance:[],calculations:x.calculations&&typeof x.calculations==='object'?x.calculations:{},nomenclature:Array.isArray(x.nomenclature)?x.nomenclature:[],purchaseLines:Array.isArray(x.purchaseLines)?x.purchaseLines:[],purchaseAggregated:Array.isArray(x.purchaseAggregated)?x.purchaseAggregated:[],gallery:Array.isArray(x.gallery)?x.gallery:[],appIssues:Array.isArray(x.appIssues)?x.appIssues:[],purchaseWarnings:Array.isArray(x.purchaseWarnings)?x.purchaseWarnings:[]}}
 let S=emptySnapshot(); window.SNAPSHOT=S;
@@ -271,6 +271,12 @@ let BUSY_COUNT=0;
 function setBusy(text='Выполняю…'){BUSY_COUNT++;const box=document.getElementById('busyOverlay'),label=document.getElementById('busyText');if(label)label.textContent=text;if(box)box.classList.remove('hidden')}
 function clearBusy(){BUSY_COUNT=Math.max(0,BUSY_COUNT-1);if(BUSY_COUNT===0)document.getElementById('busyOverlay')?.classList.add('hidden')}
 async function withBusy(text,fn){setBusy(text);try{return await fn()}finally{clearBusy()}}
+const TRANSFER_PROGRESS={update:{},sync:{},media:{}};
+function fmtBytes(n){const x=Number(n||0);if(!(x>0))return '';if(x<1024)return x+' Б';if(x<1048576)return (x/1024).toFixed(x<10240?1:0)+' КБ';return (x/1048576).toFixed(x<10485760?1:0)+' МБ'}
+function progressLine(state){const q=state||{},parts=[];if(q.stage)parts.push(String(q.stage));if(Number.isFinite(Number(q.done))&&Number.isFinite(Number(q.total))&&Number(q.total)>0)parts.push(Number(q.done)+'/'+Number(q.total));if(Number(q.items)>0)parts.push(Number(q.items)+' поз.');if(Number(q.bytesLoaded)>0){let s=fmtBytes(q.bytesLoaded);if(Number(q.bytesTotal)>0)s+=' / '+fmtBytes(q.bytesTotal);else if(Number(q.bytesRemain)>0)s+=' · осталось '+fmtBytes(q.bytesRemain);parts.push(s)}return parts.join(' · ')}
+function setTransferProgress(kind,state={}){const k=['update','sync','media'].includes(kind)?kind:'sync';TRANSFER_PROGRESS[k]={...(TRANSFER_PROGRESS[k]||{}),...state,updatedAt:Date.now()};const box=document.getElementById('transferProgress'),u=document.getElementById('transferUpdate'),s=document.getElementById('transferSync'),m=document.getElementById('transferMedia');if(u)u.textContent='Обновление: '+(progressLine(TRANSFER_PROGRESS.update)||'—');if(s)s.textContent='Данные: '+(progressLine(TRANSFER_PROGRESS.sync)||'—');if(m)m.textContent='Фото/файлы: '+(progressLine(TRANSFER_PROGRESS.media)||'—');if(box)box.classList.toggle('hidden',!Object.values(TRANSFER_PROGRESS).some(x=>x&&x.active))}
+function finishTransferProgress(kind,state={}){setTransferProgress(kind,{...state,active:false});setTimeout(()=>{const q=TRANSFER_PROGRESS[kind];if(q&&!q.active&&Date.now()-Number(q.updatedAt||0)>5000){TRANSFER_PROGRESS[kind]={};setTransferProgress(kind,{})}},5500)}
+
 let APP_TOAST_TIMER=null;
 function showAppToast(message,kind='ok',duration=3200){
   const box=document.getElementById('appToast'),txt=document.getElementById('appToastText'),icon=document.getElementById('appToastIcon');
@@ -302,22 +308,32 @@ function orderRefResolve(raw){
   if(m){const full=m[1]+'-'+m[2].padStart(3,'0'),hit=(S.orders||[]).find(o=>String(o.id)===full);return {id:hit?String(hit.id):full};}
   return {id:v};
 }
-let LAST_AUTO_REFRESH_ERROR_AT=0,AUTO_REFRESH_PROMISE=null;
-async function autoRefreshData(reason='auto'){if(!backendSession()||navigator.onLine===false)return {ok:false,error:'NO_SESSION_OR_OFFLINE'};if(AUTO_REFRESH_PROMISE)return AUTO_REFRESH_PROMISE;AUTO_REFRESH_PROMISE=(async()=>{const d=await refreshBackendData();if(d?.ok){if(document.getElementById('sync')?.classList.contains('active'))await renderSync();return d}const now=Date.now();if(now-LAST_AUTO_REFRESH_ERROR_AT>60000){LAST_AUTO_REFRESH_ERROR_AT=now;showAppToast('Не получилось обновить данные. Показываю последние сохранённые.','bad',4200)}return d})();try{return await AUTO_REFRESH_PROMISE}finally{AUTO_REFRESH_PROMISE=null}}
-async function manualRefreshData(){
-  if(!backendSession()){showAppToast('Сначала подключите и активируйте устройство.','bad',3600);return {ok:false,error:'NO_SESSION'}}
-  return withBusy('Отправляю очередь и обновляю данные…',async()=>{
+let LAST_AUTO_REFRESH_ERROR_AT=0,CORE_SYNC_PROMISE=null,LAST_CORE_SYNC_OK_AT=0,CORE_SYNC_SEQ=0;
+async function runCoreSync(reason='auto',opts={}){
+  if(!backendSession()||navigator.onLine===false)return {ok:false,error:'NO_SESSION_OR_OFFLINE'};
+  if(CORE_SYNC_PROMISE)return CORE_SYNC_PROMISE;
+  const now=Date.now(),cooldown=Math.max(0,Number(opts.cooldownMs??12000));
+  if(!opts.force&&LAST_CORE_SYNC_OK_AT&&now-LAST_CORE_SYNC_OK_AT<cooldown)return {ok:true,skipped:true,reason:'RECENT_CORE_SYNC'};
+  const generation=++CORE_SYNC_SEQ,started=performance.now();
+  CORE_SYNC_PROMISE=(async()=>{
+    setTransferProgress('sync',{active:true,stage:'Очередь: проверяю',done:0,total:0,bytesLoaded:0,items:0,generation});
+    const pending=await drafts().catch(()=>[]),ready=pending.filter(x=>draftState(x)==='ready'||x.status==='send-now');
+    setTransferProgress('sync',{active:true,stage:'Очередь: отправка',done:0,total:ready.length,generation});
     await recoverPendingAcks().catch(()=>({ok:false}));
-    const pushed=await syncReadyDrafts({manual:true,notify:false,reason:'manual-refresh'}).catch(e=>({ok:false,error:String((e&&e.message)||e)}));
+    const pushed=await syncReadyDrafts({auto:!opts.manual,manual:!!opts.manual,notify:false,reason}).catch(err=>({ok:false,error:String((err&&err.message)||err)}));
+    const sent=Number((pushed?.results||[]).filter(x=>x&&x.ok&&x.server_received).length||0);
+    setTransferProgress('sync',{active:true,stage:'Основные данные',done:Math.min(sent,ready.length),total:ready.length,generation});
     const pulled=await refreshBackendData();
+    if(pulled?.ok){LAST_CORE_SYNC_OK_AT=Date.now();setTransferProgress('sync',{active:true,stage:'Готово',done:ready.length,total:ready.length,items:Array.isArray(S.nomenclature)?S.nomenclature.length:0,generation,elapsedMs:Math.round(performance.now()-started)});scheduleBackgroundMedia('core-ready');setTimeout(()=>finishTransferProgress('sync',{stage:'Готово'}),1800)}
+    else{setTransferProgress('sync',{active:true,stage:'Ошибка данных: '+String(pulled?.error||'UNKNOWN'),generation});setTimeout(()=>finishTransferProgress('sync',{stage:'Ошибка — локальные данные сохранены'}),3500)}
     if(document.getElementById('sync')?.classList.contains('active'))await renderSync();
     if(document.getElementById('appdev')?.classList.contains('active'))await renderAppDev();
-    const sent=Number((pushed&&pushed.results&&pushed.results.filter(x=>x&&x.ok&&x.server_received).length)||0);
-    if(pulled&&pulled.ok)showAppToast(sent?('Отправлено: '+sent+'. Данные обновлены.'):'Данные обновлены. Очередь проверена.','ok',3600);
-    else showAppToast(sent?('Отправлено: '+sent+'. Получить свежий снимок пока не удалось.'):'Очередь проверена, но свежие данные пока не получены.','bad',4200);
-    return {ok:!!(pulled&&pulled.ok),pushed,pulled};
-  })
+    return {ok:!!pulled?.ok,pushed,pulled,generation,sent}
+  })();
+  try{return await CORE_SYNC_PROMISE}finally{CORE_SYNC_PROMISE=null}
 }
+async function autoRefreshData(reason='auto'){const d=await runCoreSync(reason,{force:false,manual:false});if(!d?.ok&&!d?.skipped){const now=Date.now();if(now-LAST_AUTO_REFRESH_ERROR_AT>60000){LAST_AUTO_REFRESH_ERROR_AT=now;showAppToast('Не получилось обновить данные. Показываю последние сохранённые.','bad',4200)}}return d}
+async function manualRefreshData(){if(!backendSession()){showAppToast('Сначала подключите и активируйте устройство.','bad',3600);return {ok:false,error:'NO_SESSION'}}const d=await runCoreSync('manual-refresh',{force:true,manual:true,cooldownMs:0});if(d?.ok)showAppToast(d.sent?('Отправлено: '+d.sent+'. Основные данные обновлены.'):'Основные данные обновлены.','ok',3200);else showAppToast('Свежие данные пока не получены. Локальная копия сохранена.','bad',4200);return d}
 function localNomRevision(){const n=Math.floor(Number(lsGet(BACKEND_KEYS.nomRev)||0));return Number.isFinite(n)&&n>0?n:0}
 function setLocalNomRevision(v){const n=Math.floor(Number(v||0));if(n>0)lsSet(BACKEND_KEYS.nomRev,String(n));return n}
 async function ensureNomenclatureDeltaSetup(){
@@ -335,83 +351,22 @@ async function mergeNomenclatureDelta(changes,currentRev){
   if(currentRev)setLocalNomRevision(currentRev);
   await putSnapshotCache(next);applySnapshot(next);return next;
 }
+let NOM_DELTA_PROMISE=null;
 async function pullNomenclatureDelta(opts={}){
-  const token=backendSession();if(!token||navigator.onLine===false)return {ok:false,error:'NO_SESSION_OR_OFFLINE'};
-  const since=localNomRevision()||Math.floor(Number(S.meta?.nomenclatureRevision||0));
-  try{
-    const d=await backendPost({action:'nomenclature.delta',session_token:token,device_id:backendDeviceId(),since_rev:since,app_version:APP_RELEASE.version},{timeoutMs:Number(opts.timeoutMs||15000)});
-    if(!d?.ok)return d||{ok:false,error:'NOM_DELTA_FAILED'};
-    if(d.bootstrap_required||d.reset_required){
-      if(opts.allowFullFallback===false)return d;
-      const full=await pullLiveSnapshot({silent:true,timeoutMs:22000,forceFullNomenclature:true,skipNomDelta:true});
-      return {...d,fullReloaded:!!full?.ok,fullResult:full};
-    }
-    await mergeNomenclatureDelta(d.changes||[],d.current_rev||since);return d;
-  }catch(e){return {ok:false,error:String(e?.name==='AbortError'?'NOM_DELTA_TIMEOUT':(e?.message||e))}}
+  if(NOM_DELTA_PROMISE)return NOM_DELTA_PROMISE;
+  NOM_DELTA_PROMISE=(async()=>{
+    const token=backendSession();if(!token||navigator.onLine===false)return {ok:false,error:'NO_SESSION_OR_OFFLINE'};
+    const since=localNomRevision()||Math.floor(Number(S.meta?.nomenclatureRevision||0));
+    setTransferProgress('sync',{active:true,stage:'Номенклатура: проверка изменений',items:0});
+    try{
+      const d=await backendPost({action:'nomenclature.delta',session_token:token,device_id:backendDeviceId(),since_rev:since,app_version:APP_RELEASE.version},{timeoutMs:Number(opts.timeoutMs||15000)});
+      if(!d?.ok)return d||{ok:false,error:'NOM_DELTA_FAILED'};
+      if(d.bootstrap_required||d.reset_required){const reason=String(d.reason||(d.bootstrap_required?'BOOTSTRAP_REQUIRED':'RESET_REQUIRED'));setTransferProgress('sync',{active:true,stage:'Номенклатура: полная загрузка ('+reason+')',bytesLoaded:Number(d?.__transport?.bytes||0)});if(opts.allowFullFallback===false)return d;const full=await pullLiveSnapshot({silent:true,timeoutMs:22000,forceFullNomenclature:true,skipNomDelta:true});return {...d,fullReloaded:!!full?.ok,fullResult:full}}
+      const changes=Array.isArray(d.changes)?d.changes:[];setTransferProgress('sync',{active:true,stage:changes.length?'Номенклатура: применяю изменения':'Номенклатура: без изменений',items:changes.length,bytesLoaded:Number(d?.__transport?.bytes||0)});await mergeNomenclatureDelta(changes,d.current_rev||since);return d
+    }catch(err){return {ok:false,error:String(err?.name==='AbortError'?'NOM_DELTA_TIMEOUT':(err?.message||err))}}
+  })();
+  try{return await NOM_DELTA_PROMISE}finally{NOM_DELTA_PROMISE=null}
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 function lsGet(k){try{return localStorage.getItem(k)||''}catch(_){return ''}}
 function lsSet(k,v){try{localStorage.setItem(k,String(v??''))}catch(_){}}
@@ -425,7 +380,7 @@ function backendDeviceId(){let v=lsGet(BACKEND_KEYS.device);if(!v){v='DEV-'+(cry
 function randomSecret(){const a=new Uint8Array(32);crypto.getRandomValues(a);return [...a].map(x=>x.toString(16).padStart(2,'0')).join('')}
 function activationSecret(){let v=lsGet(BACKEND_KEYS.secret);if(!v){v=randomSecret();lsSet(BACKEND_KEYS.secret,v)}return v}
 async function sha256HexBrowser(text){if(!crypto.subtle)throw new Error('WEB_CRYPTO_UNAVAILABLE');const b=new TextEncoder().encode(String(text));const d=await crypto.subtle.digest('SHA-256',b);return [...new Uint8Array(d)].map(x=>x.toString(16).padStart(2,'0')).join('')}
-async function backendPost(body,opts={}){const timeoutMs=Math.max(1500,Number(opts.timeoutMs||20000));const ctrl=typeof AbortController!=='undefined'?new AbortController():null;const timer=ctrl?setTimeout(()=>ctrl.abort(),timeoutMs):null;try{const r=await fetch(BACKEND_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(body),redirect:'follow',cache:'no-store',signal:ctrl?.signal});const txt=await r.text();let data;try{data=JSON.parse(txt)}catch(_){throw new Error('BAD_BACKEND_RESPONSE')};return data}finally{if(timer)clearTimeout(timer)}}
+async function backendPost(body,opts={}){const timeoutMs=Math.max(1500,Number(opts.timeoutMs||20000)),started=performance.now();const ctrl=typeof AbortController!=='undefined'?new AbortController():null;const timer=ctrl?setTimeout(()=>ctrl.abort(),timeoutMs):null;try{const r=await fetch(BACKEND_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(body),redirect:'follow',cache:'no-store',signal:ctrl?.signal});const txt=await r.text();let data;try{data=JSON.parse(txt)}catch(_){throw new Error('BAD_BACKEND_RESPONSE')};try{Object.defineProperty(data,'__transport',{value:{bytes:new TextEncoder().encode(txt).byteLength,ms:Math.round(performance.now()-started)},enumerable:false})}catch(_){}return data}finally{if(timer)clearTimeout(timer)}}
 async function backendPing(opts={}){const timeoutMs=Math.max(1200,Number(opts.timeoutMs||3500));const ctrl=typeof AbortController!=='undefined'?new AbortController():null;const timer=ctrl?setTimeout(()=>ctrl.abort(),timeoutMs):null;const started=performance.now();try{const r=await fetch(BACKEND_URL+'?action=ping',{cache:'no-store',redirect:'follow',signal:ctrl?.signal});const d=await r.json();const latency=Math.round(performance.now()-started);backendState.ping=d?.ok?'ok':'error';backendState.lastError=d?.ok?'':String(d?.error||'PING_FAILED');return {...d,latencyMs:latency}}catch(e){backendState.ping='error';backendState.lastError=String(e?.name==='AbortError'?'PING_TIMEOUT':(e?.message||e));return {ok:false,error:backendState.lastError,latencyMs:Math.round(performance.now()-started)}}finally{if(timer)clearTimeout(timer)}}
 async function registerDraftBackgroundSync(){
   if(!('serviceWorker' in navigator)||location.protocol==='file:')return false;
@@ -1437,7 +1392,10 @@ async function hydrateOrderMedia(orderId){const o=S.orders.find(x=>x.id===orderI
 window.loadOrderMediaItem=async function(orderId,mediaId){const o=S.orders.find(x=>x.id===orderId),m=orderMediaItems(o).find(x=>x.mediaId===mediaId),node=document.getElementById('order-media-'+domSafe(mediaId));if(!m||!node)return;node.classList.add('loading');const ok=await paintOrderMediaNode(orderId,m,node,'manual');node.classList.remove('loading');if(!ok)alert(navigator.onLine===false?'Сети нет, а это фото ещё не сохранено на телефоне.':'Фото не загрузилось с сервера. Повторите ещё раз; локальные данные заказа не пострадают.')};
 window.loadAllOrderMedia=async function(orderId){if(navigator.onLine===false){alert('Для первой загрузки всех фото нужна сеть. Уже сохранённые фото доступны офлайн.');return}const r=await cacheOrderMediaPack(orderId,{all:true});if(!r.ok)alert('Часть фото не загрузилась. Можно повторить — уже сохранённые файлы повторно не скачиваются.')};
 window.toggleOrderOfflinePack=async function(orderId){const was=orderOfflinePinned(orderId);setOrderOfflinePinned(orderId,!was);const btn=document.getElementById('offline-pack-'+domSafe(orderId));if(btn)btn.textContent=!was?'Офлайн включён':'Хранить офлайн';if(!was&&navigator.onLine!==false){const r=await cacheOrderMediaPack(orderId,{all:true});if(!r.ok)alert('Офлайн-режим включён. Часть фото догрузится при следующей связи.')}};
-async function refreshPinnedOfflinePacks(){if(navigator.onLine===false||!backendSession())return;for(const id of offlinePackIds()){const o=S.orders.find(x=>x.id===id);if(o)await cacheOrderMediaPack(id,{all:true})}}
+let MEDIA_BG_PROMISE=null,MEDIA_BG_TIMER=null;
+function scheduleBackgroundMedia(reason='idle'){if(MEDIA_BG_TIMER)clearTimeout(MEDIA_BG_TIMER);MEDIA_BG_TIMER=setTimeout(()=>{MEDIA_BG_TIMER=null;runBackgroundMedia(reason).catch(()=>{})},12000)}
+async function runBackgroundMedia(reason='idle'){if(MEDIA_BG_PROMISE)return MEDIA_BG_PROMISE;if(navigator.onLine===false||!backendSession()||!heavyAutoAllowed())return {ok:false,skipped:true};MEDIA_BG_PROMISE=(async()=>{const jobs=[];for(const id of offlinePackIds()){const o=S.orders.find(x=>x.id===id);if(o)for(const m of orderMediaItems(o))jobs.push({orderId:id,m})}if(!jobs.length){finishTransferProgress('media',{stage:'Нет фоновой догрузки'});return {ok:true,count:0}}let done=0,bytes=0,next=0;setTransferProgress('media',{active:true,stage:'Фоновая догрузка',done,total:jobs.length,bytesLoaded:0});const worker=async()=>{while(true){const i=next++;if(i>=jobs.length)return;const j=jobs[i],before=await getCachedOrderMedia(j.m),blob=before||await downloadOrderMedia(j.orderId,j.m,'auto');if(blob){done++;bytes+=Number(blob.size||0)}setTransferProgress('media',{active:true,stage:'Фоновая догрузка',done,total:jobs.length,bytesLoaded:bytes})}};await Promise.all([worker(),worker()]);finishTransferProgress('media',{stage:'Фоновая догрузка завершена',done,total:jobs.length,bytesLoaded:bytes});return {ok:true,count:done,total:jobs.length,bytes}})();try{return await MEDIA_BG_PROMISE}finally{MEDIA_BG_PROMISE=null}}
+async function refreshPinnedOfflinePacks(){return runBackgroundMedia('compat')}
 async function hydrateOrderCardMedia(){for(const o of S.orders||[]){const m=orderMediaItems(o)[0];if(!m)continue;const node=document.getElementById('order-card-media-'+domSafe(o.id));if(!node)continue;const b=await getCachedOrderMedia(m);if(b){node.innerHTML=`<img class="order-img" src="${blobUrl(b)}" alt="${esc(o.name)}" loading="lazy">`;node.classList.add('loaded')}}}
 function orderMediaStrip(o){const items=orderMediaItems(o);if(!items.length){if(typeof o.image==='string'&&o.image)return `<div class="photo-strip"><img class="photo-large" src="${o.image}" alt="референс" loading="lazy"></div>`;return '<div class="order-media-empty">Фото на устройстве пока не загружены.</div>'}const pinned=orderOfflinePinned(o.id);return `<div class="order-media-head"><b>Фото заказа · ${items.length}</b><div><button class="secondary" id="offline-pack-${domSafe(o.id)}" onclick="toggleOrderOfflinePack('${esc(o.id)}')">${pinned?'Офлайн включён':'Хранить офлайн'}</button><button class="secondary" onclick="loadAllOrderMedia('${esc(o.id)}')">Загрузить все</button></div></div><div class="photo-strip order-media-strip">${items.map((m,i)=>`<button class="order-media-slot" id="order-media-${domSafe(m.mediaId)}" onclick="loadOrderMediaItem('${esc(o.id)}','${esc(m.mediaId)}')"><span>📷</span><small>${i<3?'загрузится автоматически':'нажмите для загрузки'}</small></button>`).join('')}</div>`}
 
@@ -2692,7 +2650,9 @@ async function pullLiveSnapshot(opts={}){
   try{
     const body={action:'snapshot.pull',session_token:token,device_id:backendDeviceId(),app_version:APP_RELEASE.version};
     if(canOmit)body.omit_nomenclature=true;
+    setTransferProgress('sync',{active:true,stage:canOmit?'Основные данные':'Полная Номенклатура',items:0});
     const d=await backendPost(body,{timeoutMs:Number(opts.timeoutMs||30000)});
+    setTransferProgress('sync',{active:true,stage:canOmit?'Основные данные получены':'Полная Номенклатура получена',bytesLoaded:Number(d?.__transport?.bytes||0),items:Number(d?.snapshot?.nomenclature?.length||0)});
     if(d?.ok&&d.snapshot){
       lsSet(BACKEND_KEYS.offlineUntil,d.offline_access_until||lsGet(BACKEND_KEYS.offlineUntil));
       lsSet(BACKEND_KEYS.user,JSON.stringify(d.user||{}));applyBackendUser(d.user||{});
@@ -3598,12 +3558,7 @@ function updateHoldCountdowns(){document.querySelectorAll('[data-hold-until]').f
 function setSyncView(v){syncView=v;renderSync()}
 async function renderSync(){resetTempUrls();const a=await drafts(),hist=(await sentHistory()).sort((x,y)=>String(y.sentAt||'').localeCompare(String(x.sentAt||''))),holdItems=a.filter(x=>draftState(x)==='hold'),errorItems=a.filter(x=>x.meta?.syncState==='error'),readyItems=a.filter(x=>draftState(x)==='ready'&&x.meta?.syncState!=='error'),req=lsGet(BACKEND_KEYS.request),session=backendSession();let body='';if(syncView==='history')body=hist.length?hist.slice(0,100).map(historyItem).join(''):'<div class="muted">История пока пуста.</div>';else{const items=syncView==='errors'?errorItems:syncView==='hold'?holdItems:readyItems;body=items.length?items.sort((x,y)=>String(y.createdAt).localeCompare(String(x.createdAt))).map(queueItem).join(''):'<div class="muted">Здесь сейчас пусто.</div>'}document.getElementById('sync').innerHTML=`<button class="back" onclick="go('home')">← Главная</button><div class="sync-tabs"><button class="${syncView==='ready'?'active':''}" onclick="setSyncView('ready')"><b>${readyItems.length}</b><span>готовы</span></button><button class="${syncView==='errors'?'active error':''}" onclick="setSyncView('errors')"><b>${errorItems.length}</b><span>ошибки</span></button><button class="${syncView==='hold'?'active':''}" onclick="setSyncView('hold')"><b>${holdItems.length}</b><span>5 минут</span></button><button class="${syncView==='history'?'active':''}" onclick="setSyncView('history')"><b>${hist.length}</b><span>история</span></button></div><div class="section-title"><h2>${syncView==='history'?'История':syncView==='errors'?'Требуют проверки':syncView==='hold'?'Ожидают автоотправки':'Готовы к отправке'}</h2><span class="badge">${navigator.onLine?'онлайн':'офлайн'}</span></div>${body}<div class="settings-block sync-connection"><h3>Подключение устройства</h3><div class="sync-list"><div><span>Доступ</span><b>${esc(backendAccessLabel())}</b></div><div><span>Устройство</span><b>${esc(backendDeviceId().slice(0,18))}…</b></div></div><div class="queue-actions v023">${session?'<button class="edit-btn" onclick="manualRefreshData()">Обновить</button>':`<button class="edit-btn" onclick="requestDeviceAccess()">Отправить заявку</button><button class="send-now-btn" onclick="activateApprovedDevice()">Проверить одобрение</button>`}</div>${req?`<div class="muted">Заявка: ${esc(req.slice(0,18))}…</div>`:''}</div>`;updateHoldCountdowns();if(holdTicker)clearInterval(holdTicker);holdTicker=setInterval(()=>{if(document.getElementById('sync').classList.contains('active'))updateHoldCountdowns()},1000)}
 async function simulateSync(){const a=await drafts();if(!a.length){alert('Очередь пуста.');return}if(!backendSession()){alert('Сначала подключите и активируйте это устройство.');return}await withBusy('Синхронизирую записи…',()=>syncReadyDrafts({notify:true,manual:true}))}
-function runResumeSync(reason='resume'){
-  if(!backendSession()||navigator.onLine===false)return;
-  recoverPendingAcks().catch(()=>{});
-  syncReadyDrafts({auto:true,reason}).catch(()=>{});
-  autoRefreshData(reason).catch(()=>{});
-}
+function runResumeSync(reason='resume'){if(!backendSession()||navigator.onLine===false)return Promise.resolve({ok:false,error:'NO_SESSION_OR_OFFLINE'});return runCoreSync(reason,{force:false,manual:false,cooldownMs:12000}).catch(()=>({ok:false,error:'CORE_SYNC_FAILED'}))}
 function network(){
   const online=navigator.onLine!==false;
   document.getElementById('netStatus')?.classList.toggle('online',online);
@@ -3614,7 +3569,6 @@ function network(){
   if(online&&backendSession()){
     setTimeout(()=>runResumeSync('online'),250);
     setTimeout(()=>ensureNomenclatureDeltaSetup().catch(()=>{}),1200);
-    setTimeout(()=>refreshPinnedOfflinePacks().catch(()=>{}),2400);
   }
 }
 window.addEventListener('online',network);
@@ -3901,9 +3855,7 @@ async function initPwaUpdateLayer(){
     });
     if(!window.__PROD_SW_MESSAGE_READY){
       window.__PROD_SW_MESSAGE_READY=true;
-      navigator.serviceWorker.addEventListener('message',e=>{
-        if(e.data&&e.data.type==='PROD_SYNC_DRAFTS')runResumeSync(String(e.data.reason||'service-worker'));
-      });
+      navigator.serviceWorker.addEventListener('message',e=>{const d=e.data||{};if(d.type==='PROD_SYNC_DRAFTS')runResumeSync(String(d.reason||'service-worker'));if(d.type==='PROD_UPDATE_PROGRESS'){setTransferProgress('update',{active:d.stage!=='ready'&&d.stage!=='error',stage:d.label||d.stage||'Обновление',done:Number(d.done||0),total:Number(d.total||0),bytesLoaded:Number(d.bytesLoaded||0),bytesTotal:Number(d.bytesTotal||0)});if(d.stage==='ready')finishTransferProgress('update',{stage:'Файлы обновления готовы',done:d.total,total:d.total,bytesLoaded:d.bytesLoaded||0})}});
     }
     navigator.serviceWorker.addEventListener('controllerchange',()=>location.reload());
     try{await reg.update()}catch(_){}
@@ -3914,31 +3866,6 @@ async function initPwaUpdateLayer(){
     }).catch(()=>{});
   }catch(err){ console.warn('PWA init failed',err); }
 }
-window.applyAvailableUpdate=async function(){
-  setBusy('Устанавливаю обновление…');
-  const manifest=updateState.manifest||{};
-  if(!updateEligible(manifest)){clearBusy();alert('Это обновление пока доступно только ADMIN1.');return}
-  const reg=window.__PROD_SW_REG;if(!reg){location.reload();return}
-  const activateWaiting=()=>{if(reg.waiting){reg.waiting.postMessage({type:'SKIP_WAITING'});return true}return false};
-  if(activateWaiting())return;
-  try{await reg.update()}catch(_){}
-  if(activateWaiting())return;
-  const w=reg.installing;
-  if(w){
-    const deadline=setTimeout(()=>{if(!activateWaiting())location.reload()},6000);
-    w.addEventListener('statechange',()=>{if(w.state==='installed'){clearTimeout(deadline);if(!activateWaiting())location.reload()}},{once:false});
-    return;
-  }
-  location.reload();
-};
-async function startApplication(){
-  initTheme();purgeLegacyDemoAdminState();hydrateBackendUser();await openDB();initGallerySwipe();
-  let loaded=await loadCachedSnapshot();if(!loaded){S=emptySnapshot();window.SNAPSHOT=S;DATA_STATE.source='empty';renderCoreScreens()}
-  renderBottomNav();network();initPwaUpdateLayer();
-  if(backendSession()){
-    setTimeout(()=>runResumeSync('startup'),120);
-    setTimeout(()=>ensureNomenclatureDeltaSetup().catch(()=>{}),1100);
-    setTimeout(()=>refreshPinnedOfflinePacks().catch(()=>{}),2400);
-  }else backendPing({timeoutMs:2500});
-}
+window.applyAvailableUpdate=async function(){const manifest=updateState.manifest||{};if(!updateEligible(manifest)){alert('Это обновление пока доступно только ADMIN1.');return}setTransferProgress('update',{active:true,stage:'Проверяю версию',done:0,total:0,bytesLoaded:0});const reg=window.__PROD_SW_REG;if(!reg){setTransferProgress('update',{active:true,stage:'Перезапуск'});location.reload();return}const activateWaiting=()=>{if(reg.waiting){setTransferProgress('update',{active:true,stage:'Активирую новую версию'});reg.waiting.postMessage({type:'SKIP_WAITING'});return true}return false};if(activateWaiting())return;try{await reg.update()}catch(_){finishTransferProgress('update',{stage:'Ошибка проверки обновления'});showAppToast('Не удалось проверить обновление. Повторите позже.','bad');return}if(activateWaiting())return;const w=reg.installing;if(w){setTransferProgress('update',{active:true,stage:'Скачиваю файлы приложения'});const deadline=setTimeout(()=>{if(!activateWaiting()){setTransferProgress('update',{active:true,stage:'Перезапуск'});location.reload()}},30000);w.addEventListener('statechange',()=>{if(w.state==='installed'){clearTimeout(deadline);if(!activateWaiting()){setTransferProgress('update',{active:true,stage:'Перезапуск'});location.reload()}}});return}setTransferProgress('update',{active:true,stage:'Перезапуск'});location.reload()};
+async function startApplication(){const started=performance.now();initTheme();purgeLegacyDemoAdminState();hydrateBackendUser();await openDB();initGallerySwipe();let loaded=await loadCachedSnapshot();if(!loaded){S=emptySnapshot();window.SNAPSHOT=S;DATA_STATE.source='empty';renderCoreScreens()}renderBottomNav();network();initPwaUpdateLayer();setTransferProgress('sync',{active:!!backendSession(),stage:loaded?'Локальные данные готовы':'Локальных данных пока нет',items:Array.isArray(S.nomenclature)?S.nomenclature.length:0});window.__PROD_CACHED_READY_MS=Math.round(performance.now()-started);if(backendSession()){setTimeout(()=>runResumeSync('startup'),350);setTimeout(()=>ensureNomenclatureDeltaSetup().catch(()=>{}),2500)}else backendPing({timeoutMs:2500})}
 startApplication();

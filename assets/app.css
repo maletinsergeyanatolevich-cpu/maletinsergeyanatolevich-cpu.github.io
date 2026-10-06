@@ -480,3 +480,8 @@ main{padding-bottom:178px!important}
 .wallet-balance-main-button.negative .value{color:#a52a2a}
 .wallet-net-explain,.owner-gross-note{margin:8px 0 12px;padding:9px 10px;border:1px solid var(--line);border-radius:11px;background:var(--card);font-size:12px;line-height:1.4;color:var(--muted)}
 .owner-gross-note b{color:var(--text)}
+
+/* v0.3.20 — Q-029 W0 transfer progress */
+.transfer-progress{margin:8px 0 10px;padding:9px 11px;border:1px solid var(--line);border-radius:12px;background:var(--card);font-size:12px;line-height:1.45;display:grid;gap:3px}
+.transfer-progress.hidden{display:none}
+.transfer-progress>div{white-space:normal;overflow-wrap:anywhere}
