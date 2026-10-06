@@ -1,10 +1,30 @@
 'use strict';
-const BUILD='2026-10-06.2';
+const BUILD='2026-10-06.3';
 const CACHE='production-pwa-'+BUILD;
 const APP_SHELL=[
   './index.html','./assets/app.css','./assets/media.css','./assets/app.js','./bootstrap.js',
   './manifest.webmanifest','./version.json','./icons/icon.svg','./icons/icon-maskable.svg','./offline.html'
 ];
+async function cachedAdmin1(){
+  return new Promise(resolve=>{
+    let settled=false;const done=v=>{if(settled)return;settled=true;resolve(!!v)};
+    try{
+      const req=indexedDB.open('production-v011');
+      req.onerror=()=>done(false);
+      req.onblocked=()=>done(false);
+      req.onsuccess=()=>{
+        const db=req.result;
+        try{
+          if(!db.objectStoreNames.contains('snapshotCache')){db.close();done(false);return}
+          const tx=db.transaction('snapshotCache','readonly'),get=tx.objectStore('snapshotCache').get('current');
+          get.onsuccess=()=>{const role=String(get.result?.user?.role||'');db.close();done(role==='ADMIN1')};
+          get.onerror=()=>{db.close();done(false)};
+        }catch(_){try{db.close()}catch(__){}done(false)}
+      };
+      setTimeout(()=>done(false),2500);
+    }catch(_){done(false)}
+  })
+}
 async function postUpdateProgress(data={}){
   const list=await self.clients.matchAll({type:'window',includeUncontrolled:true});
   for(const client of list)client.postMessage({type:'PROD_UPDATE_PROGRESS',...data});
@@ -37,6 +57,7 @@ self.addEventListener('install',event=>{
     const concurrency=Math.min(4,total);
     await Promise.all(Array.from({length:concurrency},()=>worker()));
     await postUpdateProgress({stage:'ready',label:'Файлы обновления готовы',done:total,total,bytesLoaded});
+    if(await cachedAdmin1()){await postUpdateProgress({stage:'activating',label:'Активирую обновление ADMIN1',done:total,total,bytesLoaded});await self.skipWaiting()}
   })());
 });
 self.addEventListener('activate',event=>{
