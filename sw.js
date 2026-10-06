@@ -6,9 +6,12 @@ const APP_SHELL=[
   './manifest.webmanifest','./version.json','./icons/icon.svg','./icons/icon-maskable.svg','./offline.html'
 ];
 async function cachedAdmin1(){
-  return new Promise(resolve=>{
-    let settled=false;const done=v=>{if(settled)return;settled=true;resolve(!!v)};
-    try{
+  try{
+    if(typeof indexedDB.databases!=='function')return false;
+    const dbs=await indexedDB.databases();
+    if(!Array.isArray(dbs)||!dbs.some(x=>x&&x.name==='production-v011'))return false;
+    return await new Promise(resolve=>{
+      let settled=false;const done=v=>{if(settled)return;settled=true;resolve(!!v)};
       const req=indexedDB.open('production-v011');
       req.onerror=()=>done(false);
       req.onblocked=()=>done(false);
@@ -22,8 +25,8 @@ async function cachedAdmin1(){
         }catch(_){try{db.close()}catch(__){}done(false)}
       };
       setTimeout(()=>done(false),2500);
-    }catch(_){done(false)}
-  })
+    })
+  }catch(_){return false}
 }
 async function postUpdateProgress(data={}){
   const list=await self.clients.matchAll({type:'window',includeUncontrolled:true});
