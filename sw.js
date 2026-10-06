@@ -1,20 +1,42 @@
-﻿'use strict';
-const BUILD='2026-10-05.2';
+'use strict';
+const BUILD='2026-10-06.1';
 const CACHE='production-pwa-'+BUILD;
 const APP_SHELL=[
-  './','./index.html','./assets/app.css','./assets/media.css','./assets/app.js','./bootstrap.js',
-  './manifest.webmanifest','./version.json',
-  './icons/icon.svg','./icons/icon-maskable.svg','./offline.html'
+  './index.html','./assets/app.css','./assets/media.css','./assets/app.js','./bootstrap.js',
+  './manifest.webmanifest','./version.json','./icons/icon.svg','./icons/icon-maskable.svg','./offline.html'
 ];
+async function postUpdateProgress(data={}){
+  const list=await self.clients.matchAll({type:'window',includeUncontrolled:true});
+  for(const client of list)client.postMessage({type:'PROD_UPDATE_PROGRESS',...data});
+}
+async function fetchShellAsset(cache,path){
+  const response=await fetch(new Request(path,{cache:'reload'}));
+  if(!response.ok)throw new Error('APP_SHELL_FETCH_FAILED:'+path+':'+response.status);
+  const bytes=await response.arrayBuffer();
+  await cache.put(path,new Response(bytes,{status:response.status,statusText:response.statusText,headers:response.headers}));
+  return bytes.byteLength;
+}
 self.addEventListener('install',event=>{
   event.waitUntil((async()=>{
-    const c=await caches.open(CACHE);
-    for(const path of APP_SHELL){
-      const request=new Request(path,{cache:'reload'});
-      const response=await fetch(request);
-      if(!response.ok) throw new Error('APP_SHELL_FETCH_FAILED:'+path+':'+response.status);
-      await c.put(path,response.clone());
-    }
+    const cache=await caches.open(CACHE),total=APP_SHELL.length;
+    let next=0,done=0,bytesLoaded=0;
+    await postUpdateProgress({stage:'downloading',label:'Скачиваю файлы приложения',done,total,bytesLoaded});
+    const worker=async()=>{
+      while(true){
+        const i=next++;if(i>=total)return;
+        const path=APP_SHELL[i];
+        try{
+          const bytes=await fetchShellAsset(cache,path);done++;bytesLoaded+=Number(bytes||0);
+          await postUpdateProgress({stage:'downloading',label:'Скачиваю файлы приложения',done,total,bytesLoaded,file:path});
+        }catch(err){
+          await postUpdateProgress({stage:'error',label:'Ошибка загрузки '+path,done,total,bytesLoaded,error:String(err&&err.message||err)});
+          throw err;
+        }
+      }
+    };
+    const concurrency=Math.min(4,total);
+    await Promise.all(Array.from({length:concurrency},()=>worker()));
+    await postUpdateProgress({stage:'ready',label:'Файлы обновления готовы',done:total,total,bytesLoaded});
   })());
 });
 self.addEventListener('activate',event=>{
@@ -26,53 +48,22 @@ self.addEventListener('activate',event=>{
     })
   );
 });
-self.addEventListener('message',event=>{
-  if(event.data&&event.data.type==='SKIP_WAITING') self.skipWaiting();
-});
+self.addEventListener('message',event=>{if(event.data&&event.data.type==='SKIP_WAITING')self.skipWaiting();});
 self.addEventListener('fetch',event=>{
-  const req=event.request;
-  if(req.method!=='GET') return;
+  const req=event.request;if(req.method!=='GET')return;
   const url=new URL(req.url);
-  if(url.hostname.includes('script.google.com')||url.hostname.includes('googleusercontent.com')) return;
-  if(url.origin!==self.location.origin) return;
-  if(url.pathname.endsWith('/version.json')){
-    event.respondWith(fetch(req,{cache:'no-store'}).catch(()=>caches.match(req)));
-    return;
-  }
+  if(url.hostname.includes('script.google.com')||url.hostname.includes('googleusercontent.com'))return;
+  if(url.origin!==self.location.origin)return;
+  if(url.pathname.endsWith('/version.json')){event.respondWith(fetch(req,{cache:'no-store'}).catch(()=>caches.match(req)));return;}
   if(req.mode==='navigate'){
-    event.respondWith((async()=>{
-      const c=await caches.open(CACHE);
-      const cached=await c.match('./index.html');
-      if(cached) return cached;
-      try{
-        const fresh=await fetch(req,{cache:'no-store'});
-        if(fresh.ok) await c.put('./index.html',fresh.clone());
-        return fresh;
-      }catch(_){
-        return c.match('./offline.html');
-      }
-    })());
-    return;
+    event.respondWith((async()=>{const c=await caches.open(CACHE),cached=await c.match('./index.html');if(cached)return cached;try{const fresh=await fetch(req,{cache:'no-store'});if(fresh.ok)await c.put('./index.html',fresh.clone());return fresh}catch(_){return c.match('./offline.html')}})());return;
   }
-  event.respondWith((async()=>{
-    const c=await caches.open(CACHE);
-    const cached=await c.match(req);
-    if(cached) return cached;
-    const fresh=await fetch(req,{cache:'no-store'});
-    if(fresh.ok) await c.put(req,fresh.clone());
-    return fresh;
-  })());
+  event.respondWith((async()=>{const c=await caches.open(CACHE),cached=await c.match(req);if(cached)return cached;const fresh=await fetch(req,{cache:'no-store'});if(fresh.ok)await c.put(req,fresh.clone());return fresh})());
 });
 async function notifyDraftSyncClients(reason){
   const list=await self.clients.matchAll({type:'window',includeUncontrolled:true});
-  for(const client of list){client.postMessage({type:'PROD_SYNC_DRAFTS',reason:reason||'service-worker'});}
+  for(const client of list)client.postMessage({type:'PROD_SYNC_DRAFTS',reason:reason||'service-worker'});
   return list.length;
 }
-self.addEventListener('sync',event=>{
-  if(event.tag!=='prod-draft-sync')return;
-  event.waitUntil(notifyDraftSyncClients('background-sync'));
-});
-self.addEventListener('periodicsync',event=>{
-  if(event.tag!=='prod-draft-periodic')return;
-  event.waitUntil(notifyDraftSyncClients('periodic-sync'));
-});
+self.addEventListener('sync',event=>{if(event.tag!=='prod-draft-sync')return;event.waitUntil(notifyDraftSyncClients('background-sync'));});
+self.addEventListener('periodicsync',event=>{if(event.tag!=='prod-draft-periodic')return;event.waitUntil(notifyDraftSyncClients('periodic-sync'));});
