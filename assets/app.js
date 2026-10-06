@@ -1,4 +1,4 @@
-﻿const APP_RELEASE=Object.freeze({version:'v0.3.22',buildId:'2026-10-06.3',channel:'q029-w0-admin-bootstrap',dbSchema:5,updateStrategy:'manifest-service-worker',rolloutStage:'admin1',previousBuildId:'2026-10-06.2'});window.APP_RELEASE=APP_RELEASE;
+﻿const APP_RELEASE=Object.freeze({version:'v0.3.23',buildId:'2026-10-06.4',channel:'q029-w0-nom-delta-updater',dbSchema:5,updateStrategy:'manifest-service-worker',rolloutStage:'admin1',previousBuildId:'2026-10-06.3'});window.APP_RELEASE=APP_RELEASE;
 function emptySnapshot(){return {meta:{version:APP_RELEASE.version,snapshotDate:'',snapshotTime:'',timezone:'',backendConnected:false,source:'Нет загруженных бизнес-данных',schemaVersion:1},orders:[],archivedOrders:[],plannedFinance:[],calculations:{},wallet:{balance:0,income:0,expense:0,reserve:0,freeNow:0,expense7:0,free7:0,futureExpenses:[],transactions:[],futureTotal:0,futureIncome:0,ownerDebt:0,ownerDebtSergey:0,ownerDebtEvgeny:0,ownerDebtTotal:0,ownerGrossDebtSergey:0,ownerGrossDebtEvgeny:0,ownerGrossDebtTotal:0,netPosition:0,afterObligations:0},nomenclature:[],purchaseLines:[],purchaseAggregated:[],gallery:[],appIssues:[],purchaseWarnings:[]}}
 function normalizeSnapshot(x){const b=emptySnapshot();if(!x||typeof x!=='object')return b;return {...b,...x,meta:{...b.meta,...(x.meta||{})},wallet:{...b.wallet,...(x.wallet||{})},orders:Array.isArray(x.orders)?x.orders:[],archivedOrders:Array.isArray(x.archivedOrders)?x.archivedOrders:[],plannedFinance:Array.isArray(x.plannedFinance)?x.plannedFinance:[],calculations:x.calculations&&typeof x.calculations==='object'?x.calculations:{},nomenclature:Array.isArray(x.nomenclature)?x.nomenclature:[],purchaseLines:Array.isArray(x.purchaseLines)?x.purchaseLines:[],purchaseAggregated:Array.isArray(x.purchaseAggregated)?x.purchaseAggregated:[],gallery:Array.isArray(x.gallery)?x.gallery:[],appIssues:Array.isArray(x.appIssues)?x.appIssues:[],purchaseWarnings:Array.isArray(x.purchaseWarnings)?x.purchaseWarnings:[]}}
 let S=emptySnapshot(); window.SNAPSHOT=S;
@@ -337,7 +337,16 @@ async function runCoreSync(reason='auto',opts={}){
   try{return await CORE_SYNC_PROMISE}finally{CORE_SYNC_PROMISE=null}
 }
 async function autoRefreshData(reason='auto'){const d=await runCoreSync(reason,{force:false,manual:false});if(!d?.ok&&!d?.skipped){const now=Date.now();if(now-LAST_AUTO_REFRESH_ERROR_AT>60000){LAST_AUTO_REFRESH_ERROR_AT=now;showAppToast('Не получилось обновить данные. Показываю последние сохранённые.','bad',4200)}}return d}
-async function manualRefreshData(){if(!backendSession()){showAppToast('Сначала подключите и активируйте устройство.','bad',3600);return {ok:false,error:'NO_SESSION'}}const d=await runCoreSync('manual-refresh',{force:true,manual:true,cooldownMs:0});if(d?.ok)showAppToast(d.sent?('Отправлено: '+d.sent+'. Основные данные обновлены.'):'Основные данные обновлены.','ok',3200);else showAppToast('Свежие данные пока не получены. Локальная копия сохранена.','bad',4200);return d}
+async function manualRefreshData(){
+  if(!backendSession()){showAppToast('Сначала подключите и активируйте устройство.','bad',3600);return {ok:false,error:'NO_SESSION'}}
+  return withBusy('Обновляю…',async()=>{
+    const d=await runCoreSync('manual-refresh',{force:true,manual:true,cooldownMs:0});
+    if(d?.ok)showAppToast(d.sent?('Отправлено: '+d.sent+'. Данные обновлены.'):'Данные обновлены.','ok',2600);
+    else showAppToast('Свежие данные пока не получены. Локальная копия сохранена.','bad',4200);
+    checkForAppUpdate({apply:true,reason:'manual-refresh'}).catch(()=>{});
+    return d
+  })
+}
 function localNomRevision(){const n=Math.floor(Number(lsGet(BACKEND_KEYS.nomRev)||0));return Number.isFinite(n)&&n>0?n:0}
 function setLocalNomRevision(v){const n=Math.floor(Number(v||0));if(n>0)lsSet(BACKEND_KEYS.nomRev,String(n));return n}
 async function ensureNomenclatureDeltaSetup(){
@@ -349,11 +358,27 @@ async function ensureNomenclatureDeltaSetup(){
   }catch(e){return {ok:false,error:String(e?.message||e)}}
 }
 async function mergeNomenclatureDelta(changes,currentRev){
-  const map=new Map((Array.isArray(S.nomenclature)?S.nomenclature:[]).filter(x=>x&&x.id).map(x=>[String(x.id),x]));
-  (Array.isArray(changes)?changes:[]).forEach(x=>{if(!x||!x.id)return;if(x.active===false)map.delete(String(x.id));else map.set(String(x.id),x)});
+  const before=new Map((Array.isArray(S.nomenclature)?S.nomenclature:[]).filter(x=>x&&x.id).map(x=>[String(x.id),x]));
+  const map=new Map(before),stats={added:0,updated:0,deleted:0,total:Array.isArray(changes)?changes.length:0};
+  (Array.isArray(changes)?changes:[]).forEach(x=>{
+    if(!x||!x.id)return;
+    const id=String(x.id),had=map.has(id);
+    if(x.active===false){if(had){map.delete(id);stats.deleted++}return}
+    if(had)stats.updated++;else stats.added++;
+    map.set(id,x)
+  });
   const next=normalizeSnapshot({...S,nomenclature:[...map.values()],meta:{...(S.meta||{}),nomenclatureRevision:Number(currentRev||localNomRevision()||0),nomenclatureDeltaSupported:true,nomenclatureOmitted:false}});
   if(currentRev)setLocalNomRevision(currentRev);
-  await putSnapshotCache(next);applySnapshot(next);return next;
+  await putSnapshotCache(next);applySnapshot(next);return {snapshot:next,stats}
+}
+async function pullNomenclatureHead(opts={}){
+  const token=backendSession();if(!token||navigator.onLine===false)return {ok:false,error:'NO_SESSION_OR_OFFLINE'};
+  try{
+    const d=await backendPost({action:'nomenclature.head',session_token:token,device_id:backendDeviceId(),app_version:APP_RELEASE.version},{timeoutMs:Number(opts.timeoutMs||9000)});
+    if(d?.ok)return d;
+    if(String(d?.error||'')==='UNKNOWN_ACTION')return {ok:true,unsupported:true,current_rev:null};
+    return d||{ok:false,error:'NOM_HEAD_FAILED'}
+  }catch(err){return {ok:false,error:String(err?.name==='AbortError'?'NOM_HEAD_TIMEOUT':(err?.message||err))}}
 }
 let NOM_DELTA_PROMISE=null;
 async function pullNomenclatureDelta(opts={}){
@@ -361,16 +386,60 @@ async function pullNomenclatureDelta(opts={}){
   NOM_DELTA_PROMISE=(async()=>{
     const token=backendSession();if(!token||navigator.onLine===false)return {ok:false,error:'NO_SESSION_OR_OFFLINE'};
     const since=localNomRevision()||Math.floor(Number(S.meta?.nomenclatureRevision||0));
-    setTransferProgress('sync',{active:true,stage:'Номенклатура: проверка изменений',items:0});
+    setTransferProgress('sync',{active:true,stage:'Номенклатура: проверяю revision',done:0,total:0,items:0});
     try{
-      const d=await backendPost({action:'nomenclature.delta',session_token:token,device_id:backendDeviceId(),since_rev:since,app_version:APP_RELEASE.version},{timeoutMs:Number(opts.timeoutMs||15000)});
-      if(!d?.ok)return d||{ok:false,error:'NOM_DELTA_FAILED'};
-      if(d.bootstrap_required||d.reset_required){const reason=String(d.reason||(d.bootstrap_required?'BOOTSTRAP_REQUIRED':'RESET_REQUIRED'));setTransferProgress('sync',{active:true,stage:'Номенклатура: полная загрузка ('+reason+')',bytesLoaded:Number(d?.__transport?.bytes||0)});if(opts.allowFullFallback===false)return d;const full=await pullLiveSnapshot({silent:true,timeoutMs:22000,forceFullNomenclature:true,skipNomDelta:true});return {...d,fullReloaded:!!full?.ok,fullResult:full}}
-      const changes=Array.isArray(d.changes)?d.changes:[];setTransferProgress('sync',{active:true,stage:changes.length?'Номенклатура: применяю изменения':'Номенклатура: без изменений',items:changes.length,bytesLoaded:Number(d?.__transport?.bytes||0)});await mergeNomenclatureDelta(changes,d.current_rev||since);return d
+      const head=await pullNomenclatureHead({timeoutMs:opts.timeoutMs||9000});
+      if(!head?.ok)return head;
+      if(head.reset_required||head.bootstrap_required){
+        const reason=String(head.reason||(head.bootstrap_required?'BOOTSTRAP_REQUIRED':'RESET_REQUIRED'));
+        setTransferProgress('sync',{active:true,stage:'Номенклатура: требуется ADMIN recovery ('+reason+')'});
+        return {...head,recovery_required:true}
+      }
+      if(!head.unsupported&&Number(head.current_rev||0)===Number(since||0)){
+        setTransferProgress('sync',{active:true,stage:'Номенклатура: без изменений',done:0,total:0,items:0});
+        return {ok:true,current_rev:Number(head.current_rev||since||0),changes:[],count:0,stats:{added:0,updated:0,deleted:0,total:0}}
+      }
+      const all=[],pageSize=Math.max(20,Math.min(250,Number(opts.pageSize||150)));let offset=0,total=null,currentRev=Number(head.current_rev||0),bytes=0,legacy=false;
+      while(true){
+        const d=await backendPost({action:'nomenclature.delta',session_token:token,device_id:backendDeviceId(),since_rev:since,offset,limit:pageSize,app_version:APP_RELEASE.version},{timeoutMs:Number(opts.timeoutMs||15000)});
+        if(!d?.ok)return d||{ok:false,error:'NOM_DELTA_FAILED'};
+        bytes+=Number(d?.__transport?.bytes||0);
+        if(d.bootstrap_required||d.reset_required){
+          const reason=String(d.reason||(d.bootstrap_required?'BOOTSTRAP_REQUIRED':'RESET_REQUIRED'));
+          setTransferProgress('sync',{active:true,stage:'Номенклатура: требуется ADMIN recovery ('+reason+')',bytesLoaded:bytes});
+          return {...d,recovery_required:true}
+        }
+        const page=Array.isArray(d.changes)?d.changes:[];all.push(...page);
+        currentRev=Number(d.current_rev||currentRev||since||0);
+        const reported=Number(d.total_count);
+        if(Number.isFinite(reported)&&reported>=0)total=reported;else{legacy=true;total=all.length}
+        setTransferProgress('sync',{active:true,stage:'Номенклатура: загружено '+all.length+' из '+total,done:all.length,total:total,items:all.length,bytesLoaded:bytes});
+        if(legacy||d.has_more!==true||page.length===0)break;
+        offset=Number(d.next_offset||all.length)
+      }
+      const merged=await mergeNomenclatureDelta(all,currentRev||since);
+      const s=merged.stats;
+      setTransferProgress('sync',{active:true,stage:'Номенклатура: +'+s.added+' / изм. '+s.updated+' / удал. '+s.deleted,done:s.total,total:s.total,items:s.total,bytesLoaded:bytes});
+      return {ok:true,current_rev:currentRev||since,changes:all,count:all.length,stats:s,legacy}
     }catch(err){return {ok:false,error:String(err?.name==='AbortError'?'NOM_DELTA_TIMEOUT':(err?.message||err))}}
   })();
   try{return await NOM_DELTA_PROMISE}finally{NOM_DELTA_PROMISE=null}
 }
+window.forceNomenclatureDelta=async function(){
+  if(!backendSession()){showAppToast('Нет подключения к серверу.','bad',3200);return}
+  const d=await pullNomenclatureDelta({pageSize:150,timeoutMs:18000});
+  if(d?.ok&&!d?.recovery_required){const s=d.stats||{added:0,updated:0,deleted:0,total:Number(d.count||0)};showAppToast('Номенклатура: найдено '+s.total+', добавлено '+s.added+', изменено '+s.updated+', удалено '+s.deleted+'.','ok',4800);renderNomList()}
+  else if(d?.recovery_required)showAppToast('Нужна ADMIN-полная пересинхронизация Номенклатуры. Обычный refresh её не запускает.','bad',5200);
+  else showAppToast('Не удалось проверить изменения Номенклатуры.','bad',4200)
+};
+window.adminFullNomenclatureRecovery=async function(){
+  if(!isAdmin1()){showAppToast('Полная пересинхронизация доступна только ADMIN1.','bad',3600);return}
+  if(!confirm('Полностью пересинхронизировать Номенклатуру? Использовать только для восстановления.'))return;
+  setTransferProgress('sync',{active:true,stage:'ADMIN recovery: полная Номенклатура',done:0,total:0,items:0});
+  const d=await pullLiveSnapshot({silent:true,timeoutMs:45000,forceFullNomenclature:true,skipNomDelta:true});
+  if(d?.ok){setTransferProgress('sync',{active:true,stage:'ADMIN recovery: готово',items:Array.isArray(S.nomenclature)?S.nomenclature.length:0});showAppToast('Полная Номенклатура восстановлена: '+(S.nomenclature||[]).length+' позиций.','ok',4200);renderNom()}
+  else showAppToast('ADMIN recovery не завершён: '+String(d?.error||'ошибка'),'bad',5200)
+};
 
 function lsGet(k){try{return localStorage.getItem(k)||''}catch(_){return ''}}
 function lsSet(k,v){try{localStorage.setItem(k,String(v??''))}catch(_){}}
@@ -2603,7 +2672,7 @@ function sheetPrices(n){const p=numPrice(n.price),area=areaFromNom(n);if(n.categ
 
 
 
-function renderNom(){const el=document.getElementById('nom');if(!el.querySelector('#nomSearch'))el.innerHTML=`<button class="back" onclick="go('home')">← Главная</button><input id="nomSearch" class="search" placeholder="Например: профильная труба-30, 25×25×1,5, щит 18×400" oninput="nomLimit=70;renderNomList()"><div id="nomMeta" class="search-meta"></div><div id="nomList"></div>`;renderNomList()}
+function renderNom(){const el=document.getElementById('nom');if(!el.querySelector('#nomSearch'))el.innerHTML=`<button class="back" onclick="go('home')">← Главная</button><div class="queue-actions v023"><button class="edit-btn" onclick="forceNomenclatureDelta()">Обновить номенклатуру</button>${isAdmin1()?'<button class="secondary" onclick="adminFullNomenclatureRecovery()">ADMIN recovery</button>':''}</div><input id="nomSearch" class="search" placeholder="Например: профильная труба-30, 25×25×1,5, щит 18×400" oninput="nomLimit=70;renderNomList()"><div id="nomMeta" class="search-meta"></div><div id="nomList"></div>`;renderNomList()}
 function renderNomList(){const q=normSearch(document.getElementById('nomSearch')?.value||'');const tokens=q.split(/\s+/).filter(Boolean);let arr=S.nomenclature.filter(n=>{const hay=normSearch(`${n.id} ${n.category} ${n.subcategory} ${n.name} ${n.spec} ${n.supplier}`);return !tokens.length||tokens.every(tok=>hay.includes(tok))});document.getElementById('nomMeta').textContent=`Найдено: ${arr.length} из ${S.nomenclature.length} активных позиций · локально · rev ${localNomRevision()||'—'}`;const shown=arr.slice(0,nomLimit);document.getElementById('nomList').innerHTML=shown.map(nomCard).join('')+(arr.length>shown.length?`<button class="show-more" onclick="nomLimit+=100;renderNomList()">Показать ещё (${arr.length-shown.length})</button>`:'')}
 function nomListInfo(n){const pm=numPrice(n.pricePerM),mass=numPrice(n.massPerM);if(pm!=null||mass!=null)return [pm!=null?'1 м — '+rub(pm):'',mass!=null?'масса '+fmt(mass)+' кг/м':''].filter(Boolean).join(' · ');const wp=woodPrices(n);if(wp)return '1 м — '+rub(wp.p1);const sp=sheetPrices(n);if(sp)return (n.buyUnit==='щит'||n.calcUnit==='щит'?'щит':'лист')+' — '+rub(sp.unit)+' · 1 м² — '+rub(sp.perM2);return n.price==null?'':fmt(n.price)+' '+esc(n.priceBasis||'')}
 function nomCard(n){const info=nomListInfo(n);return `<article class="nom-card nom-card-compact" onclick="nomDetail('${esc(n.id)}')"><div class="nom-card-row"><b>${esc(n.name)}</b>${info?`<span class="nom-card-info">${info}</span>`:''}</div></article>`}
@@ -3842,6 +3911,22 @@ document.addEventListener('production:update-ready',e=>showUpdateBanner(e.detail
 
 
 
+let APP_RELOAD_ON_CONTROLLER=false;
+async function checkForAppUpdate(opts={}){
+  if(!('serviceWorker' in navigator)||location.protocol==='file:')return {ok:false,skipped:true};
+  try{
+    const manifest=await fetch('./version.json?ts='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.json():null);
+    if(manifest?.buildId)updateState.manifest=manifest;
+    const newer=!!(manifest?.buildId&&manifest.buildId!==APP_RELEASE.buildId&&updateEligible(manifest));
+    const reg=window.__PROD_SW_REG||await navigator.serviceWorker.getRegistration('./');
+    if(reg)window.__PROD_SW_REG=reg;
+    if(reg)try{await reg.update()}catch(_){}
+    const shouldApply=opts.apply===true&&(newer||!!reg?.waiting||!!reg?.installing);
+    if(newer)showUpdateBanner(manifest);
+    if(shouldApply){await applyAvailableUpdate();return {ok:true,newer,applying:true,manifest}}
+    return {ok:true,newer,manifest}
+  }catch(err){return {ok:false,error:String(err?.message||err)}}
+}
 async function initPwaUpdateLayer(){
   if(!('serviceWorker' in navigator) || location.protocol==='file:') return;
   try{
@@ -3853,6 +3938,7 @@ async function initPwaUpdateLayer(){
         if(w.state==='installed' && navigator.serviceWorker.controller){
           window.__PROD_UPDATE_READY=true;
           document.dispatchEvent(new CustomEvent('production:update-ready',{detail:updateState.manifest||{rolloutStage:'admin1'}}));
+          if(updateEligible(updateState.manifest||{rolloutStage:'admin1'}))applyAvailableUpdate().catch(()=>{})
         }
       });
     });
@@ -3860,15 +3946,37 @@ async function initPwaUpdateLayer(){
       window.__PROD_SW_MESSAGE_READY=true;
       navigator.serviceWorker.addEventListener('message',e=>{const d=e.data||{};if(d.type==='PROD_SYNC_DRAFTS')runResumeSync(String(d.reason||'service-worker'));if(d.type==='PROD_UPDATE_PROGRESS'){setTransferProgress('update',{active:d.stage!=='ready'&&d.stage!=='error',stage:d.label||d.stage||'Обновление',done:Number(d.done||0),total:Number(d.total||0),bytesLoaded:Number(d.bytesLoaded||0),bytesTotal:Number(d.bytesTotal||0)});if(d.stage==='ready')finishTransferProgress('update',{stage:'Файлы обновления готовы',done:d.total,total:d.total,bytesLoaded:d.bytesLoaded||0})}});
     }
-    navigator.serviceWorker.addEventListener('controllerchange',()=>location.reload());
+    navigator.serviceWorker.addEventListener('controllerchange',()=>{if(APP_RELOAD_ON_CONTROLLER)return;APP_RELOAD_ON_CONTROLLER=true;setTransferProgress('update',{active:true,stage:'Перезапускаю приложение'});setTimeout(()=>location.replace(location.href),120)});
     try{await reg.update()}catch(_){}
+    if(reg.waiting&&updateEligible(updateState.manifest||{rolloutStage:'admin1'}))setTimeout(()=>applyAvailableUpdate().catch(()=>{}),100);
     if(reg.periodicSync&&reg.periodicSync.register){try{await reg.periodicSync.register(BG_PERIODIC_TAG,{minInterval:15*60*1000})}catch(_){}}
     registerDraftBackgroundSync().catch(()=>{});
-    fetch('./version.json',{cache:'no-store'}).then(r=>r.ok?r.json():null).then(v=>{
-      if(v&&v.buildId){updateState.manifest=v;if(v.buildId!==APP_RELEASE.buildId&&updateEligible(v)){window.__PROD_UPDATE_READY=true;document.dispatchEvent(new CustomEvent('production:update-ready',{detail:v}))}}
-    }).catch(()=>{});
+    await checkForAppUpdate({apply:true,reason:'startup'});
+    if(!window.__PROD_UPDATE_TIMER)window.__PROD_UPDATE_TIMER=setInterval(()=>{if(document.visibilityState==='visible')checkForAppUpdate({apply:true,reason:'timer'}).catch(()=>{})},60000);
   }catch(err){ console.warn('PWA init failed',err); }
 }
-window.applyAvailableUpdate=async function(){const manifest=updateState.manifest||{};if(!updateEligible(manifest)){alert('Это обновление пока доступно только ADMIN1.');return}setTransferProgress('update',{active:true,stage:'Проверяю версию',done:0,total:0,bytesLoaded:0});const reg=window.__PROD_SW_REG;if(!reg){setTransferProgress('update',{active:true,stage:'Перезапуск'});location.reload();return}const activateWaiting=()=>{if(reg.waiting){setTransferProgress('update',{active:true,stage:'Активирую новую версию'});reg.waiting.postMessage({type:'SKIP_WAITING'});return true}return false};if(activateWaiting())return;try{await reg.update()}catch(_){finishTransferProgress('update',{stage:'Ошибка проверки обновления'});showAppToast('Не удалось проверить обновление. Повторите позже.','bad');return}if(activateWaiting())return;const w=reg.installing;if(w){setTransferProgress('update',{active:true,stage:'Скачиваю файлы приложения'});const deadline=setTimeout(()=>{if(!activateWaiting()){setTransferProgress('update',{active:true,stage:'Перезапуск'});location.reload()}},30000);w.addEventListener('statechange',()=>{if(w.state==='installed'){clearTimeout(deadline);if(!activateWaiting()){setTransferProgress('update',{active:true,stage:'Перезапуск'});location.reload()}}});return}setTransferProgress('update',{active:true,stage:'Перезапуск'});location.reload()};
+window.applyAvailableUpdate=async function(){
+  const manifest=updateState.manifest||{};
+  if(manifest.buildId&&!updateEligible(manifest)){alert('Это обновление пока доступно только ADMIN1.');return false}
+  setTransferProgress('update',{active:true,stage:'Проверяю версию',done:0,total:0,bytesLoaded:0});
+  const reg=window.__PROD_SW_REG||await navigator.serviceWorker.getRegistration('./');
+  if(!reg){finishTransferProgress('update',{stage:'Service Worker не найден'});return false}
+  window.__PROD_SW_REG=reg;
+  const activateWaiting=()=>{if(reg.waiting){setTransferProgress('update',{active:true,stage:'Активирую новую версию'});reg.waiting.postMessage({type:'SKIP_WAITING'});return true}return false};
+  if(activateWaiting())return true;
+  try{await reg.update()}catch(_){finishTransferProgress('update',{stage:'Ошибка проверки обновления'});showAppToast('Не удалось проверить обновление. Повторите позже.','bad');return false}
+  if(activateWaiting())return true;
+  const w=reg.installing;
+  if(w){
+    setTransferProgress('update',{active:true,stage:'Скачиваю файлы приложения'});
+    return await new Promise(resolve=>{
+      const deadline=setTimeout(()=>{if(!activateWaiting()){finishTransferProgress('update',{stage:'Обновление скачивается в фоне'});resolve(false)}},45000);
+      w.addEventListener('statechange',()=>{if(w.state==='installed'){clearTimeout(deadline);resolve(activateWaiting())}else if(w.state==='redundant'){clearTimeout(deadline);finishTransferProgress('update',{stage:'Ошибка установки'});resolve(false)}})
+    })
+  }
+  if(reg.active&&navigator.serviceWorker.controller&&manifest.buildId&&manifest.buildId!==APP_RELEASE.buildId){setTransferProgress('update',{active:true,stage:'Перезапускаю приложение'});setTimeout(()=>location.replace(location.href),120);return true}
+  finishTransferProgress('update',{stage:'Версия актуальна'});return false
+};
+
 async function startApplication(){const started=performance.now();initTheme();purgeLegacyDemoAdminState();hydrateBackendUser();await openDB();initGallerySwipe();let loaded=await loadCachedSnapshot();if(!loaded){S=emptySnapshot();window.SNAPSHOT=S;DATA_STATE.source='empty';renderCoreScreens()}renderBottomNav();network();initPwaUpdateLayer();setTransferProgress('sync',{active:!!backendSession(),stage:loaded?'Локальные данные готовы':'Локальных данных пока нет',items:Array.isArray(S.nomenclature)?S.nomenclature.length:0});window.__PROD_CACHED_READY_MS=Math.round(performance.now()-started);if(backendSession()){setTimeout(()=>runResumeSync('startup'),350);setTimeout(()=>ensureNomenclatureDeltaSetup().catch(()=>{}),2500)}else backendPing({timeoutMs:2500})}
 startApplication();
