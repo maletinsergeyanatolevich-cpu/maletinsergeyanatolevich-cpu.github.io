@@ -1,4 +1,4 @@
-﻿const APP_RELEASE=Object.freeze({version:'v0.3.20',buildId:'2026-10-06.1',channel:'q029-w0-performance',dbSchema:5,updateStrategy:'manifest-service-worker',rolloutStage:'admin1',previousBuildId:'2026-10-05.2'});window.APP_RELEASE=APP_RELEASE;
+﻿const APP_RELEASE=Object.freeze({version:'v0.3.21',buildId:'2026-10-06.2',channel:'q029-w0-connection-hotfix',dbSchema:5,updateStrategy:'manifest-service-worker',rolloutStage:'admin1',previousBuildId:'2026-10-06.1'});window.APP_RELEASE=APP_RELEASE;
 function emptySnapshot(){return {meta:{version:APP_RELEASE.version,snapshotDate:'',snapshotTime:'',timezone:'',backendConnected:false,source:'Нет загруженных бизнес-данных',schemaVersion:1},orders:[],archivedOrders:[],plannedFinance:[],calculations:{},wallet:{balance:0,income:0,expense:0,reserve:0,freeNow:0,expense7:0,free7:0,futureExpenses:[],transactions:[],futureTotal:0,futureIncome:0,ownerDebt:0,ownerDebtSergey:0,ownerDebtEvgeny:0,ownerDebtTotal:0,ownerGrossDebtSergey:0,ownerGrossDebtEvgeny:0,ownerGrossDebtTotal:0,netPosition:0,afterObligations:0},nomenclature:[],purchaseLines:[],purchaseAggregated:[],gallery:[],appIssues:[],purchaseWarnings:[]}}
 function normalizeSnapshot(x){const b=emptySnapshot();if(!x||typeof x!=='object')return b;return {...b,...x,meta:{...b.meta,...(x.meta||{})},wallet:{...b.wallet,...(x.wallet||{})},orders:Array.isArray(x.orders)?x.orders:[],archivedOrders:Array.isArray(x.archivedOrders)?x.archivedOrders:[],plannedFinance:Array.isArray(x.plannedFinance)?x.plannedFinance:[],calculations:x.calculations&&typeof x.calculations==='object'?x.calculations:{},nomenclature:Array.isArray(x.nomenclature)?x.nomenclature:[],purchaseLines:Array.isArray(x.purchaseLines)?x.purchaseLines:[],purchaseAggregated:Array.isArray(x.purchaseAggregated)?x.purchaseAggregated:[],gallery:Array.isArray(x.gallery)?x.gallery:[],appIssues:Array.isArray(x.appIssues)?x.appIssues:[],purchaseWarnings:Array.isArray(x.purchaseWarnings)?x.purchaseWarnings:[]}}
 let S=emptySnapshot(); window.SNAPSHOT=S;
@@ -308,23 +308,27 @@ function orderRefResolve(raw){
   if(m){const full=m[1]+'-'+m[2].padStart(3,'0'),hit=(S.orders||[]).find(o=>String(o.id)===full);return {id:hit?String(hit.id):full};}
   return {id:v};
 }
-let LAST_AUTO_REFRESH_ERROR_AT=0,CORE_SYNC_PROMISE=null,LAST_CORE_SYNC_OK_AT=0,CORE_SYNC_SEQ=0;
+const CORE_SYNC_OK_KEY='prodCoreSyncOkAt',CORE_SYNC_START_KEY='prodCoreSyncStartAt';
+let LAST_AUTO_REFRESH_ERROR_AT=0,CORE_SYNC_PROMISE=null,LAST_CORE_SYNC_OK_AT=Math.max(0,Number(lsGet(CORE_SYNC_OK_KEY)||0)),CORE_SYNC_SEQ=0;
 async function runCoreSync(reason='auto',opts={}){
   if(!backendSession()||navigator.onLine===false)return {ok:false,error:'NO_SESSION_OR_OFFLINE'};
   if(CORE_SYNC_PROMISE)return CORE_SYNC_PROMISE;
   const now=Date.now(),cooldown=Math.max(0,Number(opts.cooldownMs??12000));
-  if(!opts.force&&LAST_CORE_SYNC_OK_AT&&now-LAST_CORE_SYNC_OK_AT<cooldown)return {ok:true,skipped:true,reason:'RECENT_CORE_SYNC'};
+  const persistedOk=Math.max(LAST_CORE_SYNC_OK_AT,Number(lsGet(CORE_SYNC_OK_KEY)||0)),persistedStart=Number(lsGet(CORE_SYNC_START_KEY)||0);
+  if(!opts.force&&persistedOk&&now-persistedOk<cooldown)return {ok:true,skipped:true,reason:'RECENT_CORE_SYNC'};
+  if(!opts.force&&persistedStart&&now-persistedStart<10000)return {ok:true,skipped:true,reason:'RECENT_CROSS_PAGE_SYNC_START'};
+  lsSet(CORE_SYNC_START_KEY,String(now));
   const generation=++CORE_SYNC_SEQ,started=performance.now();
   CORE_SYNC_PROMISE=(async()=>{
     setTransferProgress('sync',{active:true,stage:'Очередь: проверяю',done:0,total:0,bytesLoaded:0,items:0,generation});
-    const pending=await drafts().catch(()=>[]),ready=pending.filter(x=>draftState(x)==='ready'||x.status==='send-now');
-    setTransferProgress('sync',{active:true,stage:'Очередь: отправка',done:0,total:ready.length,generation});
+    const pending=await drafts().catch(()=>[]),ready=pending.filter(x=>(draftState(x)==='ready'||x.status==='send-now')&&!heavyDraft(x)),heavyWaiting=pending.filter(x=>(draftState(x)==='ready'||x.status==='send-now')&&heavyDraft(x)).length;
+    setTransferProgress('sync',{active:true,stage:'Очередь: основные записи',done:0,total:ready.length,generation});
     await recoverPendingAcks().catch(()=>({ok:false}));
-    const pushed=await syncReadyDrafts({auto:!opts.manual,manual:!!opts.manual,notify:false,reason}).catch(err=>({ok:false,error:String((err&&err.message)||err)}));
+    const pushed=await syncReadyDrafts({auto:!opts.manual,manual:!!opts.manual,notify:false,reason,lightOnly:true}).catch(err=>({ok:false,error:String((err&&err.message)||err)}));
     const sent=Number((pushed?.results||[]).filter(x=>x&&x.ok&&x.server_received).length||0);
     setTransferProgress('sync',{active:true,stage:'Основные данные',done:Math.min(sent,ready.length),total:ready.length,generation});
     const pulled=await refreshBackendData();
-    if(pulled?.ok){LAST_CORE_SYNC_OK_AT=Date.now();setTransferProgress('sync',{active:true,stage:'Готово',done:ready.length,total:ready.length,items:Array.isArray(S.nomenclature)?S.nomenclature.length:0,generation,elapsedMs:Math.round(performance.now()-started)});scheduleBackgroundMedia('core-ready');setTimeout(()=>finishTransferProgress('sync',{stage:'Готово'}),1800)}
+    if(pulled?.ok){LAST_CORE_SYNC_OK_AT=Date.now();lsSet(CORE_SYNC_OK_KEY,String(LAST_CORE_SYNC_OK_AT));setTransferProgress('sync',{active:true,stage:heavyWaiting?'Основные данные готовы · media в фоне':'Готово',done:ready.length,total:ready.length,items:Array.isArray(S.nomenclature)?S.nomenclature.length:0,generation,elapsedMs:Math.round(performance.now()-started)});scheduleBackgroundMedia('core-ready');setTimeout(()=>finishTransferProgress('sync',{stage:'Готово'}),1800)}
     else{setTransferProgress('sync',{active:true,stage:'Ошибка данных: '+String(pulled?.error||'UNKNOWN'),generation});setTimeout(()=>finishTransferProgress('sync',{stage:'Ошибка — локальные данные сохранены'}),3500)}
     if(document.getElementById('sync')?.classList.contains('active'))await renderSync();
     if(document.getElementById('appdev')?.classList.contains('active'))await renderAppDev();
@@ -401,6 +405,7 @@ function heavyAutoAllowed(){
 function networkHints(){const c=navigator.connection||navigator.mozConnection||navigator.webkitConnection||null;return {online:navigator.onLine!==false,saveData:!!c?.saveData,type:String(c?.type||''),effectiveType:String(c?.effectiveType||''),rtt:Number(c?.rtt||0),downlink:Number(c?.downlink||0)}}
 function autoRefreshAllowedByHint(){const n=networkHints();if(!n.online||n.saveData)return false;if(['slow-2g','2g'].includes(n.effectiveType))return false;if(n.rtt>1400)return false;if(n.downlink>0&&n.downlink<0.45)return false;return true}
 function heavyDraft(x){return !!(x?.blob instanceof Blob)||Array.isArray(x?.attachments)&&x.attachments.some(a=>a?.blob instanceof Blob)||['photo','audio','document'].includes(String(x?.kind||''))}
+function draftMediaBytes(x){let n=x?.blob instanceof Blob?Number(x.blob.size||0):0;if(Array.isArray(x?.attachments))for(const a of x.attachments){if(a?.blob instanceof Blob)n+=Number(a.blob.size||0)}return n}
 function wifiConfirmed(){const t=networkHints().type.toLowerCase();return t==='wifi'||t==='ethernet'}
 function heavyNetworkLabel(){const n=networkHints();return wifiConfirmed()?'Wi‑Fi':(n.type?n.type:'тип сети не определяется браузером')}
 function allowHeavyManual(){
@@ -426,7 +431,9 @@ async function syncReadyDrafts(opts={}){
   const token=backendSession();if(!token)return {ok:false,error:'NO_SESSION'};
   backendState.syncing=true;
   try{
-    const all=await drafts();let ready=all.filter(x=>draftState(x)==='ready');
+    const all=await drafts();let ready=all.filter(x=>draftState(x)==='ready'),allReady=ready.slice();
+    if(opts.lightOnly===true)ready=ready.filter(x=>!heavyDraft(x));
+    if(opts.heavyOnly===true)ready=ready.filter(heavyDraft);
     if(opts.auto===true){
       const now=Date.now();
       ready=ready.filter(x=>{
@@ -437,16 +444,17 @@ async function syncReadyDrafts(opts={}){
         return !Number.isFinite(at)||now-at>=60000;
       });
     }
-    const heavyReady=ready.filter(heavyDraft),heavyOk=heavyAutoAllowed();
+    const heavyReadyAll=allReady.filter(heavyDraft),heavyReady=ready.filter(heavyDraft),heavyOk=heavyAutoAllowed();
     if(opts.manual===true&&heavyReady.length&&!heavyOk&&!allowHeavyManual())ready=ready.filter(x=>!heavyDraft(x));
     if(opts.manual!==true&&!heavyOk)ready=ready.filter(x=>!heavyDraft(x));
-    const waitingHeavy=heavyReady.filter(x=>!ready.includes(x)).length;
+    const waitingHeavy=heavyReadyAll.filter(x=>!ready.includes(x)).length;
     if(!ready.length){
       if(waitingHeavy)registerDraftBackgroundSync().catch(()=>{});
       if(opts.notify&&waitingHeavy)alert('Тяжёлые файлы сохранены на телефоне и ждут устойчивой сети. Их можно отправить вручную.');
       return {ok:true,count:0,results:[],waitingHeavy};
     }
-    const results=[];
+    const results=[];let mediaDone=0,mediaBytesDone=0,mediaBytesTotal=opts.heavyOnly?ready.reduce((s,x)=>s+draftMediaBytes(x),0):0;
+    if(opts.heavyOnly)setTransferProgress('media',{active:true,stage:'Отправка файлов',done:0,total:ready.length,bytesLoaded:0,bytesTotal:mediaBytesTotal});
     for(const x of ready){
       let r;
       try{
@@ -462,9 +470,10 @@ async function syncReadyDrafts(opts={}){
         const rec=await getDraft(x.id);
         if(rec){rec.meta={...(rec.meta||{}),syncState:'error',lastSyncError:r.error};await updateDraft(rec);await logActivity('sync_error',rec,r.error)}
       }
+      if(opts.heavyOnly){mediaDone++;mediaBytesDone+=draftMediaBytes(x);setTransferProgress('media',{active:true,stage:'Отправка файлов',done:mediaDone,total:ready.length,bytesLoaded:mediaBytesDone,bytesTotal:mediaBytesTotal})}
     }
     await refreshPending();
-    if(results.some(r=>r&&r.ok&&r.server_received))autoRefreshData('post-sync').catch(()=>{});
+    if(results.some(r=>r&&r.ok&&r.server_received)&&!opts.noPostRefresh)autoRefreshData('post-sync').catch(()=>{});
     if(results.some(r=>!(r&&r.ok&&r.server_received))||waitingHeavy)registerDraftBackgroundSync().catch(()=>{});
     if(document.getElementById('sync')?.classList.contains('active'))await renderSync();
     if(document.getElementById('appdev')?.classList.contains('active'))await renderAppDev();
@@ -803,7 +812,7 @@ function go(id){
  document.getElementById('pageTitle').textContent=titles[id]||'Производство';
  renderBottomNav();window.scrollTo({top:0,behavior:'smooth'});
  if(id==='home')renderHome();if(id==='checklists')renderChecklists();if(id==='sync')renderSync();if(id==='wallet')renderWallet();if(id==='nom')renderNom();if(id==='avito')renderAvito();if(id==='gallery')renderGallery();if(id==='admin')renderAdmin();if(id==='activityLog')renderActivityLog();if(id==='analytics')renderAnalytics();if(id==='calculator')renderCalculator();if(id==='salesAnalytics')renderSalesAnalytics();if(id==='appdev')renderAppDev();
- if((id==='gallery'||id==='appdev')&&backendSession()&&navigator.onLine!==false){pullLiveSnapshot({silent:true,timeoutMs:35000}).then(d=>{if(!d?.ok)return;if(document.querySelector('.screen.active')?.id!==id)return;if(id==='gallery')renderGallery();else renderAppDev()}).catch(()=>{})}
+ if((id==='gallery'||id==='appdev')&&backendSession()&&navigator.onLine!==false){runCoreSync('screen-'+id,{force:false,manual:false,cooldownMs:12000}).then(d=>{if(!d?.ok&&!d?.skipped)return;if(document.querySelector('.screen.active')?.id!==id)return;if(id==='gallery')renderGallery();else renderAppDev()}).catch(()=>{})}
 }
 function badge(text,kind=''){return `<span class="badge ${kind}">${esc(text)}</span>`}
 function orderImage(o,cls='order-img'){if(typeof o.image==='string'&&o.image)return `<img class="${cls}" src="${o.image}" alt="${esc(o.name)}" loading="lazy">`;const media=Array.isArray(o.images)?o.images.filter(x=>x&&typeof x==='object'&&x.mediaId):[];return media.length?`<div class="order-placeholder order-media-card" id="order-card-media-${domSafe(o.id)}"><span>📷</span><small>${media.length}</small></div>`:`<div class="order-placeholder">${esc(o.id.slice(-3))}</div>`}
@@ -1394,7 +1403,7 @@ window.loadAllOrderMedia=async function(orderId){if(navigator.onLine===false){al
 window.toggleOrderOfflinePack=async function(orderId){const was=orderOfflinePinned(orderId);setOrderOfflinePinned(orderId,!was);const btn=document.getElementById('offline-pack-'+domSafe(orderId));if(btn)btn.textContent=!was?'Офлайн включён':'Хранить офлайн';if(!was&&navigator.onLine!==false){const r=await cacheOrderMediaPack(orderId,{all:true});if(!r.ok)alert('Офлайн-режим включён. Часть фото догрузится при следующей связи.')}};
 let MEDIA_BG_PROMISE=null,MEDIA_BG_TIMER=null;
 function scheduleBackgroundMedia(reason='idle'){if(MEDIA_BG_TIMER)clearTimeout(MEDIA_BG_TIMER);MEDIA_BG_TIMER=setTimeout(()=>{MEDIA_BG_TIMER=null;runBackgroundMedia(reason).catch(()=>{})},12000)}
-async function runBackgroundMedia(reason='idle'){if(MEDIA_BG_PROMISE)return MEDIA_BG_PROMISE;if(navigator.onLine===false||!backendSession()||!heavyAutoAllowed())return {ok:false,skipped:true};MEDIA_BG_PROMISE=(async()=>{const jobs=[];for(const id of offlinePackIds()){const o=S.orders.find(x=>x.id===id);if(o)for(const m of orderMediaItems(o))jobs.push({orderId:id,m})}if(!jobs.length){finishTransferProgress('media',{stage:'Нет фоновой догрузки'});return {ok:true,count:0}}let done=0,bytes=0,next=0;setTransferProgress('media',{active:true,stage:'Фоновая догрузка',done,total:jobs.length,bytesLoaded:0});const worker=async()=>{while(true){const i=next++;if(i>=jobs.length)return;const j=jobs[i],before=await getCachedOrderMedia(j.m),blob=before||await downloadOrderMedia(j.orderId,j.m,'auto');if(blob){done++;bytes+=Number(blob.size||0)}setTransferProgress('media',{active:true,stage:'Фоновая догрузка',done,total:jobs.length,bytesLoaded:bytes})}};await Promise.all([worker(),worker()]);finishTransferProgress('media',{stage:'Фоновая догрузка завершена',done,total:jobs.length,bytesLoaded:bytes});return {ok:true,count:done,total:jobs.length,bytes}})();try{return await MEDIA_BG_PROMISE}finally{MEDIA_BG_PROMISE=null}}
+async function runBackgroundMedia(reason='idle'){if(MEDIA_BG_PROMISE)return MEDIA_BG_PROMISE;if(CORE_SYNC_PROMISE){scheduleBackgroundMedia('core-busy');return {ok:false,skipped:true,reason:'CORE_BUSY'}}if(navigator.onLine===false||!backendSession()||!heavyAutoAllowed())return {ok:false,skipped:true};MEDIA_BG_PROMISE=(async()=>{const heavy=(await drafts().catch(()=>[])).filter(x=>draftState(x)==='ready'&&heavyDraft(x));let uploaded=0;if(heavy.length){const u=await syncReadyDrafts({auto:true,heavyOnly:true,noPostRefresh:true,notify:false,reason:'background-media'}).catch(()=>({ok:false,results:[]}));uploaded=Number((u?.results||[]).filter(x=>x&&x.ok&&x.server_received).length||0)}const jobs=[];for(const id of offlinePackIds()){const o=S.orders.find(x=>x.id===id);if(o)for(const m of orderMediaItems(o))jobs.push({orderId:id,m})}if(!jobs.length){finishTransferProgress('media',{stage:'Нет фоновой догрузки'});return {ok:true,count:0}}let done=0,bytes=0,next=0;setTransferProgress('media',{active:true,stage:'Фоновая догрузка',done,total:jobs.length,bytesLoaded:0});const worker=async()=>{while(true){const i=next++;if(i>=jobs.length)return;const j=jobs[i],before=await getCachedOrderMedia(j.m),blob=before||await downloadOrderMedia(j.orderId,j.m,'auto');if(blob){done++;bytes+=Number(blob.size||0)}setTransferProgress('media',{active:true,stage:'Фоновая догрузка',done,total:jobs.length,bytesLoaded:bytes})}};await Promise.all([worker(),worker()]);finishTransferProgress('media',{stage:'Фоновая media завершена',done,total:jobs.length,bytesLoaded:bytes});if(uploaded)setTimeout(()=>runResumeSync('post-media'),1500);return {ok:true,count:done,total:jobs.length,bytes,uploaded}})();try{return await MEDIA_BG_PROMISE}finally{MEDIA_BG_PROMISE=null}}
 async function refreshPinnedOfflinePacks(){return runBackgroundMedia('compat')}
 async function hydrateOrderCardMedia(){for(const o of S.orders||[]){const m=orderMediaItems(o)[0];if(!m)continue;const node=document.getElementById('order-card-media-'+domSafe(o.id));if(!node)continue;const b=await getCachedOrderMedia(m);if(b){node.innerHTML=`<img class="order-img" src="${blobUrl(b)}" alt="${esc(o.name)}" loading="lazy">`;node.classList.add('loaded')}}}
 function orderMediaStrip(o){const items=orderMediaItems(o);if(!items.length){if(typeof o.image==='string'&&o.image)return `<div class="photo-strip"><img class="photo-large" src="${o.image}" alt="референс" loading="lazy"></div>`;return '<div class="order-media-empty">Фото на устройстве пока не загружены.</div>'}const pinned=orderOfflinePinned(o.id);return `<div class="order-media-head"><b>Фото заказа · ${items.length}</b><div><button class="secondary" id="offline-pack-${domSafe(o.id)}" onclick="toggleOrderOfflinePack('${esc(o.id)}')">${pinned?'Офлайн включён':'Хранить офлайн'}</button><button class="secondary" onclick="loadAllOrderMedia('${esc(o.id)}')">Загрузить все</button></div></div><div class="photo-strip order-media-strip">${items.map((m,i)=>`<button class="order-media-slot" id="order-media-${domSafe(m.mediaId)}" onclick="loadOrderMediaItem('${esc(o.id)}','${esc(m.mediaId)}')"><span>📷</span><small>${i<3?'загрузится автоматически':'нажмите для загрузки'}</small></button>`).join('')}</div>`}
@@ -2681,6 +2690,9 @@ async function pullLiveSnapshot(opts={}){
     return {ok:false,error:DATA_STATE.lastError,cached};
   }
 }
+let SNAPSHOT_PULL_PROMISE=null;
+const pullLiveSnapshotImpl=pullLiveSnapshot;
+pullLiveSnapshot=async function(opts={}){if(opts.forceFullNomenclature===true)return pullLiveSnapshotImpl(opts);if(SNAPSHOT_PULL_PROMISE)return SNAPSHOT_PULL_PROMISE;const p=pullLiveSnapshotImpl(opts);SNAPSHOT_PULL_PROMISE=p;try{return await p}finally{if(SNAPSHOT_PULL_PROMISE===p)SNAPSHOT_PULL_PROMISE=null}};
 async function refreshBackendData(){
   if(!backendSession())return {ok:false,error:'NO_SESSION'};
   let d=await pullLiveSnapshot({silent:true,timeoutMs:35000});
@@ -2692,16 +2704,7 @@ async function refreshBackendData(){
   }
   return d||{ok:false,error:'SNAPSHOT_PULL_FAILED'};
 }
-async function maybeBackgroundRefresh(reason='auto'){
-  if(DATA_STATE.refreshing||!backendSession())return {ok:false,error:'NO_SESSION_OR_BUSY'};
-  DATA_STATE.refreshing=true;
-  try{
-    if(navigator.onLine===false)return {ok:false,error:'OFFLINE'};
-    recoverPendingAcks().catch(()=>{});
-    syncReadyDrafts({auto:true,reason}).catch(()=>{});
-    return await refreshBackendData();
-  }finally{DATA_STATE.refreshing=false}
-}
+async function maybeBackgroundRefresh(reason='auto'){return runCoreSync(reason,{force:false,manual:false,cooldownMs:12000})}
 function draftState(x){if(x.status==='ready'||x.status==='send-now')return 'ready';if(!x.holdUntil)return 'ready';return Date.now()<new Date(x.holdUntil).getTime()?'hold':'ready'}
 function holdText(x){if(draftState(x)==='ready')return 'Готово к отправке';const ms=Math.max(0,new Date(x.holdUntil).getTime()-Date.now()),s=Math.ceil(ms/1000),m=Math.floor(s/60),ss=String(s%60).padStart(2,'0');return `До отправки ${m}:${ss}`}
 async function putDraft(d){
@@ -3579,7 +3582,7 @@ document.addEventListener('visibilitychange',()=>{
   const now=Date.now();if(now-LAST_VISIBLE_REFRESH>30000){LAST_VISIBLE_REFRESH=now;runResumeSync('visibility')}
 });
 window.addEventListener('pageshow',()=>runResumeSync('pageshow'));
-setInterval(()=>{if(backendSession()&&navigator.onLine!==false)syncReadyDrafts({auto:true,reason:'foreground-timer'}).catch(()=>{})},15000);
+setInterval(()=>{if(backendSession()&&navigator.onLine!==false)syncReadyDrafts({auto:true,lightOnly:true,reason:'foreground-timer'}).then(r=>{if(r?.waitingHeavy)scheduleBackgroundMedia('foreground-timer')}).catch(()=>{})},15000);
 function updateEligible(v={}){const stage=String(v.rolloutStage||v.releaseStage||'stable').toLowerCase();if(stage==='paused')return false;if(stage==='admin1')return isAdmin1();return true}
 function showUpdateBanner(v={}){if(!updateEligible(v))return;updateState.manifest=v||{};window.__PROD_UPDATE_READY=true;const box=document.getElementById('updateBanner');const text=document.getElementById('updateText');if(text)text.textContent=`Доступно обновление${v?.buildId?' · '+v.buildId:''}`;if(box)box.classList.remove('hidden')}
 document.addEventListener('production:update-ready',e=>showUpdateBanner(e.detail||{}));
