@@ -3569,7 +3569,6 @@ function network(){
   if(online&&backendSession()){
     setTimeout(()=>runResumeSync('online'),250);
     setTimeout(()=>ensureNomenclatureDeltaSetup().catch(()=>{}),1200);
-    scheduleBackgroundMedia('network');
   }
 }
 window.addEventListener('online',network);
