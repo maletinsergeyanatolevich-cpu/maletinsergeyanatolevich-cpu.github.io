@@ -1,19 +1,19 @@
 {
-  "version": "v0.3.21",
-  "buildId": "2026-10-06.2",
-  "channel": "q029-w0-connection-hotfix",
+  "version": "v0.3.22",
+  "buildId": "2026-10-06.3",
+  "channel": "q029-w0-admin-bootstrap",
   "rolloutStage": "admin1",
   "eligibleRoles": [
     "ADMIN1"
   ],
   "dbSchema": 5,
   "minBackend": "backend-0.2.20",
-  "previousBuildId": "2026-10-06.1",
+  "previousBuildId": "2026-10-06.2",
   "rollback": {
-    "buildId": "2026-10-06.1",
+    "buildId": "2026-10-06.2",
     "dbSchema": 5,
     "safeWithoutDataReset": true
   },
-  "publishedAt": "2026-10-06T08:30:00Z",
-  "notes": "Q-029 W0 connection hotfix: core sync excludes heavy uploads, foreground timer no longer pushes media, outgoing media runs after core readiness, ordinary snapshot pulls coalesce, and cross-page startup cooldown reduces duplicate pulls."
+  "publishedAt": "2026-10-06T09:00:00Z",
+  "notes": "Q-029 admin bootstrap: service worker auto-activates only when local snapshotCache confirms ADMIN1, so stale v0.3.19 clients can cross the waiting-worker barrier even when the update banner is missing."
 }
