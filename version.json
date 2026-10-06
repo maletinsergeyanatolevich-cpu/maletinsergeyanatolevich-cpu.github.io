@@ -1,19 +1,19 @@
 {
-  "version": "v0.3.23",
-  "buildId": "2026-10-06.4",
-  "channel": "q029-w0-nom-delta-updater",
+  "version": "v0.3.24",
+  "buildId": "2026-10-06.5",
+  "channel": "q029-w0-order-edit-contrast",
   "rolloutStage": "admin1",
   "eligibleRoles": [
     "ADMIN1"
   ],
   "dbSchema": 5,
-  "minBackend": "backend-0.2.20",
-  "previousBuildId": "2026-10-06.3",
+  "minBackend": "backend-0.2.21",
+  "previousBuildId": "2026-10-06.4",
   "rollback": {
-    "buildId": "2026-10-06.3",
+    "buildId": "2026-10-06.4",
     "dbSchema": 5,
     "safeWithoutDataReset": true
   },
-  "publishedAt": "2026-10-06T09:15:00Z",
-  "notes": "Q-029: automatic update activation/restart, stale-cache rollback prevention, simple refresh label, delta-first Nomenclature UI/progress, no automatic full nomenclature fallback."
+  "publishedAt": "2026-10-06T10:40:00Z",
+  "notes": "Q-029 W0: explicit order edit button and editable order description/comment UX; high-contrast order income/expense buttons."
 }
