@@ -1,4 +1,4 @@
-﻿const APP_RELEASE=Object.freeze({version:'v0.3.27',buildId:'2026-10-07.3',channel:'q029-w1-admin-diagnostics',dbSchema:5,updateStrategy:'manifest-service-worker',rolloutStage:'admin1',previousBuildId:'2026-10-07.2'});window.APP_RELEASE=APP_RELEASE;
+﻿const APP_RELEASE=Object.freeze({version:'v0.3.27',buildId:'2026-10-07.3a',channel:'q029-w1-admin-diagnostics',dbSchema:5,updateStrategy:'manifest-service-worker',rolloutStage:'admin1',previousBuildId:'2026-10-07.2'});window.APP_RELEASE=APP_RELEASE;
 function emptySnapshot(){return {meta:{version:APP_RELEASE.version,snapshotDate:'',snapshotTime:'',timezone:'',backendConnected:false,source:'Нет загруженных бизнес-данных',schemaVersion:1},orders:[],archivedOrders:[],plannedFinance:[],calculations:{},wallet:{balance:0,income:0,expense:0,reserve:0,freeNow:0,expense7:0,free7:0,futureExpenses:[],transactions:[],futureTotal:0,futureIncome:0,ownerDebt:0,ownerDebtSergey:0,ownerDebtEvgeny:0,ownerDebtTotal:0,ownerGrossDebtSergey:0,ownerGrossDebtEvgeny:0,ownerGrossDebtTotal:0,netPosition:0,afterObligations:0},nomenclature:[],purchaseLines:[],purchaseAggregated:[],gallery:[],appIssues:[],purchaseWarnings:[]}}
 function normalizeSnapshot(x){const b=emptySnapshot();if(!x||typeof x!=='object')return b;return {...b,...x,meta:{...b.meta,...(x.meta||{})},wallet:{...b.wallet,...(x.wallet||{})},orders:Array.isArray(x.orders)?x.orders:[],archivedOrders:Array.isArray(x.archivedOrders)?x.archivedOrders:[],plannedFinance:Array.isArray(x.plannedFinance)?x.plannedFinance:[],calculations:x.calculations&&typeof x.calculations==='object'?x.calculations:{},nomenclature:Array.isArray(x.nomenclature)?x.nomenclature:[],purchaseLines:Array.isArray(x.purchaseLines)?x.purchaseLines:[],purchaseAggregated:Array.isArray(x.purchaseAggregated)?x.purchaseAggregated:[],gallery:Array.isArray(x.gallery)?x.gallery:[],appIssues:Array.isArray(x.appIssues)?x.appIssues:[],purchaseWarnings:Array.isArray(x.purchaseWarnings)?x.purchaseWarnings:[]}}
 let S=emptySnapshot(); window.SNAPSHOT=S;
@@ -2282,11 +2282,13 @@ async function runWave1BackendDiagnostic(){
  const request=(body)=>backendPost({...body,session_token:session},{timeoutMs:25000});
  try{
   setBusy('Проверяю Wave 1 backend…');
-  const ping=await backendPing({timeoutMs:5000});if(!ping?.ok||String(ping.version||'')!=='backend-0.2.23')throw new Error('BACKEND_VERSION='+String(ping?.version||ping?.error||'unknown'));
+  const ping=await backendPing({timeoutMs:5000});if(!ping?.ok||!/^backend-0\.2\.(24|25)$/.test(String(ping.version||'')))throw new Error('BACKEND_VERSION='+String(ping?.version||ping?.error||'unknown'));
+  const old=await request({action:'party.list',offset:0,limit:250,request_id:eid+'-OLD'});if(old?.ok){for(const p of (old.items||[]).filter(x=>String(x.display_name||'').startsWith('W1 DIAGNOSTIC')&&String(x.status||'ACTIVE')==='ACTIVE')){const ce='W1DIAG-CLEAN-'+(crypto.randomUUID?crypto.randomUUID():Date.now()+Math.random());const ar=await request({action:'party.mutate',request_id:ce,event_id:ce,record_action:'archive',entity_id:p.party_id,base_record_version:Number(p.record_version||1),base_values:{status:'ACTIVE'},patch:{}});if(!ar?.ok||ar.conflict)throw new Error('CLEANUP_OLD_DIAG_FAILED')}}
   const h0=await request({action:'sync.domain.head',domain:'parties',request_id:eid+'-H0'});if(!h0?.ok)throw new Error('HEAD0 '+String(h0?.error||h0?.detail||'failed'));
   const createBody={action:'party.mutate',request_id:eid+'-C',event_id:eid,record_action:'create',patch:{display_name:'W1 DIAGNOSTIC '+new Date().toISOString(),party_type:'PERSON',roles:['OTHER'],status:'ACTIVE',comment:'Q-029 Wave1 synthetic acceptance; safe to keep archived'}};
   const cr=await request(createBody);if(!cr?.ok||!cr.entity_id)throw new Error('CREATE '+String(cr?.error||cr?.detail||'failed'));
   const dup=await request(createBody);if(!dup?.ok||dup.duplicate!==true||String(dup.entity_id)!==String(cr.entity_id))throw new Error('IDEMPOTENCY_FAIL');
+  const list=await request({action:'party.list',offset:0,limit:250,request_id:eid+'-LIST'});if(!list?.ok)throw new Error('LIST_FAIL');const same=(list.items||[]).filter(x=>String(x.last_event_id||'')===eid);if(same.length!==1)throw new Error('IDEMPOTENCY_ROWS='+same.length);
   const h1=await request({action:'sync.domain.head',domain:'parties',request_id:eid+'-H1'});if(!h1?.ok||Number(h1.current_rev)<=Number(h0.current_rev))throw new Error('HEAD_NOT_ADVANCED');
   const d1=await request({action:'sync.domain.delta',domain:'parties',since_rev:Number(h0.current_rev||0),offset:0,limit:50,request_id:eid+'-D1'});if(!d1?.ok)throw new Error('DELTA1 '+String(d1?.error||d1?.detail||'failed'));
   const created=(d1.items||[]).find(x=>String(x.party_id||'')===String(cr.entity_id));if(!created||String(created.status||'')!=='ACTIVE')throw new Error('DELTA_CREATE_MISSING');
@@ -2294,13 +2296,12 @@ async function runWave1BackendDiagnostic(){
   const h2=await request({action:'sync.domain.head',domain:'parties',request_id:aeid+'-H2'});if(!h2?.ok||Number(h2.current_rev)<=Number(h1.current_rev))throw new Error('HEAD_ARCHIVE_NOT_ADVANCED');
   const d2=await request({action:'sync.domain.delta',domain:'parties',since_rev:Number(h1.current_rev||0),offset:0,limit:50,request_id:aeid+'-D2'});if(!d2?.ok)throw new Error('DELTA2 '+String(d2?.error||d2?.detail||'failed'));
   const archived=(d2.items||[]).find(x=>String(x.party_id||'')===String(cr.entity_id));if(!archived||String(archived.status||'')!=='ARCHIVED')throw new Error('DELTA_ARCHIVE_MISSING');
-  const result='PASS · backend '+ping.version+' · party '+cr.entity_id+' · rev '+h0.current_rev+'→'+h1.current_rev+'→'+h2.current_rev+' · duplicate ACK=yes · delta create/archive=yes';
+  const result='PASS · backend '+ping.version+' · party '+cr.entity_id+' · rev '+h0.current_rev+'→'+h1.current_rev+'→'+h2.current_rev+' · duplicate ACK=yes · one row/event=yes · delta create/archive=yes';
   if(out)out.textContent=result;showAppToast('Wave 1 backend diagnostic PASS','ok',5000);
  }catch(e){
   const msg='FAIL · '+String(e?.message||e);if(out)out.textContent=msg;showAppToast('Wave 1 diagnostic: '+msg,'bad',7000)
  }finally{clearBusy()}
 }
-
 async function refreshAdminData(){adminState.loaded=false;await loadAdminData(true);await renderAdmin()}
 function selectAdminUser(id){adminSelectedUserId=String(id||'');renderAdmin()}
 async function saveSelectedUserRights(){
