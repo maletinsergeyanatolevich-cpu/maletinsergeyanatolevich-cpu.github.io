@@ -1,19 +1,19 @@
 {
-  "version": "v0.3.27",
-  "buildId": "2026-10-07.3b",
-  "channel": "q029-w1-admin-diagnostics",
+  "version": "v0.3.27.1",
+  "buildId": "2026-10-07.3c",
+  "channel": "q034-diagnostic-transport",
   "rolloutStage": "admin1",
   "eligibleRoles": [
     "ADMIN1"
   ],
   "dbSchema": 5,
-  "minBackend": "backend-0.2.21",
-  "previousBuildId": "2026-10-07.2",
+  "minBackend": "backend-0.2.25",
+  "previousBuildId": "2026-10-07.3b",
   "rollback": {
-    "buildId": "2026-10-07.2",
+    "buildId": "2026-10-07.3b",
     "dbSchema": 5,
     "safeWithoutDataReset": true
   },
-  "publishedAt": "2026-10-07T04:05:00Z",
-  "notes": "Q-034: diagnostic transport fix. New test runs before stale-row cleanup, captures step-by-step dispatch/response trace, verifies app/manifest/sw build alignment, session/device presence, and archives old failed rows only after core PASS."
+  "publishedAt": "2026-10-07T04:25:00Z",
+  "notes": "Q-034 transport fix: visible 3.27.1 diagnostic build; robust ADMIN1 service-worker activation even when indexedDB.databases() is unavailable; step-by-step diagnostic trace retained."
 }

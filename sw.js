@@ -1,5 +1,5 @@
 'use strict';
-const BUILD='2026-10-07.3b';
+const BUILD='2026-10-07.3c';
 const CACHE='production-pwa-'+BUILD;
 const APP_SHELL=[
   './index.html','./assets/app.css','./assets/media.css','./assets/app.js','./bootstrap.js',
@@ -7,9 +7,10 @@ const APP_SHELL=[
 ];
 async function cachedAdmin1(){
   try{
-    if(typeof indexedDB.databases!=='function')return false;
-    const dbs=await indexedDB.databases();
-    if(!Array.isArray(dbs)||!dbs.some(x=>x&&x.name==='production-v011'))return false;
+    if(typeof indexedDB.databases==='function'){
+      const dbs=await indexedDB.databases();
+      if(Array.isArray(dbs)&&!dbs.some(x=>x&&x.name==='production-v011'))return false;
+    }
     return await new Promise(resolve=>{
       let settled=false;const done=v=>{if(settled)return;settled=true;resolve(!!v)};
       const req=indexedDB.open('production-v011');
