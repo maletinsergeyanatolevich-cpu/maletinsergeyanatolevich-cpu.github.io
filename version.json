@@ -1,19 +1,19 @@
 {
-  "version": "v0.3.27",
-  "buildId": "2026-10-07.3",
-  "channel": "q029-w1-admin-diagnostics",
+  "version": "v0.3.28",
+  "buildId": "2026-10-07.4",
+  "channel": "q029-orders-wallet-unified-actions",
   "rolloutStage": "admin1",
   "eligibleRoles": [
     "ADMIN1"
   ],
   "dbSchema": 5,
-  "minBackend": "backend-0.2.21",
-  "previousBuildId": "2026-10-07.2",
+  "minBackend": "backend-0.2.24",
+  "previousBuildId": "2026-10-07.3",
   "rollback": {
-    "buildId": "2026-10-07.2",
+    "buildId": "2026-10-07.3",
     "dbSchema": 5,
     "safeWithoutDataReset": true
   },
-  "publishedAt": "2026-10-07T02:30:00Z",
-  "notes": "Q-029 Wave1: ADMIN1 live acceptance diagnostic for backend-0.2.23 HEAD/DELTA/idempotency."
+  "publishedAt": "",
+  "notes": "Q-029 comprehensive UX staging: compact Orders, unified quick actions, Q-030 Wallet current-vs-history separation, Wave1 read models. Publish only after backend-0.2.24 idempotency acceptance."
 }
