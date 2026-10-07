@@ -1,6 +1,6 @@
 {
-  "version": "v0.3.27.1",
-  "buildId": "2026-10-07.3c",
+  "version": "v0.3.27.2",
+  "buildId": "2026-10-07.3d",
   "channel": "q034-diagnostic-transport",
   "rolloutStage": "admin1",
   "eligibleRoles": [
@@ -8,12 +8,12 @@
   ],
   "dbSchema": 5,
   "minBackend": "backend-0.2.25",
-  "previousBuildId": "2026-10-07.3b",
+  "previousBuildId": "2026-10-07.3c",
   "rollback": {
-    "buildId": "2026-10-07.3b",
+    "buildId": "2026-10-07.3c",
     "dbSchema": 5,
     "safeWithoutDataReset": true
   },
-  "publishedAt": "2026-10-07T04:25:00Z",
-  "notes": "Q-034 transport fix: visible 3.27.1 diagnostic build; robust ADMIN1 service-worker activation even when indexedDB.databases() is unavailable; step-by-step diagnostic trace retained."
+  "publishedAt": "2026-10-07T04:38:00Z",
+  "notes": "Q-034 diagnostic-only fix: replace undefined CURRENT_USER reference with current backend/session role source."
 }
