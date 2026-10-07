@@ -7,7 +7,7 @@
     "ADMIN1"
   ],
   "dbSchema": 5,
-  "minBackend": "backend-0.2.24",
+  "minBackend": "backend-0.2.25",
   "previousBuildId": "2026-10-07.3",
   "rollback": {
     "buildId": "2026-10-07.3",
@@ -15,5 +15,5 @@
     "safeWithoutDataReset": true
   },
   "publishedAt": "",
-  "notes": "Q-029 comprehensive UX staging: compact Orders, unified quick actions, Q-030 Wallet current-vs-history separation, Wave1 read models. Publish only after backend-0.2.24 idempotency acceptance."
+  "notes": "Q-029 comprehensive staging: compact Orders, unified quick actions, Q-030 current-vs-history Wallet, planned lifecycle, Wave1 read models. Requires backend-0.2.25; publish only after backend acceptance and controlled Finance cutover."
 }
