@@ -498,3 +498,71 @@ main{padding-bottom:178px!important}
 #orderDetail .order-comment-text{background:#fff;border:1px solid var(--line);border-radius:14px;padding:13px 14px;font-size:17px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}
 html[data-theme="dark"] #orderDetail .order-edit-main,html[data-theme="dark"] #orderDetail .order-finance-actions button,html[data-theme="dark"] #orderDetail .order-text-head button{background:#3f2e24!important;color:#ffd7b8!important;border-color:#8c6247!important}
 html[data-theme="dark"] #orderDetail .order-comment-text{background:#1b2026!important;color:#f2f4f6!important;border-color:#313942!important}
+
+
+/* v0.3.28 — unified quick actions + compact Orders + Q-030 Wallet */
+.unified-action-panel{display:flex;flex-direction:column;gap:8px;margin:12px 0 16px}
+.unified-action-row{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px}
+.unified-action-row .compact-action{min-width:0;width:100%;aspect-ratio:1/1;min-height:0;padding:0;border-radius:18px;display:flex;align-items:center;justify-content:center}
+.unified-action-row .compact-action .action-label{display:none!important}
+.unified-action-row .compact-action .action-icon{width:28px;height:28px;display:flex;align-items:center;justify-content:center}
+.unified-action-row .compact-action .action-icon svg{width:28px;height:28px}
+.unified-money-action{width:100%;height:38px;min-height:38px;border-radius:14px;display:flex;align-items:center;justify-content:center;gap:10px;font-size:16px;font-weight:950;background:#dff3df;color:#1f5b2b;border:1px solid #9fd0a8}
+.unified-money-action .action-icon,.unified-money-action .action-icon svg{width:24px;height:24px}
+.orders-v328-head{display:flex;align-items:center;justify-content:space-between;margin:4px 0 10px}
+.orders-v328-head h2{margin:0;font-size:26px}
+.orders-v328-head small{display:block;margin-top:2px;color:var(--muted)}
+.order-add-mini{width:48px;height:48px;border-radius:15px;font-size:28px;font-weight:700}
+.orders-compact-list{display:flex;flex-direction:column;gap:8px}
+.order-card-compact-v328{min-height:92px!important;display:grid!important;grid-template-columns:86px 1fr!important;gap:10px!important;padding:8px!important;margin:0!important;border-radius:16px!important;align-items:stretch}
+.order-card-compact-v328 .order-card-thumb{width:86px;height:76px;border-radius:12px;overflow:hidden;display:flex;align-items:center;justify-content:center;background:rgba(127,127,127,.08);font-size:28px}
+.order-card-compact-v328 .order-card-thumb img{width:100%;height:100%;object-fit:cover}
+.order-card-compact-v328 .order-card-compact-body{min-width:0;display:flex;flex-direction:column;justify-content:center}
+.order-card-compact-v328 .order-card-compact-body>b{font-size:18px;line-height:1.12;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.order-card-compact-v328 .order-card-number{font-size:13px;font-weight:800;color:var(--muted);margin-top:2px}
+.order-card-compact-v328 p{font-size:14px;line-height:1.28;margin:5px 0 0;color:var(--muted);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.orders-pager{display:flex;justify-content:center;gap:7px;margin:14px 0}
+.orders-pager button{min-width:38px;height:38px;border-radius:12px;font-weight:900}
+.orders-pager button.active{outline:3px solid rgba(75,98,143,.18);transform:translateY(-1px)}
+.order-v328-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin:4px 0 12px}
+.order-v328-head h2{margin:0;font-size:27px;line-height:1.12}
+.order-v328-head span{display:block;margin-top:4px;font-size:14px;color:var(--muted);font-weight:800}
+.order-pencil{flex:0 0 48px;width:48px;height:48px;border-radius:15px;font-size:22px;font-weight:950}
+.order-v328-tiles{margin-bottom:6px}
+.order-v328-tiles .detail-editable{cursor:default!important}
+.order-manage-menu{display:flex;flex-direction:column;gap:8px}
+.order-manage-menu button{min-height:50px;text-align:left;padding:0 16px;font-size:17px;font-weight:900}
+.order-text-section{margin:14px 0}
+.order-text-section .desc,.order-comment-text{min-height:58px}
+.order-edit-v328{padding-bottom:6px}
+.order-edit-id{display:flex;flex-direction:column;gap:2px;margin-bottom:12px}
+.order-edit-id>b{font-size:22px}
+.order-edit-id>span{font-size:13px;color:var(--muted);font-weight:700}
+.order-edit-tiles{gap:8px}
+.order-edit-tiles .field{margin:0;padding:10px;border:1px solid var(--line);border-radius:13px}
+.order-edit-tiles .field.readonly{background:rgba(127,127,127,.07)}
+.order-edit-bottom{position:sticky;bottom:-14px;display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:10px 0 2px;background:var(--bg,#fff)}
+.order-edit-bottom button{min-height:50px}
+.partner-current-card{border:1px solid var(--line);border-radius:16px;padding:12px;margin-bottom:12px}
+.partner-current-card h3{margin:0 0 8px}
+.partner-current-card>div:not(.hint){display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-top:1px solid var(--line)}
+.partner-history-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:8px 0}
+.partner-history-head h3{margin:0}
+.partner-history-head select{max-width:160px}
+.partner-history-summary{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
+.partner-history-summary span{padding:8px;border-radius:12px;background:rgba(127,127,127,.07);font-size:13px}
+.partner-scroll-list{max-height:56vh;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding-bottom:18px}
+.wallet-owner-sheet,.wallet-ledger-sheet{overflow-y:auto!important;-webkit-overflow-scrolling:touch!important}
+.wallet-balance-main small{line-height:1.3}
+.future-row-actions{display:flex;flex-wrap:wrap;gap:6px}
+.future-row-actions .danger{background:#fff0f0;color:#8b1e1e;border-color:#e7b3b3}
+
+@media(max-width:520px){
+ .unified-action-row{gap:5px}
+ .unified-action-row .compact-action{border-radius:15px}
+ .order-card-compact-v328{grid-template-columns:78px 1fr!important}
+ .order-card-compact-v328 .order-card-thumb{width:78px;height:72px}
+ .order-card-compact-v328 .order-card-compact-body>b{font-size:17px}
+ .order-v328-head h2{font-size:24px}
+ .order-edit-bottom{grid-template-columns:1fr}
+}
