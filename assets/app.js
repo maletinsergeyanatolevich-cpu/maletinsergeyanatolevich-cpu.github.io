@@ -2418,8 +2418,8 @@ function walletPartnerParty(owner){const name=walletOwnerKey(owner).toLowerCase(
 function walletPartnerEntries(owner){const p=walletPartnerParty(owner);if(!p)return [];return (S.partnerSettlements||[]).filter(x=>String(x.partner_party_id||'')===String(p.party_id||'')&&String(x.status||'POSTED')==='POSTED')}
 function walletPartnerCurrent(owner){const items=walletPartnerEntries(owner);return {ready:!!walletPartnerParty(owner)&&items.length>0,funding:items.reduce((s,x)=>s+Number(x.funding_delta||0),0),distribution:items.reduce((s,x)=>s+Number(x.distribution_delta||0),0),items}}
 function walletPeriodKey(x){const raw=String(x.effective_date||x.occurred_at||'');const m=raw.match(/(20\d{2})-(\d{2})/);return m?m[1]+'-'+m[2]:''}
-function walletPartnerHistory(owner,period='all'){const items=walletPartnerEntries(owner).slice().sort((a,b)=>String(b.effective_date||b.occurred_at||'').localeCompare(String(a.effective_date||a.occurred_at||'')));return period==='all'?items:items.filter(x=>walletPeriodKey(x)===period)}
-function walletPartnerPeriodOptions(owner){const keys=[...new Set(walletPartnerEntries(owner).map(walletPeriodKey).filter(Boolean))].sort().reverse();return keys}
+function walletPartnerHistory(owner,period='all'){const items=walletPartnerEntries(owner).filter(x=>String(x.entry_type||'')!=='RECONCILIATION_OPENING').slice().sort((a,b)=>String(b.effective_date||b.occurred_at||'').localeCompare(String(a.effective_date||a.occurred_at||'')));return period==='all'?items:items.filter(x=>walletPeriodKey(x)===period)}
+function walletPartnerPeriodOptions(owner){const keys=[...new Set(walletPartnerEntries(owner).filter(x=>String(x.entry_type||'')!=='RECONCILIATION_OPENING').map(walletPeriodKey).filter(Boolean))].sort().reverse();return keys}
 function walletPartnerDetail(owner,period='all'){
  const cur=walletPartnerCurrent(owner),name=walletOwnerKey(owner),items=walletPartnerHistory(owner,period),months=walletPartnerPeriodOptions(owner);
  const histFunding=items.reduce((s,x)=>s+Math.abs(Number(x.funding_delta||0)),0),histDistribution=items.reduce((s,x)=>s+Math.abs(Number(x.distribution_delta||0)),0);
