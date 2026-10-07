@@ -1,5 +1,5 @@
 'use strict';
-const BUILD='2026-10-07.3a';
+const BUILD='2026-10-07.3b';
 const CACHE='production-pwa-'+BUILD;
 const APP_SHELL=[
   './index.html','./assets/app.css','./assets/media.css','./assets/app.js','./bootstrap.js',

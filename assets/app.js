@@ -1,4 +1,4 @@
-﻿const APP_RELEASE=Object.freeze({version:'v0.3.27',buildId:'2026-10-07.3a',channel:'q029-w1-admin-diagnostics',dbSchema:5,updateStrategy:'manifest-service-worker',rolloutStage:'admin1',previousBuildId:'2026-10-07.2'});window.APP_RELEASE=APP_RELEASE;
+﻿const APP_RELEASE=Object.freeze({version:'v0.3.27',buildId:'2026-10-07.3b',channel:'q029-w1-admin-diagnostics',dbSchema:5,updateStrategy:'manifest-service-worker',rolloutStage:'admin1',previousBuildId:'2026-10-07.2'});window.APP_RELEASE=APP_RELEASE;
 function emptySnapshot(){return {meta:{version:APP_RELEASE.version,snapshotDate:'',snapshotTime:'',timezone:'',backendConnected:false,source:'Нет загруженных бизнес-данных',schemaVersion:1},orders:[],archivedOrders:[],plannedFinance:[],calculations:{},wallet:{balance:0,income:0,expense:0,reserve:0,freeNow:0,expense7:0,free7:0,futureExpenses:[],transactions:[],futureTotal:0,futureIncome:0,ownerDebt:0,ownerDebtSergey:0,ownerDebtEvgeny:0,ownerDebtTotal:0,ownerGrossDebtSergey:0,ownerGrossDebtEvgeny:0,ownerGrossDebtTotal:0,netPosition:0,afterObligations:0},nomenclature:[],purchaseLines:[],purchaseAggregated:[],gallery:[],appIssues:[],purchaseWarnings:[]}}
 function normalizeSnapshot(x){const b=emptySnapshot();if(!x||typeof x!=='object')return b;return {...b,...x,meta:{...b.meta,...(x.meta||{})},wallet:{...b.wallet,...(x.wallet||{})},orders:Array.isArray(x.orders)?x.orders:[],archivedOrders:Array.isArray(x.archivedOrders)?x.archivedOrders:[],plannedFinance:Array.isArray(x.plannedFinance)?x.plannedFinance:[],calculations:x.calculations&&typeof x.calculations==='object'?x.calculations:{},nomenclature:Array.isArray(x.nomenclature)?x.nomenclature:[],purchaseLines:Array.isArray(x.purchaseLines)?x.purchaseLines:[],purchaseAggregated:Array.isArray(x.purchaseAggregated)?x.purchaseAggregated:[],gallery:Array.isArray(x.gallery)?x.gallery:[],appIssues:Array.isArray(x.appIssues)?x.appIssues:[],purchaseWarnings:Array.isArray(x.purchaseWarnings)?x.purchaseWarnings:[]}}
 let S=emptySnapshot(); window.SNAPSHOT=S;
@@ -2273,35 +2273,38 @@ async function renderAdmin(){
  <div class="settings-block"><h3>Wave 1 — проверка backend</h3><p>ADMIN1 synthetic acceptance: HEAD → create → same event_id retry → DELTA → archive → DELTA. Финансы и Заказы не изменяются.</p><button class="secondary" onclick="runWave1BackendDiagnostic()">Запустить проверку Wave 1</button><div id="wave1DiagResult" class="muted" style="margin-top:8px"></div></div>
  <div class="settings-block"><h3>Журнал действий</h3><button class="secondary" onclick="go('activityLog')">Открыть журнал действий</button><button class="secondary" style="margin-top:7px" onclick="refreshAdminData()">Обновить данные ADMIN1</button></div>`
 }
+const W1_DIAG_TRACE_KEY='prod:w1diag:trace';
+function w1DiagPush(step,msg,data={}){let a=[];try{a=JSON.parse(localStorage.getItem(W1_DIAG_TRACE_KEY)||'[]')}catch(_){}a.push({t:new Date().toLocaleTimeString('ru-RU'),step,msg,data});if(a.length>80)a=a.slice(-80);try{localStorage.setItem(W1_DIAG_TRACE_KEY,JSON.stringify(a))}catch(_){}const el=document.getElementById('wave1DiagResult');if(el){el.innerHTML=a.map(x=>'<div><b>'+esc(x.t)+'</b> · '+esc(x.step)+' · '+esc(x.msg)+'</div>').join('');el.scrollTop=el.scrollHeight}}
+function w1DiagReset(){try{localStorage.setItem(W1_DIAG_TRACE_KEY,'[]')}catch(_){}const el=document.getElementById('wave1DiagResult');if(el)el.innerHTML=''}
+async function w1DiagEnv(){let manifest=null,swBuild='';try{manifest=await fetch('./version.json?d='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.json():null)}catch(_){}try{const t=await fetch('./sw.js?d='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.text():'');const m=t.match(/const BUILD=['"]([^'"]+)['"]/);swBuild=m?m[1]:''}catch(_){}return {app:APP_RELEASE.buildId,manifest:String(manifest?.buildId||''),sw:swBuild,controller:String(navigator.serviceWorker?.controller?.scriptURL||'')}}
 async function runWave1BackendDiagnostic(){
- if(!isAdmin1()){showAppToast('Проверка доступна только ADMIN1.','bad',3500);return}
- const session=backendSession();if(!session){showAppToast('Нет активной backend-сессии.','bad',4200);return}
- const out=document.getElementById('wave1DiagResult');if(out)out.textContent='Проверяю…';
- const eid='W1DIAG-'+(crypto.randomUUID?crypto.randomUUID():Date.now()+'-'+Math.random().toString(16).slice(2));
- const aeid='W1DIAG-ARCH-'+(crypto.randomUUID?crypto.randomUUID():Date.now()+'-'+Math.random().toString(16).slice(2));
- const request=(body)=>backendPost({...body,session_token:session},{timeoutMs:25000});
+ if(!isAdmin1()){showAppToast('Проверка доступна только ADMIN1.','bad');return}
+ const session=backendSession();if(!session){showAppToast('Нет активной backend-сессии.','bad');return}
+ w1DiagReset();
+ const eid='W1DIAG-'+(crypto.randomUUID?crypto.randomUUID():Date.now()+'-'+Math.random()),aeid='W1DIAG-ARCH-'+(crypto.randomUUID?crypto.randomUUID():Date.now()+'-'+Math.random());
+ const req=async(step,body)=>{w1DiagPush(step,'DISPATCH '+body.action,{request_id:body.request_id,event_id:body.event_id||''});try{const d=await backendPost({...body,session_token:session,device_id:backendDeviceId(),app_version:APP_RELEASE.version},{timeoutMs:25000});w1DiagPush(step,(d?.ok?'OK ':'FAIL ')+String(d?.error||''),{duplicate:!!d?.duplicate,entity_id:d?.entity_id||'',current_rev:d?.current_rev});return d}catch(err){w1DiagPush(step,'TRANSPORT '+String(err?.message||err));throw err}};
  try{
-  setBusy('Проверяю Wave 1 backend…');
-  const ping=await backendPing({timeoutMs:5000});if(!ping?.ok||!/^backend-0\.2\.(24|25)$/.test(String(ping.version||'')))throw new Error('BACKEND_VERSION='+String(ping?.version||ping?.error||'unknown'));
-  const old=await request({action:'party.list',offset:0,limit:250,request_id:eid+'-OLD'});if(old?.ok){for(const p of (old.items||[]).filter(x=>String(x.display_name||'').startsWith('W1 DIAGNOSTIC')&&String(x.status||'ACTIVE')==='ACTIVE')){const ce='W1DIAG-CLEAN-'+(crypto.randomUUID?crypto.randomUUID():Date.now()+Math.random());const ar=await request({action:'party.mutate',request_id:ce,event_id:ce,record_action:'archive',entity_id:p.party_id,base_record_version:Number(p.record_version||1),base_values:{status:'ACTIVE'},patch:{}});if(!ar?.ok||ar.conflict)throw new Error('CLEANUP_OLD_DIAG_FAILED')}}
-  const h0=await request({action:'sync.domain.head',domain:'parties',request_id:eid+'-H0'});if(!h0?.ok)throw new Error('HEAD0 '+String(h0?.error||h0?.detail||'failed'));
-  const createBody={action:'party.mutate',request_id:eid+'-C',event_id:eid,record_action:'create',patch:{display_name:'W1 DIAGNOSTIC '+new Date().toISOString(),party_type:'PERSON',roles:['OTHER'],status:'ACTIVE',comment:'Q-029 Wave1 synthetic acceptance; safe to keep archived'}};
-  const cr=await request(createBody);if(!cr?.ok||!cr.entity_id)throw new Error('CREATE '+String(cr?.error||cr?.detail||'failed'));
-  const dup=await request(createBody);if(!dup?.ok||dup.duplicate!==true||String(dup.entity_id)!==String(cr.entity_id))throw new Error('IDEMPOTENCY_FAIL');
-  const list=await request({action:'party.list',offset:0,limit:250,request_id:eid+'-LIST'});if(!list?.ok)throw new Error('LIST_FAIL');const same=(list.items||[]).filter(x=>String(x.last_event_id||'')===eid);if(same.length!==1)throw new Error('IDEMPOTENCY_ROWS='+same.length);
-  const h1=await request({action:'sync.domain.head',domain:'parties',request_id:eid+'-H1'});if(!h1?.ok||Number(h1.current_rev)<=Number(h0.current_rev))throw new Error('HEAD_NOT_ADVANCED');
-  const d1=await request({action:'sync.domain.delta',domain:'parties',since_rev:Number(h0.current_rev||0),offset:0,limit:50,request_id:eid+'-D1'});if(!d1?.ok)throw new Error('DELTA1 '+String(d1?.error||d1?.detail||'failed'));
-  const created=(d1.items||[]).find(x=>String(x.party_id||'')===String(cr.entity_id));if(!created||String(created.status||'')!=='ACTIVE')throw new Error('DELTA_CREATE_MISSING');
-  const ar=await request({action:'party.mutate',request_id:aeid+'-A',event_id:aeid,record_action:'archive',entity_id:cr.entity_id,base_record_version:Number(cr.record_version||1),base_values:{status:'ACTIVE'},patch:{}});if(!ar?.ok||ar.conflict)throw new Error('ARCHIVE '+String(ar?.error||ar?.detail||'failed'));
-  const h2=await request({action:'sync.domain.head',domain:'parties',request_id:aeid+'-H2'});if(!h2?.ok||Number(h2.current_rev)<=Number(h1.current_rev))throw new Error('HEAD_ARCHIVE_NOT_ADVANCED');
-  const d2=await request({action:'sync.domain.delta',domain:'parties',since_rev:Number(h1.current_rev||0),offset:0,limit:50,request_id:aeid+'-D2'});if(!d2?.ok)throw new Error('DELTA2 '+String(d2?.error||d2?.detail||'failed'));
-  const archived=(d2.items||[]).find(x=>String(x.party_id||'')===String(cr.entity_id));if(!archived||String(archived.status||'')!=='ARCHIVED')throw new Error('DELTA_ARCHIVE_MISSING');
-  const result='PASS · backend '+ping.version+' · party '+cr.entity_id+' · rev '+h0.current_rev+'→'+h1.current_rev+'→'+h2.current_rev+' · duplicate ACK=yes · one row/event=yes · delta create/archive=yes';
-  if(out)out.textContent=result;showAppToast('Wave 1 backend diagnostic PASS','ok',5000);
- }catch(e){
-  const msg='FAIL · '+String(e?.message||e);if(out)out.textContent=msg;showAppToast('Wave 1 diagnostic: '+msg,'bad',7000)
- }finally{clearBusy()}
+  setBusy('Wave 1 diagnostic…');w1DiagPush('START','CLICK HANDLER FIRED',{event_id:eid});
+  const env=await w1DiagEnv();w1DiagPush('ENV','app='+env.app+' manifest='+env.manifest+' sw='+env.sw+' controller='+(env.controller?'yes':'no'));
+  if(env.app!=='2026-10-07.3b'||env.manifest!==env.app||env.sw!==env.app)throw new Error('STALE_BUILD');
+  w1DiagPush('AUTH','session=yes device='+backendDeviceId()+' role='+String(CURRENT_USER?.role||''));
+  const ping=await backendPing({timeoutMs:5000});w1DiagPush('PING',String(ping?.version||ping?.error||''));if(!ping?.ok||String(ping.version)!=='backend-0.2.25')throw new Error('BACKEND_VERSION');
+  const h0=await req('1 HEAD',{action:'sync.domain.head',domain:'parties',request_id:eid+'-H0'});if(!h0?.ok)throw new Error('HEAD0');
+  const body={action:'party.mutate',request_id:eid+'-C',event_id:eid,record_action:'create',patch:{display_name:'W1 DIAGNOSTIC '+new Date().toISOString(),party_type:'PERSON',roles:['OTHER'],status:'ACTIVE',comment:'Q-034 synthetic'}};
+  const cr=await req('2 CREATE',body);if(!cr?.ok||!cr.entity_id)throw new Error('CREATE');
+  const dup=await req('3 RETRY SAME EVENT',body);if(!dup?.ok||dup.duplicate!==true||String(dup.entity_id)!==String(cr.entity_id))throw new Error('IDEMPOTENCY_FAIL');
+  const list=await req('4 VERIFY ONE ROW',{action:'party.list',offset:0,limit:250,request_id:eid+'-LIST'});if(!list?.ok||(list.items||[]).filter(x=>String(x.last_event_id||'')===eid).length!==1)throw new Error('ONE_ROW_FAIL');
+  const h1=await req('5 HEAD AFTER CREATE',{action:'sync.domain.head',domain:'parties',request_id:eid+'-H1'});if(!h1?.ok||Number(h1.current_rev)<=Number(h0.current_rev))throw new Error('HEAD_CREATE');
+  const d1=await req('6 DELTA CREATE',{action:'sync.domain.delta',domain:'parties',since_rev:Number(h0.current_rev||0),offset:0,limit:50,request_id:eid+'-D1'});if(!d1?.ok||!(d1.items||[]).find(x=>String(x.party_id)===String(cr.entity_id)&&String(x.status)==='ACTIVE'))throw new Error('DELTA_CREATE');
+  const ar=await req('7 ARCHIVE',{action:'party.mutate',request_id:aeid+'-A',event_id:aeid,record_action:'archive',entity_id:cr.entity_id,base_record_version:Number(cr.record_version||1),base_values:{status:'ACTIVE'},patch:{}});if(!ar?.ok||ar.conflict)throw new Error('ARCHIVE');
+  const h2=await req('8 HEAD AFTER ARCHIVE',{action:'sync.domain.head',domain:'parties',request_id:aeid+'-H2'});if(!h2?.ok||Number(h2.current_rev)<=Number(h1.current_rev))throw new Error('HEAD_ARCHIVE');
+  const d2=await req('9 DELTA ARCHIVE',{action:'sync.domain.delta',domain:'parties',since_rev:Number(h1.current_rev||0),offset:0,limit:50,request_id:aeid+'-D2'});if(!d2?.ok||!(d2.items||[]).find(x=>String(x.party_id)===String(cr.entity_id)&&String(x.status)==='ARCHIVED'))throw new Error('DELTA_ARCHIVE');
+  w1DiagPush('CORE PASS','new path proved functional');
+  const old=await req('10 OLD LIST',{action:'party.list',offset:0,limit:250,request_id:eid+'-OLD'});if(old?.ok){for(const p of (old.items||[]).filter(x=>String(x.last_event_id||'')==='W1DIAG-4f342554-714c-44eb-bcfd-7f8e48688b91'&&String(x.status)==='ACTIVE')){const ce='W1DIAG-CLEAN-'+(crypto.randomUUID?crypto.randomUUID():Date.now()+Math.random()),z=await req('11 CLEAN OLD',{action:'party.mutate',request_id:ce,event_id:ce,record_action:'archive',entity_id:p.party_id,base_record_version:Number(p.record_version||1),base_values:{status:'ACTIVE'},patch:{}});if(!z?.ok||z.conflict)throw new Error('CLEANUP_OLD')}}
+  w1DiagPush('PASS','event='+eid+' rev '+h0.current_rev+'→'+h1.current_rev+'→'+h2.current_rev);showAppToast('Wave 1 diagnostic PASS','ok',6000)
+ }catch(err){w1DiagPush('FAIL',String(err?.message||err));showAppToast('Wave 1 diagnostic FAIL: '+String(err?.message||err),'bad',8000)}finally{clearBusy()}
 }
+window.runWave1BackendDiagnostic=runWave1BackendDiagnostic;
 async function refreshAdminData(){adminState.loaded=false;await loadAdminData(true);await renderAdmin()}
 function selectAdminUser(id){adminSelectedUserId=String(id||'');renderAdmin()}
 async function saveSelectedUserRights(){
