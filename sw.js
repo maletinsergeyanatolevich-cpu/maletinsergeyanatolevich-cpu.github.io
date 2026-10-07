@@ -1,5 +1,5 @@
 'use strict';
-const BUILD='2026-10-07.1';
+const BUILD='2026-10-07.2';
 const CACHE='production-pwa-'+BUILD;
 const APP_SHELL=[
   './index.html','./assets/app.css','./assets/media.css','./assets/app.js','./bootstrap.js',
@@ -79,7 +79,17 @@ self.addEventListener('fetch',event=>{
   if(url.origin!==self.location.origin)return;
   if(url.pathname.endsWith('/version.json')){event.respondWith(fetch(req,{cache:'no-store'}).catch(()=>caches.match(req)));return;}
   if(req.mode==='navigate'){
-    event.respondWith((async()=>{const c=await caches.open(CACHE);try{const fresh=await fetch(req,{cache:'reload'});if(fresh.ok)await c.put('./index.html',fresh.clone());return fresh}catch(_){return (await c.match('./index.html'))||c.match('./offline.html')}})());return;
+    event.respondWith((async()=>{
+      const c=await caches.open(CACHE),cached=await c.match('./index.html');
+      if(cached)return cached;
+      try{
+        const fresh=await fetch(req,{cache:'reload'});
+        if(fresh.ok)await c.put('./index.html',fresh.clone());
+        return fresh
+      }catch(_){
+        return c.match('./offline.html')
+      }
+    })());return;
   }
   event.respondWith((async()=>{const c=await caches.open(CACHE),cached=await c.match(req);if(cached)return cached;const fresh=await fetch(req,{cache:'no-store'});if(fresh.ok)await c.put(req,fresh.clone());return fresh})());
 });
