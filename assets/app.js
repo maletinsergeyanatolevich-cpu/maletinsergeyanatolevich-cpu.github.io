@@ -1,4 +1,4 @@
-﻿const APP_RELEASE=Object.freeze({version:'v0.3.27.1',buildId:'2026-10-07.3c',channel:'q034-diagnostic-transport',dbSchema:5,updateStrategy:'manifest-service-worker',rolloutStage:'admin1',previousBuildId:'2026-10-07.3b'});window.APP_RELEASE=APP_RELEASE;
+﻿const APP_RELEASE=Object.freeze({version:'v0.3.27.2',buildId:'2026-10-07.3d',channel:'q034-diagnostic-transport',dbSchema:5,updateStrategy:'manifest-service-worker',rolloutStage:'admin1',previousBuildId:'2026-10-07.3c'});window.APP_RELEASE=APP_RELEASE;
 function emptySnapshot(){return {meta:{version:APP_RELEASE.version,snapshotDate:'',snapshotTime:'',timezone:'',backendConnected:false,source:'Нет загруженных бизнес-данных',schemaVersion:1},orders:[],archivedOrders:[],plannedFinance:[],calculations:{},wallet:{balance:0,income:0,expense:0,reserve:0,freeNow:0,expense7:0,free7:0,futureExpenses:[],transactions:[],futureTotal:0,futureIncome:0,ownerDebt:0,ownerDebtSergey:0,ownerDebtEvgeny:0,ownerDebtTotal:0,ownerGrossDebtSergey:0,ownerGrossDebtEvgeny:0,ownerGrossDebtTotal:0,netPosition:0,afterObligations:0},nomenclature:[],purchaseLines:[],purchaseAggregated:[],gallery:[],appIssues:[],purchaseWarnings:[]}}
 function normalizeSnapshot(x){const b=emptySnapshot();if(!x||typeof x!=='object')return b;return {...b,...x,meta:{...b.meta,...(x.meta||{})},wallet:{...b.wallet,...(x.wallet||{})},orders:Array.isArray(x.orders)?x.orders:[],archivedOrders:Array.isArray(x.archivedOrders)?x.archivedOrders:[],plannedFinance:Array.isArray(x.plannedFinance)?x.plannedFinance:[],calculations:x.calculations&&typeof x.calculations==='object'?x.calculations:{},nomenclature:Array.isArray(x.nomenclature)?x.nomenclature:[],purchaseLines:Array.isArray(x.purchaseLines)?x.purchaseLines:[],purchaseAggregated:Array.isArray(x.purchaseAggregated)?x.purchaseAggregated:[],gallery:Array.isArray(x.gallery)?x.gallery:[],appIssues:Array.isArray(x.appIssues)?x.appIssues:[],purchaseWarnings:Array.isArray(x.purchaseWarnings)?x.purchaseWarnings:[]}}
 let S=emptySnapshot(); window.SNAPSHOT=S;
@@ -2286,8 +2286,8 @@ async function runWave1BackendDiagnostic(){
  try{
   setBusy('Wave 1 diagnostic…');w1DiagPush('START','CLICK HANDLER FIRED',{event_id:eid});
   const env=await w1DiagEnv();w1DiagPush('ENV','app='+env.app+' manifest='+env.manifest+' sw='+env.sw+' controller='+(env.controller?'yes':'no'));
-  if(env.app!=='2026-10-07.3c'||env.manifest!==env.app||env.sw!==env.app)throw new Error('STALE_BUILD');
-  w1DiagPush('AUTH','session=yes device='+backendDeviceId()+' role='+String(CURRENT_USER?.role||''));
+  if(env.app!=='2026-10-07.3d'||env.manifest!==env.app||env.sw!==env.app)throw new Error('STALE_BUILD');
+  w1DiagPush('AUTH','session=yes device='+backendDeviceId()+' role='+String(backendUserPublic()?.role||SESSION.role||''));
   const ping=await backendPing({timeoutMs:5000});w1DiagPush('PING',String(ping?.version||ping?.error||''));if(!ping?.ok||String(ping.version)!=='backend-0.2.25')throw new Error('BACKEND_VERSION');
   const h0=await req('1 HEAD',{action:'sync.domain.head',domain:'parties',request_id:eid+'-H0'});if(!h0?.ok)throw new Error('HEAD0');
   const body={action:'party.mutate',request_id:eid+'-C',event_id:eid,record_action:'create',patch:{display_name:'W1 DIAGNOSTIC '+new Date().toISOString(),party_type:'PERSON',roles:['OTHER'],status:'ACTIVE',comment:'Q-034 synthetic'}};
