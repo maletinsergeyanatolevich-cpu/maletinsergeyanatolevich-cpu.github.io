@@ -1,6 +1,6 @@
 {
   "version": "v0.3.27",
-  "buildId": "2026-10-07.3a",
+  "buildId": "2026-10-07.3b",
   "channel": "q029-w1-admin-diagnostics",
   "rolloutStage": "admin1",
   "eligibleRoles": [
@@ -14,6 +14,6 @@
     "dbSchema": 5,
     "safeWithoutDataReset": true
   },
-  "publishedAt": "2026-10-07T03:08:00Z",
-  "notes": "Q-029 W1 diagnostic maintenance: accept backend-0.2.24/0.2.25, clean stale W1 diagnostic parties, verify exactly one row per event_id."
+  "publishedAt": "2026-10-07T04:05:00Z",
+  "notes": "Q-034: diagnostic transport fix. New test runs before stale-row cleanup, captures step-by-step dispatch/response trace, verifies app/manifest/sw build alignment, session/device presence, and archives old failed rows only after core PASS."
 }
