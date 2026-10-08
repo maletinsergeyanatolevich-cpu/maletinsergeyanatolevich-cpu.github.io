@@ -1,11 +1,11 @@
 ﻿'use strict';
 /**
-* Производство PWA — Apps Script backend v0.2.28 Q-046 WALLET CANONICAL STAGING
+* Производство PWA — Apps Script backend v0.2.29 Q-047 WALLET STAGING SOURCE FIX
 * Серверный слой: ping / access request / activation / auth check / sync inbox.
 * ВАЖНО: секреты НЕ хранить в этом файле. Recovery/owner secrets — только Script Properties.
 */
 const CFG = Object.freeze({
- VERSION: 'backend-0.2.28-staging-q046',
+ VERSION: 'backend-0.2.29-staging-q047',
  SPREADSHEET_ID: '177IVzLUaNrzKScoRo0CjT5Zo7tJm5Bo0am2z9whAWdg',
  USERS_SHEET: 'Пользователи и права',
  ACCESS_REQUESTS_SHEET: '_APP_ACCESS_REQUESTS',
@@ -1859,8 +1859,9 @@ function supportsOrderMedia_(appVersion) {
  if (minor > 3) return true;
  return minor === 3 && patch >= 3;
 }
-function financeMovementClass_(type,orderId,category,subcategory){
- const t=String(type||''),oid=String(orderId||'').trim(),cat=(String(category||'')+' '+String(subcategory||'')).toLowerCase();
+function financeMovementClass_(type,orderId,category,subcategory,financialMeaning){
+ const t=String(type||''),oid=String(orderId||'').trim(),cat=(String(category||'')+' '+String(subcategory||'')).toLowerCase(),meaning=String(financialMeaning||'').trim().toUpperCase();
+ if(['NON_OPERATING_LOAN_INFLOW','NON_OPERATING_PARTNER_REPAYMENT','NON_OPERATING_OWNER_DISTRIBUTION','NON_OPERATING_OBLIGATION_PAYMENT','FUNDING_REPAYMENT','PARTNER_DISTRIBUTION'].indexOf(meaning)>=0)return 'non_operating';
  if(/вывод|вклад владельц|внутренн/.test(cat))return 'owner_internal';
  if(/^Приход$/i.test(t)&&oid)return 'order_income';
  if(/^Расход$/i.test(t)&&oid)return 'order_direct_expense';
@@ -1874,12 +1875,12 @@ function buildOrderFinanceIndex_(){
    if(yes_(valueBy_(ft,r,'is_deleted'))||!yes_(valueBy_(ft,r,'Фактическая операция')))return;
    const oid=cleanOut_(valueBy_(ft,r,'№ заказа'));if(!oid)return;
    const type=String(valueBy_(ft,r,'Тип')||''),amount=numberOrNull_(valueBy_(ft,r,'Сумма'));if(amount==null)return;
-   const cls=financeMovementClass_(type,oid,valueBy_(ft,r,'Категория'),valueBy_(ft,r,'Подкатегория'));
+   const cls=financeMovementClass_(type,oid,valueBy_(ft,r,'Категория'),valueBy_(ft,r,'Подкатегория'),valueBy_(ft,r,'Финансовый смысл'));
    if(!idx[oid])idx[oid]={income:0,directExpense:0,otherExpense:0,operations:0};
    idx[oid].operations++;
    if(cls==='order_income')idx[oid].income+=Number(amount);
    else if(cls==='order_direct_expense')idx[oid].directExpense+=Number(amount);
-   else if(/^Расход$/i.test(type))idx[oid].otherExpense+=Number(amount);
+   else if(cls!=='non_operating'&&cls!=='owner_internal'&&/^Расход$/i.test(type))idx[oid].otherExpense+=Number(amount);
  });
  return idx;
 }
@@ -2239,7 +2240,7 @@ function buildPlannedFinance_(){
      operationId:cleanOut_(valueBy_(ft,r,'ID операции')),date:formatDateMaybe_(valueBy_(ft,r,'Дата')),
      direction:/^Приход$/i.test(type)?'income':'expense',amount:Number(amount),orderId:cleanOut_(valueBy_(ft,r,'№ заказа')),
      category:cleanOut_(valueBy_(ft,r,'Категория')),subcategory:cleanOut_(valueBy_(ft,r,'Подкатегория')),
-     movementClass:financeMovementClass_(type,cleanOut_(valueBy_(ft,r,'№ заказа')),valueBy_(ft,r,'Категория'),valueBy_(ft,r,'Подкатегория')),
+     movementClass:financeMovementClass_(type,cleanOut_(valueBy_(ft,r,'№ заказа')),valueBy_(ft,r,'Категория'),valueBy_(ft,r,'Подкатегория'),valueBy_(ft,r,'Финансовый смысл')),
      comment:cleanOut_(valueBy_(ft,r,'Описание'))||cleanOut_(valueBy_(ft,r,'Комментарий')),
      createdByUserId:cleanOut_(valueBy_(ft,r,'created_by_user_id')),createdByName:cleanOut_(valueBy_(ft,r,'created_by_name'))||cleanOut_(valueBy_(ft,r,'Сотрудник')),
      updatedAt:cleanOut_(valueBy_(ft,r,'updated_at_app'))||formatDateMaybe_(valueBy_(ft,r,'Дата изменения')),recordVersion:numberOrNull_(valueBy_(ft,r,'record_version'))||0,
@@ -2323,7 +2324,7 @@ function buildWallet_() {
      category: cleanOut_(valueBy_(ft, r, 'Категория')),
      subcategory: cleanOut_(valueBy_(ft, r, 'Подкатегория')),
      counterparty: cleanOut_(valueBy_(ft, r, 'Контрагент / поставщик')),
-     movementClass: financeMovementClass_(type,cleanOut_(valueBy_(ft,r,'№ заказа')),valueBy_(ft,r,'Категория'),valueBy_(ft,r,'Подкатегория')),
+     movementClass: financeMovementClass_(type,cleanOut_(valueBy_(ft,r,'№ заказа')),valueBy_(ft,r,'Категория'),valueBy_(ft,r,'Подкатегория'),valueBy_(ft,r,'Финансовый смысл')),
      comment: cleanOut_(valueBy_(ft, r, 'Описание')) || cleanOut_(valueBy_(ft, r, 'Комментарий')),
      createdByUserId: cleanOut_(valueBy_(ft, r, 'created_by_user_id')),
      createdByName: creatorName,
@@ -2365,8 +2366,8 @@ function buildWallet_() {
  }
  const balance = numberOrNull_(at(1, 2)) || 0;
  const ownerStats=walletOwnerStats_(ft,startMs,balance);
- const periodIncome=allPeriodTransactions.filter(function(x){return x.direction==='income'&&x.category!=='Вклад владельца'&&x.category!=='Внутренние расчёты';}).reduce(function(s,x){return s+Number(x.amount||0);},0);
- const periodExpense=allPeriodTransactions.filter(function(x){return x.direction==='expense'&&['Вывод средств','Возврат владельцу','Внутренние расчёты'].indexOf(x.category)<0;}).reduce(function(s,x){return s+Number(x.amount||0);},0);
+ const periodIncome=allPeriodTransactions.filter(function(x){return x.direction==='income'&&x.movementClass!=='non_operating'&&x.movementClass!=='owner_internal'&&x.category!=='Вклад владельца'&&x.category!=='Внутренние расчёты';}).reduce(function(s,x){return s+Number(x.amount||0);},0);
+ const periodExpense=allPeriodTransactions.filter(function(x){return x.direction==='expense'&&x.movementClass!=='non_operating'&&x.movementClass!=='owner_internal'&&['Вывод средств','Возврат владельцу','Внутренние расчёты'].indexOf(x.category)<0;}).reduce(function(s,x){return s+Number(x.amount||0);},0);
  const ownerDebtSergey=Number(ownerStats.sergey.debt||0),ownerDebtEvgeny=Number(ownerStats.evgeny.debt||0),ownerDebtTotal=Number(ownerStats.debtTotal||0);
  const ownerGrossDebtSergey=Number(ownerStats.sergey.grossDebt||0),ownerGrossDebtEvgeny=Number(ownerStats.evgeny.grossDebt||0),ownerGrossDebtTotal=Number(ownerStats.grossTotal||0);
  const netPosition=Number(ownerStats.netPosition||0);
@@ -3775,7 +3776,18 @@ function q046PartnerCards_(){
 }
 function q046Obligations_(){
   const ot=q046SafeTable_('Обязательства'),ft=q046SafeTable_('Финансы');if(!ot)return [];
-  return ot.rows.filter(function(r){return String(valueBy_(ot,r,'obligation_id')||'').trim()&&!q046IsDeleted_(valueBy_(ot,r,'is_deleted'))&&String(valueBy_(ot,r,'status')||'').toUpperCase()!=='CANCELLED';}).map(function(r){const o=tableRowObject_(ot,r),id=String(o.obligation_id||''),original=q046Money_(o.original_amount);let paid=0;if(ft)ft.rows.forEach(function(fr){if(String(valueBy_(ft,fr,'obligation_id')||'')!==id||q046IsDeleted_(valueBy_(ft,fr,'is_deleted'))||!yes_(valueBy_(ft,fr,'Фактическая операция')))return;if(!/^Расход$/i.test(String(valueBy_(ft,fr,'Тип')||'')))return;const src=String(valueBy_(ft,fr,'Источник денег / оплаты')||'').toUpperCase();if(src==='SUPPLIER_DEBT'||src==='CREDIT')return;paid+=q046Money_(valueBy_(ft,fr,'Сумма'));});return {obligation_id:id,title:o.title||'',obligation_type:o.obligation_type||'',original_amount:original,paid_principal:Math.round(paid*100)/100,remaining:Math.max(0,Math.round((original-paid)*100)/100),currency:o.currency||'RUB',payment_frequency:o.payment_frequency||'NONE',regular_payment_amount:q046Money_(o.regular_payment_amount),next_due_date:o.next_due_date||'',status:o.status||'',source_finance_id:o.source_finance_id||''};});
+  return ot.rows.filter(function(r){return String(valueBy_(ot,r,'obligation_id')||'').trim()&&!q046IsDeleted_(valueBy_(ot,r,'is_deleted'))&&String(valueBy_(ot,r,'status')||'').toUpperCase()!=='CANCELLED';}).map(function(r){
+    const o=tableRowObject_(ot,r),id=String(o.obligation_id||''),original=q046Money_(o.original_amount);let paid=0;
+    if(ft)ft.rows.forEach(function(fr){
+      if(String(valueBy_(ft,fr,'obligation_id')||'')!==id||q046IsDeleted_(valueBy_(ft,fr,'is_deleted'))||!yes_(valueBy_(ft,fr,'Фактическая операция')))return;
+      if(!/^Расход$/i.test(String(valueBy_(ft,fr,'Тип')||'')))return;
+      const src=String(valueBy_(ft,fr,'Источник денег / оплаты')||'').toUpperCase();
+      if(src==='SUPPLIER_DEBT'||src==='CREDIT')return;
+      paid+=q046Money_(valueBy_(ft,fr,'Сумма'));
+    });
+    const paidRounded=Math.round(paid*100)/100,remaining=Math.round((original-paidRounded)*100)/100,regular=q046Money_(o.regular_payment_amount);
+    return {obligation_id:id,title:o.title||'',obligation_type:o.obligation_type||'',original_amount:original,paid_principal:paidRounded,remaining:remaining,overpayment_amount:remaining<0?Math.abs(remaining):0,currency:o.currency||'RUB',payment_frequency:o.payment_frequency||'NONE',regular_payment_amount:regular,next_payment_amount:remaining>0?(regular>0?Math.min(regular,remaining):remaining):0,next_due_date:o.next_due_date||'',status:o.status||'',source_finance_id:o.source_finance_id||''};
+  });
 }
 function q046PlannedFinance_(horizonDate){
   const ft=q046SafeTable_('Финансы');if(!ft)return [];const end=horizonDate?q046DateMs_(horizonDate):0,out=[];
@@ -3783,9 +3795,39 @@ function q046PlannedFinance_(horizonDate){
 }
 function q046ForecastDate_(body){const h=String(body&&body.horizon||'month').toLowerCase(),now=new Date();if(h==='today')return new Date(now.getFullYear(),now.getMonth(),now.getDate(),23,59,59);if(h==='7d')return new Date(now.getTime()+7*86400000);if(h==='date'&&body.chosen_date)return new Date(String(body.chosen_date)+'T23:59:59');return new Date(now.getFullYear(),now.getMonth()+1,0,23,59,59);}
 function q046OrderSummary_(){
-  const t=q046SafeTable_('Заказы');if(!t)return {known_receivable_total:0,known_orders:[],unknown_price_orders:[]};const known=[],unknown=[];let total=0;
-  t.rows.forEach(function(r){if(q046IsDeleted_(valueBy_(t,r,'is_deleted')))return;const st=String(valueBy_(t,r,'Статус')||'').toLowerCase();if(/архив|заверш|отмен/.test(st))return;const id=String(valueBy_(t,r,'ID заказа')||''),no=String(valueBy_(t,r,'№ заказа')||'');if(!id&&!no)return;const priceState=String(valueBy_(t,r,'price_state')||'').toUpperCase(),price=numberOrNull_(valueBy_(t,r,'Цена клиенту')),received=q046Money_(valueBy_(t,r,'Получено'));const item={order_id:id,order_no:no,title:String(valueBy_(t,r,'Название заказа')||''),client:String(valueBy_(t,r,'Имя клиента')||''),received:received,price_state:priceState||((price==null)?'UNKNOWN':'KNOWN')};if(price==null||priceState==='UNKNOWN'){item.price=null;item.receivable=null;unknown.push(item);return;}item.price=Number(price);item.receivable=Math.max(0,Number(price)-received);total+=item.receivable;known.push(item);});
-  return {known_receivable_total:Math.round(total*100)/100,known_orders:known,unknown_price_orders:unknown};
+  const t=q046SafeTable_('Заказы');
+  if(!t)return {known_receivable_total:0,known_orders:[],unknown_price_orders:[],known_future_completion_cash_need_total:0,unknown_future_completion_cost_orders:[],unknown_future_completion_cost_order_count:0};
+  const known=[],unknown=[],unknownNeed=[];let total=0,knownNeedTotal=0;
+  const plans=q046PlannedFinance_(null).filter(function(x){return /^Расход$/i.test(String(x.type||''))&&Number(x.amount||0)>0&&['PLANNED','RESERVED'].indexOf(String(x.state||'').toUpperCase())>=0;});
+  const allocations=q046AllocationRows_().filter(function(a){return ['PLANNED','RESERVED'].indexOf(String(a.state||'').toUpperCase())>=0&&!q046IsDeleted_(a.is_deleted);});
+  t.rows.forEach(function(r){
+    if(q046IsDeleted_(valueBy_(t,r,'is_deleted')))return;
+    const st=String(valueBy_(t,r,'Статус')||'').toLowerCase();if(/архив|заверш|отмен/.test(st))return;
+    const id=String(valueBy_(t,r,'ID заказа')||''),no=String(valueBy_(t,r,'№ заказа')||'');if(!id&&!no)return;
+    const priceState=String(valueBy_(t,r,'price_state')||'').toUpperCase(),price=numberOrNull_(valueBy_(t,r,'Цена клиенту')),received=q046Money_(valueBy_(t,r,'Получено'));
+    const item={order_id:id,order_no:no,title:String(valueBy_(t,r,'Название заказа')||''),client:String(valueBy_(t,r,'Имя клиента')||''),received:received,price_state:priceState||((price==null)?'UNKNOWN':'KNOWN')};
+    let need=0,needKnown=false;
+    plans.forEach(function(p){const oid=String(p.order_id||'');if(oid&&(oid===no||oid===id)){need+=Number(p.amount||0);needKnown=true;}});
+    allocations.forEach(function(a){
+      if(String(a.planned_finance_id||''))return;
+      const oid=String(a.target_order_id||a.source_order_id||'');
+      if(oid&&(oid===no||oid===id)){need+=Number(a.amount||0);needKnown=true;}
+    });
+    if(needKnown){
+      item.future_completion_cash_need=Math.round(need*100)/100;
+      item.future_completion_cash_need_state='CALCULATED';
+      item.future_completion_cash_need_display=String(item.future_completion_cash_need);
+      knownNeedTotal+=item.future_completion_cash_need;
+    }else{
+      item.future_completion_cash_need=null;
+      item.future_completion_cash_need_state='NOT_CALCULATED';
+      item.future_completion_cash_need_display='не рассчитано';
+      unknownNeed.push({order_id:id,order_no:no,title:item.title,state:'NOT_CALCULATED',display:'не рассчитано'});
+    }
+    if(price==null||priceState==='UNKNOWN'){item.price=null;item.receivable=null;unknown.push(item);}
+    else{item.price=Number(price);item.receivable=Math.max(0,Number(price)-received);total+=item.receivable;known.push(item);}
+  });
+  return {known_receivable_total:Math.round(total*100)/100,known_orders:known,unknown_price_orders:unknown,known_future_completion_cash_need_total:Math.round(knownNeedTotal*100)/100,unknown_future_completion_cost_orders:unknownNeed,unknown_future_completion_cost_order_count:unknownNeed.length};
 }
 function q046BuildCanonicalWallet_(body){
   const recon=q046LatestAppliedRecon_();if(!recon)throw new Error('APPLIED_RECONCILIATION_REQUIRED');const epochId=String(recon.reconciliation_id||''),opening=q046Money_(recon.production_cash_target),ft=q046SafeTable_('Финансы');let delta=0;if(ft)ft.rows.forEach(function(r){delta+=q046FinanceCashDelta_(ft,r,epochId);});const physical=Math.round((opening+delta)*100)/100,reserved=Math.round(q046ReservedTotal_()*100)/100,free=Math.round((physical-reserved)*100)/100,forecastDate=q046ForecastDate_(body||{}),planned=q046PlannedFinance_(forecastDate),futureIn=planned.filter(function(x){return /^Приход$/i.test(x.type);}).reduce(function(s,x){return s+x.amount;},0),futureOut=planned.filter(function(x){return /^Расход$/i.test(x.type);}).reduce(function(s,x){return s+x.amount;},0),orders=q046OrderSummary_();let legacy={};try{const sh=sheet_('Кошелёк');legacy={wallet_b1:q046Money_(sh.getRange(1,2).getValue()),wallet_b2:q046Money_(sh.getRange(2,2).getValue())};}catch(_){}
@@ -3838,45 +3880,120 @@ function q046CommitAllocationHead_(nextRev,eventId){const h=q046AllocationHead_(
 function q046AllocationByEvent_(eventId){const t=q046SafeTable_(Q046_WALLET.allocationSheet);if(!t)return null;for(let i=0;i<t.rows.length;i++)if(String(valueBy_(t,t.rows[i],'last_event_id')||'')===String(eventId))return {table:t,row:i+2,obj:tableRowObject_(t,t.rows[i])};return null;}
 function q046AllocationById_(id){const t=q046SafeTable_(Q046_WALLET.allocationSheet);if(!t)return null;const hit=findRowBy_(t.sheet,1,String(id||''),2);return hit?{table:t,row:hit.row,obj:tableRowObject_(t,hit.values)}:null;}
 function q046AppendAllocation_(body,auth,eventId){
-  q046RequireSchemaReady_();const dup=q046AllocationByEvent_(eventId);if(dup)return {duplicate:true,item:dup.obj};const state=String(body.state||'PLANNED').toUpperCase(),purpose=String(body.purpose_type||'OTHER').toUpperCase(),amount=Number(body.amount||0);if(Q046_WALLET.allocationStates.indexOf(state)<0||['PLANNED','RESERVED'].indexOf(state)<0)throw new Error('ALLOCATION_STATE_INVALID');if(Q046_WALLET.purposeTypes.indexOf(purpose)<0)throw new Error('ALLOCATION_PURPOSE_INVALID');if(!(amount>0))throw new Error('ALLOCATION_AMOUNT_INVALID');if(state==='RESERVED'){const model=q046BuildCanonicalWallet_({});if(amount>model.free_now+0.009)throw new Error('RESERVE_EXCEEDS_FREE_NOW');}
-  const t=tableByHeader_(CFG.SPREADSHEET_ID,Q046_WALLET.allocationSheet,1),head=q046AllocationHead_(),nextRev=head.current_rev+1,now=nowIso_(),id=String(body.allocation_id||q046StableId_('ALLOC-Q046-',eventId)),obj={allocation_id:id,created_at:now,effective_date:String(body.effective_date||Utilities.formatDate(new Date(),spreadsheetTz_(),'yyyy-MM-dd')),source_finance_id:String(body.source_finance_id||''),source_order_id:String(body.source_order_id||''),planned_finance_id:String(body.planned_finance_id||''),purpose_type:purpose,purpose_label:cleanText_(body.purpose_label||'',200),amount:amount,currency:'RUB',state:state,due_date:String(body.due_date||''),partner_party_id:String(body.partner_party_id||''),counterparty_party_id:String(body.counterparty_party_id||''),obligation_id:String(body.obligation_id||''),target_order_id:String(body.target_order_id||''),principal_amount:Number(body.principal_amount||0),executed_finance_id:'',comment:cleanText_(body.comment||'',1000),created_by_user_id:auth.user.userId,updated_at:now,updated_by_user_id:auth.user.userId,is_deleted:false,last_event_id:eventId,record_version:1,_SYNC_REV:nextRev,_UPDATED_AT:now};obj._ROW_HASH=w1RowHash_(t,obj);t.sheet.appendRow(t.headers.map(function(h){return Object.prototype.hasOwnProperty.call(obj,h)?obj[h]:'';}));q046CommitAllocationHead_(nextRev,eventId);w1Audit_('wallet_allocations',id,'create',auth,eventId,{},obj,'','');return {duplicate:false,item:obj};
+  q046RequireSchemaReady_();
+  const dup=q046AllocationByEvent_(eventId);if(dup)return {duplicate:true,item:dup.obj};
+  const state=String(body.state||'PLANNED').toUpperCase(),purpose=String(body.purpose_type||'OTHER').toUpperCase(),amount=Number(body.amount||0),plannedFinanceId=String(body.planned_finance_id||'').trim();
+  if(Q046_WALLET.allocationStates.indexOf(state)<0||['PLANNED','RESERVED'].indexOf(state)<0)throw new Error('ALLOCATION_STATE_INVALID');
+  if(Q046_WALLET.purposeTypes.indexOf(purpose)<0)throw new Error('ALLOCATION_PURPOSE_INVALID');
+  if(!(amount>0))throw new Error('ALLOCATION_AMOUNT_INVALID');
+  if(plannedFinanceId){
+    const plan=q046FinanceById_(plannedFinanceId);if(!plan)throw new Error('PLANNED_FINANCE_NOT_FOUND');
+    const planState=String(plan.obj.plan_state||'').toUpperCase();if(['EXECUTED','CANCELLED'].indexOf(planState)>=0)throw new Error('PLAN_NOT_ACTIVE');
+    const linked=q047LinkedAllocations_(plannedFinanceId);if(linked.active.length)throw new Error('ACTIVE_LINKED_ALLOCATION_EXISTS');
+  }
+  if(state==='RESERVED'){const model=q046BuildCanonicalWallet_({});if(amount>model.free_now+0.009)throw new Error('RESERVE_EXCEEDS_FREE_NOW');}
+  const t=tableByHeader_(CFG.SPREADSHEET_ID,Q046_WALLET.allocationSheet,1),head=q046AllocationHead_(),nextRev=head.current_rev+1,now=nowIso_(),id=String(body.allocation_id||q046StableId_('ALLOC-Q046-',eventId)),obj={allocation_id:id,created_at:now,effective_date:String(body.effective_date||Utilities.formatDate(new Date(),spreadsheetTz_(),'yyyy-MM-dd')),source_finance_id:String(body.source_finance_id||''),source_order_id:String(body.source_order_id||''),planned_finance_id:plannedFinanceId,purpose_type:purpose,purpose_label:cleanText_(body.purpose_label||'',200),amount:amount,currency:'RUB',state:state,due_date:String(body.due_date||''),partner_party_id:String(body.partner_party_id||''),counterparty_party_id:String(body.counterparty_party_id||''),obligation_id:String(body.obligation_id||''),target_order_id:String(body.target_order_id||''),principal_amount:Number(body.principal_amount||0),executed_finance_id:'',comment:cleanText_(body.comment||'',1000),created_by_user_id:auth.user.userId,updated_at:now,updated_by_user_id:auth.user.userId,is_deleted:false,last_event_id:eventId,record_version:1,_SYNC_REV:nextRev,_UPDATED_AT:now};
+  obj._ROW_HASH=w1RowHash_(t,obj);t.sheet.appendRow(t.headers.map(function(h){return Object.prototype.hasOwnProperty.call(obj,h)?obj[h]:'';}));q046CommitAllocationHead_(nextRev,eventId);w1Audit_('wallet_allocations',id,'create',auth,eventId,{},obj,'','');return {duplicate:false,item:obj};
 }
 function q046UpdateAllocation_(id,patch,auth,eventId,note){const hit=q046AllocationById_(id);if(!hit)throw new Error('ALLOCATION_NOT_FOUND');if(String(hit.obj.last_event_id||'')===String(eventId))return {duplicate:true,item:hit.obj};const before=hit.obj,head=q046AllocationHead_(),nextRev=head.current_rev+1,obj=Object.assign({},before,patch);obj.record_version=Math.floor(Number(before.record_version||0))+1;obj.updated_at=nowIso_();obj.updated_by_user_id=auth.user.userId;obj.last_event_id=eventId;obj._SYNC_REV=nextRev;obj._UPDATED_AT=obj.updated_at;obj._ROW_HASH=w1RowHash_(hit.table,obj);hit.table.sheet.getRange(hit.row,1,1,hit.table.headers.length).setValues([hit.table.headers.map(function(h){return Object.prototype.hasOwnProperty.call(obj,h)?obj[h]:'';})]);q046CommitAllocationHead_(nextRev,eventId);w1Audit_('wallet_allocations',id,'update',auth,eventId,before,obj,'','');return {duplicate:false,item:obj};}
 function handleWalletFinanceCreateQ046_(body,requestId){const auth=authSession_(body.session_token,'wallet.add',requestId),eventId=q046EventId_(body),lock=LockService.getScriptLock();lock.waitLock(20000);try{const r=q046CreateFinanceInternal_(body,auth,eventId);touchSessionAndDevice_(auth);return {ok:true,request_id:requestId,event_id:eventId,duplicate:r.duplicate,finance:r.item,serverTime:nowIso_()};}finally{lock.releaseLock();}}
 function handleWalletPlanCreateQ046_(body,requestId){const auth=authSession_(body.session_token,'wallet.add',requestId),eventId=q046EventId_(body),lock=LockService.getScriptLock();lock.waitLock(20000);try{const r=q046CreateFinanceInternal_({type:String(body.type||'Расход'),amount:body.amount,actual:false,category:body.category,subcategory:body.subcategory,order_id:body.order_id,counterparty:body.counterparty,comment:body.comment,due_date:body.due_date,plan_state:'PLANNED'},auth,eventId);touchSessionAndDevice_(auth);return {ok:true,request_id:requestId,event_id:eventId,duplicate:r.duplicate,planned_finance:r.item,serverTime:nowIso_()};}finally{lock.releaseLock();}}
 function handleWalletPlanEditQ046_(body,requestId){q046RequireSchemaReady_();const auth=authSession_(body.session_token,null,requestId),eventId=q046EventId_(body),id=cleanId_(body.planned_finance_id,'planned_finance_id'),hit=q046FinanceById_(id);if(!hit)throw new Error('PLANNED_FINANCE_NOT_FOUND');if(!q046PermissionEdit_(auth,hit.obj.created_by_user_id))throw new Error('PERMISSION_DENIED:wallet.edit');const state=String(hit.obj.plan_state||'').toUpperCase();if(['EXECUTED','CANCELLED'].indexOf(state)>=0)throw new Error('PLAN_NOT_EDITABLE');const p=body.patch||{},patch={};if(p.amount!=null){const n=Number(p.amount);if(!(n>0))throw new Error('FINANCE_AMOUNT_INVALID');patch['Сумма']=n;patch['Цена единицы']=n;}if(p.due_date!=null)patch.due_date=String(p.due_date||'');if(p.category!=null)patch['Категория']=cleanText_(p.category,160);if(p.subcategory!=null)patch['Подкатегория']=cleanText_(p.subcategory,160);if(p.comment!=null)patch['Описание']=cleanText_(p.comment,3000);if(p.order_id!=null)patch['№ заказа']=cleanText_(p.order_id,80);const r=q046PatchFinance_(id,patch,auth,eventId,'Q-046 planned expense edit');touchSessionAndDevice_(auth);return {ok:true,request_id:requestId,event_id:eventId,duplicate:r.duplicate,planned_finance:r.item,serverTime:nowIso_()};}
-function handleWalletPlanCancelQ046_(body,requestId){q046RequireSchemaReady_();const auth=authSession_(body.session_token,null,requestId),eventId=q046EventId_(body),id=cleanId_(body.planned_finance_id,'planned_finance_id'),hit=q046FinanceById_(id);if(!hit)throw new Error('PLANNED_FINANCE_NOT_FOUND');if(!q046PermissionEdit_(auth,hit.obj.created_by_user_id))throw new Error('PERMISSION_DENIED:wallet.edit');if(String(hit.obj.plan_state||'').toUpperCase()==='EXECUTED')throw new Error('EXECUTED_PLAN_REQUIRES_CORRECTION');const r=q046PatchFinance_(id,{plan_state:'CANCELLED'},auth,eventId,'Q-046 planned expense cancel');const at=q046SafeTable_(Q046_WALLET.allocationSheet);if(at)at.rows.forEach(function(ar,i){if(String(valueBy_(at,ar,'planned_finance_id')||'')===id&&String(valueBy_(at,ar,'state')||'').toUpperCase()==='RESERVED')q046UpdateAllocation_(String(valueBy_(at,ar,'allocation_id')||''),{state:'CANCELLED'},auth,eventId+'-ALLOC-CANCEL','release reserve on plan cancel');});touchSessionAndDevice_(auth);return {ok:true,request_id:requestId,event_id:eventId,duplicate:r.duplicate,planned_finance:r.item,serverTime:nowIso_()};}
+function handleWalletPlanCancelQ046_(body,requestId){
+  q046RequireSchemaReady_();const auth=authSession_(body.session_token,null,requestId),eventId=q046EventId_(body),id=cleanId_(body.planned_finance_id,'planned_finance_id'),lock=LockService.getScriptLock();lock.waitLock(20000);
+  try{
+    const hit=q046FinanceById_(id);if(!hit)throw new Error('PLANNED_FINANCE_NOT_FOUND');if(!q046PermissionEdit_(auth,hit.obj.created_by_user_id))throw new Error('PERMISSION_DENIED:wallet.edit');
+    const state=String(hit.obj.plan_state||'').toUpperCase();if(state==='EXECUTED')throw new Error('EXECUTED_PLAN_REQUIRES_CORRECTION');
+    q047AssertLinkedAllocationSafe_(id);
+    if(state==='CANCELLED'){touchSessionAndDevice_(auth);return {ok:true,request_id:requestId,event_id:eventId,duplicate:true,planned_finance:hit.obj,serverTime:nowIso_()};}
+    const r=q046PatchFinance_(id,{plan_state:'CANCELLED'},auth,eventId,'Q-047 planned expense cancel');
+    q046MarkLinkedAllocation_(id,'CANCELLED','',auth,eventId+'-ALLOC-CANCEL');
+    touchSessionAndDevice_(auth);return {ok:true,request_id:requestId,event_id:eventId,duplicate:r.duplicate,planned_finance:r.item,serverTime:nowIso_()};
+  }finally{lock.releaseLock();}
+}
 function handleWalletAllocationCreateQ046_(body,requestId){const auth=authSession_(body.session_token,'wallet.add',requestId),eventId=q046EventId_(body),lock=LockService.getScriptLock();lock.waitLock(20000);try{const r=q046AppendAllocation_(body,auth,eventId);touchSessionAndDevice_(auth);return {ok:true,request_id:requestId,event_id:eventId,duplicate:r.duplicate,allocation:r.item,wallet:q046BuildCanonicalWallet_({}),serverTime:nowIso_()};}finally{lock.releaseLock();}}
 function handleWalletAllocationCancelQ046_(body,requestId){q046RequireSchemaReady_();const auth=authSession_(body.session_token,null,requestId),eventId=q046EventId_(body),id=cleanId_(body.allocation_id,'allocation_id'),hit=q046AllocationById_(id);if(!hit)throw new Error('ALLOCATION_NOT_FOUND');if(!q046PermissionEdit_(auth,hit.obj.created_by_user_id))throw new Error('PERMISSION_DENIED:wallet.edit');if(String(hit.obj.state||'').toUpperCase()==='EXECUTED')throw new Error('EXECUTED_ALLOCATION_REQUIRES_CORRECTION');const r=q046UpdateAllocation_(id,{state:'CANCELLED'},auth,eventId,'Q-046 allocation cancel');touchSessionAndDevice_(auth);return {ok:true,request_id:requestId,event_id:eventId,duplicate:r.duplicate,allocation:r.item,wallet:q046BuildCanonicalWallet_({}),serverTime:nowIso_()};}
 
 
-function q046MarkLinkedAllocation_(plannedFinanceId,state,executedFinanceId,auth,eventId){const t=q046SafeTable_(Q046_WALLET.allocationSheet);if(!t)return null;for(let i=0;i<t.rows.length;i++){if(String(valueBy_(t,t.rows[i],'planned_finance_id')||'')!==String(plannedFinanceId||''))continue;const id=String(valueBy_(t,t.rows[i],'allocation_id')||'');if(!id)continue;const cur=String(valueBy_(t,t.rows[i],'state')||'').toUpperCase();if(['CANCELLED','EXECUTED'].indexOf(cur)>=0&&cur===state)return tableRowObject_(t,t.rows[i]);return q046UpdateAllocation_(id,{state:state,executed_finance_id:String(executedFinanceId||'')},auth,eventId,'Q-046 linked allocation state').item;}return null;}
+function q047LinkedAllocations_(plannedFinanceId){
+  const t=q046SafeTable_(Q046_WALLET.allocationSheet),all=[],active=[];if(!t)return {table:null,all:all,active:active};
+  t.rows.forEach(function(r){
+    if(String(valueBy_(t,r,'planned_finance_id')||'')!==String(plannedFinanceId||''))return;
+    if(q046IsDeleted_(valueBy_(t,r,'is_deleted')))return;
+    const obj=tableRowObject_(t,r),state=String(obj.state||'').toUpperCase();all.push(obj);if(['PLANNED','RESERVED'].indexOf(state)>=0)active.push(obj);
+  });
+  return {table:t,all:all,active:active};
+}
+function q047AssertLinkedAllocationSafe_(plannedFinanceId){const linked=q047LinkedAllocations_(plannedFinanceId);if(linked.active.length>1)throw new Error('DUPLICATE_ACTIVE_LINKED_ALLOCATIONS');return linked;}
+function q046MarkLinkedAllocation_(plannedFinanceId,state,executedFinanceId,auth,eventId){
+  const linked=q047AssertLinkedAllocationSafe_(plannedFinanceId);if(!linked.table)return null;
+  if(linked.active.length===1){
+    const x=linked.active[0],id=String(x.allocation_id||'');if(!id)throw new Error('ALLOCATION_ID_REQUIRED');
+    return q046UpdateAllocation_(id,{state:String(state||'').toUpperCase(),executed_finance_id:String(executedFinanceId||'')},auth,eventId,'Q-047 linked allocation state').item;
+  }
+  const desired=String(state||'').toUpperCase(),done=linked.all.filter(function(x){return String(x.state||'').toUpperCase()===desired;});
+  return done.length?done[0]:null;
+}
 function handleWalletPlanSpendQ046_(body,requestId){
   q046RequireSchemaReady_();const auth=authSession_(body.session_token,null,requestId),eventId=q046EventId_(body),id=cleanId_(body.planned_finance_id,'planned_finance_id'),lock=LockService.getScriptLock();lock.waitLock(20000);
-  try{const hit=q046FinanceById_(id);if(!hit)throw new Error('PLANNED_FINANCE_NOT_FOUND');if(!q046PermissionEdit_(auth,hit.obj.created_by_user_id))throw new Error('PERMISSION_DENIED:wallet.edit');const state=String(hit.obj.plan_state||'').toUpperCase();if(state==='CANCELLED')throw new Error('PLAN_CANCELLED');if(String(hit.obj.executed_finance_id||'')){touchSessionAndDevice_(auth);return {ok:true,duplicate:true,request_id:requestId,event_id:eventId,planned_finance_id:id,executed_finance_id:String(hit.obj.executed_finance_id),serverTime:nowIso_()};}
+  try{
+    const hit=q046FinanceById_(id);if(!hit)throw new Error('PLANNED_FINANCE_NOT_FOUND');if(!q046PermissionEdit_(auth,hit.obj.created_by_user_id))throw new Error('PERMISSION_DENIED:wallet.edit');
+    const state=String(hit.obj.plan_state||'').toUpperCase();if(state==='CANCELLED')throw new Error('PLAN_CANCELLED');
+    q047AssertLinkedAllocationSafe_(id);
+    if(String(hit.obj.executed_finance_id||'')){touchSessionAndDevice_(auth);return {ok:true,duplicate:true,request_id:requestId,event_id:eventId,planned_finance_id:id,executed_finance_id:String(hit.obj.executed_finance_id),serverTime:nowIso_()};}
     const type=String(hit.obj['Тип']||'Расход'),amount=q046Money_(hit.obj['Сумма']),spec={type:type,amount:amount,actual:true,category:hit.obj['Категория'],subcategory:hit.obj['Подкатегория'],order_id:hit.obj['№ заказа'],counterparty:hit.obj['Контрагент / поставщик'],comment:hit.obj['Описание'],payment_source:body.payment_source||'NONE',cash_destination:body.cash_destination||'NONE',partner_party_id:body.partner_party_id||'',counterparty_party_id:body.counterparty_party_id||'',obligation_id:body.obligation_id||''};
-    const fact=q046CreateFinanceInternal_(spec,auth,eventId),fid=String(fact.item['ID операции']||'');q046PatchFinance_(id,{plan_state:'EXECUTED',executed_finance_id:fid},auth,eventId+'-PLAN-LINK','Q-046 planned expense spent');q046MarkLinkedAllocation_(id,'EXECUTED',fid,auth,eventId+'-ALLOC-EXEC');touchSessionAndDevice_(auth);return {ok:true,duplicate:fact.duplicate,request_id:requestId,event_id:eventId,planned_finance_id:id,executed_finance_id:fid,wallet:q046BuildCanonicalWallet_({}),serverTime:nowIso_()};
+    const fact=q046CreateFinanceInternal_(spec,auth,eventId),fid=String(fact.item['ID операции']||'');
+    q046PatchFinance_(id,{plan_state:'EXECUTED',executed_finance_id:fid},auth,eventId+'-PLAN-LINK','Q-047 planned expense spent');
+    q046MarkLinkedAllocation_(id,'EXECUTED',fid,auth,eventId+'-ALLOC-EXEC');
+    touchSessionAndDevice_(auth);return {ok:true,duplicate:fact.duplicate,request_id:requestId,event_id:eventId,planned_finance_id:id,executed_finance_id:fid,wallet:q046BuildCanonicalWallet_({}),serverTime:nowIso_()};
   }finally{lock.releaseLock();}
 }
 function q046LinkSettlement_(financeId,settlement,partnerEffect,eventId){const hit=q046FinanceById_(financeId);if(!hit)return;setByHeader_(hit.table,hit.row,'partner_effect',String(partnerEffect||''));setByHeader_(hit.table,hit.row,'partner_settlement_entry_id',String(settlement&&settlement.settlement_entry_id||''));w1TouchDomainRow_('finance',hit.table,hit.row,eventId+'-settlement-link');}
 function q046ObligationByEvent_(eventId){const t=tableByHeader_(CFG.SPREADSHEET_ID,'Обязательства',1);for(let i=0;i<t.rows.length;i++)if(String(valueBy_(t,t.rows[i],'last_event_id')||'')===String(eventId))return tableRowObject_(t,t.rows[i]);return null;}
 function q046CreateObligationInternal_(spec,auth,eventId){const dup=q046ObligationByEvent_(eventId);if(dup)return {duplicate:true,item:dup};const t=tableByHeader_(CFG.SPREADSHEET_ID,'Обязательства',1),head=w1HeadObject_('obligations'),nextRev=head.current_rev+1,now=nowIso_(),id=String(spec.obligation_id||q046StableId_('OBL-Q046-',eventId)),obj={obligation_id:id,obligation_type:String(spec.obligation_type||'OTHER').toUpperCase(),title:cleanText_(spec.title||'Обязательство',200),counterparty_party_id:String(spec.counterparty_party_id||''),order_id:String(spec.order_id||''),opened_date:String(spec.opened_date||Utilities.formatDate(new Date(),spreadsheetTz_(),'yyyy-MM-dd')),original_amount:Number(spec.original_amount||0),currency:'RUB',payment_frequency:String(spec.payment_frequency||'NONE').toUpperCase(),regular_payment_amount:Number(spec.regular_payment_amount||0),next_due_date:String(spec.next_due_date||''),status:'ACTIVE',source_finance_id:String(spec.source_finance_id||''),comment:cleanText_(spec.comment||'',1000),created_at:now,created_by_user_id:auth.user.userId,updated_at:now,updated_by_user_id:auth.user.userId,is_deleted:false,last_event_id:eventId,record_version:1,_SYNC_REV:nextRev,_UPDATED_AT:now};w1ValidateObject_('obligations',obj,true);obj._ROW_HASH=w1RowHash_(t,obj);t.sheet.appendRow(t.headers.map(function(h){return Object.prototype.hasOwnProperty.call(obj,h)?obj[h]:'';}));w1CommitHead_('obligations',nextRev,eventId);w1Audit_('obligations',id,'create',auth,eventId,{},obj,'','');return {duplicate:false,item:obj};}
 function q046RequireSensitive_(auth){if(String(auth.user&&auth.user.role||'')!=='ADMIN1')throw new Error('PERMISSION_DENIED:ADMIN1_WALLET_SENSITIVE');}
+function q047ObligationState_(obligationId){const id=String(obligationId||''),x=q046Obligations_().find(function(o){return String(o.obligation_id||'')===id;});if(!x)throw new Error('OBLIGATION_NOT_FOUND');return x;}
+function q047SensitivePriorResult_(kind,eventId){
+  const compound=['THIRD_PARTY_LOAN_INFLOW','SUPPLIER_CREDIT_PURCHASE'].indexOf(kind)>=0,financeEvent=compound?eventId+'-FIN':eventId,fh=q046FinanceByEvent_(financeEvent),ob=compound?q046ObligationByEvent_(eventId):null;
+  let complete=false;
+  if(kind==='OWNER_REIMBURSEMENT'||kind==='PARTNER_DISTRIBUTION')complete=!!(fh&&String(fh.obj.partner_settlement_entry_id||''));
+  else if(kind==='OBLIGATION_PAYMENT')complete=!!fh;
+  else if(compound)complete=!!(fh&&ob);
+  return {complete:complete,partial:!!fh||!!ob,finance:fh?fh.obj:null,obligation:ob||null,finance_event_id:financeEvent};
+}
+function q047SensitiveResponse_(prior,kind,eventId,requestId,body,auth){
+  const f=prior.finance||{},o=prior.obligation||{};
+  touchSessionAndDevice_(auth);
+  return {ok:true,duplicate:true,prior_result:true,request_id:requestId,event_id:eventId,action_type:kind,finance_id:String(f['ID операции']||''),settlement_id:String(f.partner_settlement_entry_id||''),obligation_id:String(o.obligation_id||body.obligation_id||f.obligation_id||''),wallet:q046BuildCanonicalWallet_({}),serverTime:nowIso_()};
+}
 function handleWalletSensitiveExecuteQ046_(body,requestId){
   q046RequireSchemaReady_();const auth=authSession_(body.session_token,null,requestId);q046RequireSensitive_(auth);const eventId=q046EventId_(body),kind=String(body.action_type||'').toUpperCase(),amount=Number(body.amount||0);if(!(amount>0))throw new Error('AMOUNT_INVALID');const lock=LockService.getScriptLock();lock.waitLock(20000);
   try{
+    const prior=q047SensitivePriorResult_(kind,eventId);if(prior.complete)return q047SensitiveResponse_(prior,kind,eventId,requestId,body,auth);
     let fact=null,settlement=null,obligation=null;
     if(kind==='OWNER_REIMBURSEMENT'){
-      const pid=cleanId_(body.partner_party_id,'partner_party_id'),card=q046PartnerCards_().find(function(x){return String(x.party_id)===pid;});if(!card)throw new Error('PARTNER_NOT_FOUND');if(amount>Number(card.funding_due||0)+0.009)throw new Error('REIMBURSEMENT_EXCEEDS_FUNDING_DUE');fact=q046CreateFinanceInternal_({type:'Расход',amount:amount,actual:true,category:'Возврат финансирования партнёру',comment:body.comment||'Возврат вложенных средств',payment_source:'PRODUCTION_WALLET',partner_party_id:pid,partner_effect:'FUNDING_REPAYMENT'},auth,eventId);settlement=financeWaveAppendSettlement_(eventId,'FUNDING_REPAYMENT',{party_id:pid},amount,-amount,0,String(fact.item['ID операции']||''),'',auth.user.userId,String(body.comment||''),eventId);q046LinkSettlement_(String(fact.item['ID операции']||''),settlement,'FUNDING_REPAYMENT',eventId);
+      const pid=cleanId_(body.partner_party_id,'partner_party_id'),card=q046PartnerCards_().find(function(x){return String(x.party_id)===pid;});if(!card)throw new Error('PARTNER_NOT_FOUND');if(amount>Number(card.funding_due||0)+0.009)throw new Error('REIMBURSEMENT_EXCEEDS_FUNDING_DUE');
+      fact=q046CreateFinanceInternal_({type:'Расход',amount:amount,actual:true,category:'Возврат финансирования партнёру',comment:body.comment||'Возврат вложенных средств',payment_source:'PRODUCTION_WALLET',partner_party_id:pid,partner_effect:'FUNDING_REPAYMENT',financial_meaning:'NON_OPERATING_PARTNER_REPAYMENT'},auth,eventId);
+      settlement=financeWaveAppendSettlement_(eventId,'FUNDING_REPAYMENT',{party_id:pid},amount,-amount,0,String(fact.item['ID операции']||''),'',auth.user.userId,String(body.comment||''),eventId);q046LinkSettlement_(String(fact.item['ID операции']||''),settlement,'FUNDING_REPAYMENT',eventId);
     }else if(kind==='PARTNER_DISTRIBUTION'){
-      const pid=cleanId_(body.partner_party_id,'partner_party_id');fact=q046CreateFinanceInternal_({type:'Расход',amount:amount,actual:true,category:'Вывод партнёру',comment:body.comment||'Распределение партнёру',payment_source:'PRODUCTION_WALLET',partner_party_id:pid,partner_effect:'DISTRIBUTION_DECREASE'},auth,eventId);settlement=financeWaveAppendSettlement_(eventId,'PARTNER_WITHDRAWAL',{party_id:pid},amount,0,-amount,String(fact.item['ID операции']||''),'',auth.user.userId,String(body.comment||''),eventId);q046LinkSettlement_(String(fact.item['ID операции']||''),settlement,'DISTRIBUTION_DECREASE',eventId);
+      const pid=cleanId_(body.partner_party_id,'partner_party_id');
+      fact=q046CreateFinanceInternal_({type:'Расход',amount:amount,actual:true,category:'Вывод партнёру',comment:body.comment||'Распределение партнёру',payment_source:'PRODUCTION_WALLET',partner_party_id:pid,partner_effect:'DISTRIBUTION_DECREASE',financial_meaning:'NON_OPERATING_OWNER_DISTRIBUTION'},auth,eventId);
+      settlement=financeWaveAppendSettlement_(eventId,'PARTNER_WITHDRAWAL',{party_id:pid},amount,0,-amount,String(fact.item['ID операции']||''),'',auth.user.userId,String(body.comment||''),eventId);q046LinkSettlement_(String(fact.item['ID операции']||''),settlement,'DISTRIBUTION_DECREASE',eventId);
     }else if(kind==='OBLIGATION_PAYMENT'){
-      const oid=cleanId_(body.obligation_id,'obligation_id');if(!w1ReadRow_('obligations',oid))throw new Error('OBLIGATION_NOT_FOUND');fact=q046CreateFinanceInternal_({type:'Расход',amount:amount,actual:true,category:'Платёж по обязательству',comment:body.comment||'Платёж по обязательству',payment_source:'PRODUCTION_WALLET',obligation_id:oid},auth,eventId);
+      const oid=cleanId_(body.obligation_id,'obligation_id'),state=q047ObligationState_(oid),remaining=Number(state.remaining||0);
+      if(remaining<=0.009)throw new Error('OBLIGATION_ALREADY_PAID');
+      if(amount>remaining+0.009)throw new Error('OBLIGATION_PAYMENT_EXCEEDS_REMAINING');
+      fact=q046CreateFinanceInternal_({type:'Расход',amount:amount,actual:true,category:'Платёж по обязательству',comment:body.comment||'Платёж по обязательству',payment_source:'PRODUCTION_WALLET',obligation_id:oid,financial_meaning:'NON_OPERATING_OBLIGATION_PAYMENT'},auth,eventId);
     }else if(kind==='THIRD_PARTY_LOAN_INFLOW'){
-      obligation=q046CreateObligationInternal_({obligation_type:String(body.obligation_type||'CREDIT'),title:body.title||'Займ',counterparty_party_id:body.counterparty_party_id||'',original_amount:amount,payment_frequency:body.payment_frequency||'NONE',regular_payment_amount:body.regular_payment_amount||0,next_due_date:body.next_due_date||'',comment:body.comment||'Q-046 loan inflow'},auth,eventId);fact=q046CreateFinanceInternal_({type:'Приход',amount:amount,actual:true,category:'Займ / кредит',comment:body.comment||'Получение займа',cash_destination:'PRODUCTION_WALLET',obligation_id:String(obligation.item.obligation_id||'')},auth,eventId+'-FIN');
+      const finEvent=eventId+'-FIN',expectedFinanceId=q046StableId_('FIN-Q046-',finEvent);
+      obligation=q046CreateObligationInternal_({obligation_type:String(body.obligation_type||'CREDIT'),title:body.title||'Займ',counterparty_party_id:body.counterparty_party_id||'',original_amount:amount,payment_frequency:body.payment_frequency||'NONE',regular_payment_amount:body.regular_payment_amount||0,next_due_date:body.next_due_date||'',comment:body.comment||'Q-047 loan inflow',source_finance_id:expectedFinanceId},auth,eventId);
+      fact=q046CreateFinanceInternal_({type:'Приход',amount:amount,actual:true,category:'Займ / кредит',comment:body.comment||'Получение займа',cash_destination:'PRODUCTION_WALLET',obligation_id:String(obligation.item.obligation_id||''),financial_meaning:'NON_OPERATING_LOAN_INFLOW'},auth,finEvent);
     }else if(kind==='SUPPLIER_CREDIT_PURCHASE'){
-      obligation=q046CreateObligationInternal_({obligation_type:'SUPPLIER_DEBT',title:body.title||'Долг поставщику',counterparty_party_id:body.counterparty_party_id||'',original_amount:amount,payment_frequency:body.payment_frequency||'NONE',next_due_date:body.next_due_date||'',comment:body.comment||'Q-046 supplier credit'},auth,eventId);fact=q046CreateFinanceInternal_({type:'Расход',amount:amount,actual:true,category:body.category||'Материалы',counterparty:body.counterparty||'',comment:body.comment||'Покупка в долг поставщику',payment_source:'SUPPLIER_DEBT',obligation_id:String(obligation.item.obligation_id||'')},auth,eventId+'-FIN');
+      const finEvent=eventId+'-FIN',expectedFinanceId=q046StableId_('FIN-Q046-',finEvent);
+      obligation=q046CreateObligationInternal_({obligation_type:'SUPPLIER_DEBT',title:body.title||'Долг поставщику',counterparty_party_id:body.counterparty_party_id||'',original_amount:amount,payment_frequency:body.payment_frequency||'NONE',next_due_date:body.next_due_date||'',comment:body.comment||'Q-047 supplier credit',source_finance_id:expectedFinanceId},auth,eventId);
+      fact=q046CreateFinanceInternal_({type:'Расход',amount:amount,actual:true,category:body.category||'Материалы',counterparty:body.counterparty||'',comment:body.comment||'Покупка в долг поставщику',payment_source:'SUPPLIER_DEBT',obligation_id:String(obligation.item.obligation_id||''),financial_meaning:'OPERATING_SUPPLIER_CREDIT_PURCHASE'},auth,finEvent);
     }else throw new Error('SENSITIVE_ACTION_INVALID');
-    touchSessionAndDevice_(auth);return {ok:true,duplicate:false,request_id:requestId,event_id:eventId,action_type:kind,finance_id:fact?String(fact.item['ID операции']||''):'',settlement_id:settlement?String(settlement.settlement_entry_id||''):'',obligation_id:obligation?String(obligation.item.obligation_id||''):String(body.obligation_id||''),wallet:q046BuildCanonicalWallet_({}),serverTime:nowIso_()};
+    const duplicate=prior.partial||!!(fact&&fact.duplicate)||!!(obligation&&obligation.duplicate),financeObj=fact&&fact.item?fact.item:{};
+    touchSessionAndDevice_(auth);return {ok:true,duplicate:duplicate,prior_result:duplicate,repaired_partial:prior.partial&&!prior.complete,request_id:requestId,event_id:eventId,action_type:kind,finance_id:String(financeObj['ID операции']||''),settlement_id:String((settlement&&settlement.settlement_entry_id)||financeObj.partner_settlement_entry_id||''),obligation_id:obligation?String(obligation.item.obligation_id||''):String(body.obligation_id||financeObj.obligation_id||''),wallet:q046BuildCanonicalWallet_({}),serverTime:nowIso_()};
   }finally{lock.releaseLock();}
 }
