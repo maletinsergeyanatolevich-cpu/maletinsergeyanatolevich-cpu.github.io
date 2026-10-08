@@ -1,0 +1,64 @@
+{
+  "packet": "Q-046",
+  "version": "1.0",
+  "staging_only": true,
+  "finance_additive_fields": [
+    "cash_epoch_id",
+    "executed_finance_id"
+  ],
+  "wallet_allocations": {
+    "domain_key": "wallet_allocations",
+    "sheet": "Резервы и распределения",
+    "schema_version": "1.0",
+    "columns": [
+      "allocation_id",
+      "created_at",
+      "effective_date",
+      "source_finance_id",
+      "source_order_id",
+      "planned_finance_id",
+      "purpose_type",
+      "purpose_label",
+      "amount",
+      "currency",
+      "state",
+      "due_date",
+      "partner_party_id",
+      "counterparty_party_id",
+      "obligation_id",
+      "target_order_id",
+      "principal_amount",
+      "executed_finance_id",
+      "comment",
+      "created_by_user_id",
+      "updated_at",
+      "updated_by_user_id",
+      "is_deleted",
+      "last_event_id",
+      "record_version",
+      "_SYNC_REV",
+      "_UPDATED_AT",
+      "_ROW_HASH"
+    ],
+    "states": [
+      "PLANNED",
+      "RESERVED",
+      "EXECUTED",
+      "CANCELLED"
+    ],
+    "purpose_types": [
+      "OWNER_REIMBURSEMENT",
+      "PARTNER_DISTRIBUTION",
+      "OBLIGATION_PAYMENT",
+      "SUPPLIER_DEBT_PAYMENT",
+      "RENT",
+      "MATERIALS",
+      "WORKER_PAYMENT",
+      "ORDER_RESERVE",
+      "OTHER"
+    ]
+  },
+  "physical_cash_formula": "latest APPLIED reconciliation.production_cash_target + active-epoch production-wallet income - active-epoch production-wallet expense",
+  "free_now_formula": "physical_cash - active RESERVED wallet_allocations",
+  "production_migration_executed": false
+}
