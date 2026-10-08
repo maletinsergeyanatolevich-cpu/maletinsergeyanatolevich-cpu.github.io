@@ -30,7 +30,7 @@ function receivable(s){let known=0,unknown=[];for(const [id,o] of Object.entries
 function can(user,action){if(action==='read')return user.permissions.includes('wallet.view');if(action==='sensitive')return user.role==='ADMIN1';return false}
 const results=[];function test(n,name,fn){fn();results.push({n,name,pass:true})}
 
-test(1,'canonical opening ignores legacy wallet cells',()=>{const s=base();assert.equal(cash(s),11108);assert.equal(s.partners.SERGEY.funding,26109.52)});
+test(1,'canonical opening ignores legacy wallet cells and returns accepted controls',()=>{const s=base();assert.equal(cash(s),11108);assert.equal(freeNow(s),11108);assert.equal(s.partners.SERGEY.funding,26109.52);assert.equal(s.partners.EVGENY.distribution,-2000);assert.equal(s.obligations.GUN.remaining,18954);assert.equal(s.orders.DIMA.received,14000)});
 test(2,'reserve 6000 changes Free now only',()=>{const s=base();reserve(s,'R1',6000);assert.equal(cash(s),11108);assert.equal(freeNow(s),5108)});
 test(3,'cancel reserve restores Free now',()=>{const s=base();reserve(s,'R1',6000);cancelReserve(s,'R1','R1-C');assert.equal(cash(s),11108);assert.equal(freeNow(s),11108)});
 test(4,'planned rent does not affect cash/free until reserved/executed',()=>{const s=base();createPlan(s,'P-RENT',31000);assert.equal(cash(s),11108);assert.equal(freeNow(s),11108)});
