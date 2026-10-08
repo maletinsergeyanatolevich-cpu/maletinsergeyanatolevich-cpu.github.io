@@ -35,7 +35,7 @@ function runtime(){
  q047AssertLinkedAllocationSafe_,
  q046Obligations_,
  handleWalletSensitiveExecuteQ046_,
- handleWalletPlanSpendQ046_
+ handleWalletPlanSpendQ046_,handleWalletPlanCancelQ046_,q046ReservedTotal_
 };`;
   vm.runInContext(source+expose,ctx,{filename:sourcePath});
   return {ctx,api:ctx.__Q047_TEST_API__};
@@ -242,7 +242,85 @@ test(15,'actual source syntax and schema artifact are consistent',()=>{
   assert.strictEqual(schema.wallet_allocations.active_link_contract.rule,'AT_MOST_ONE_ACTIVE_PER_PLANNED_FINANCE_ID');
   assert.strictEqual(schema.obligation_payment_guard.clamp_overpayment,false);
   assert.ok(schema.non_operating_financial_meanings.includes('NON_OPERATING_LOAN_INFLOW'));
-  assert.strictEqual(rt.api.CFG.VERSION,'backend-0.2.29-staging-q047');
+  assert.strictEqual(rt.api.CFG.VERSION,'backend-0.2.30-staging-q048');
 });
 
-console.log(JSON.stringify({ok:true,passed:results.length,total:15,kind:'ACTUAL_SOURCE_HANDLER_FIXTURE',results},null,2));
+
+function q048Fixture(mode,dups){
+  const rt=runtime(),plan={created_by_user_id:'U1',plan_state:'PLANNED',executed_finance_id:'',
+    'Тип':'Расход','Сумма':200,'Категория':'Материалы','Подкатегория':'','№ заказа':'',
+    'Контрагент / поставщик':'','Описание':'Q048 fixture'};
+  const list=[{allocation_id:'A48',planned_finance_id:'P48',state:'RESERVED',executed_finance_id:'',amount:200,is_deleted:false}];
+  if(dups)list.push({allocation_id:'A49',planned_finance_id:'P48',state:'PLANNED',executed_finance_id:'',amount:25,is_deleted:false});
+  const t=table(['allocation_id','planned_finance_id','state','executed_finance_id','amount','is_deleted'],list);
+  const counters={created:0,allocUpdated:0,planPatched:0,failOnce:true};
+  setFn(rt,'q046RequireSchemaReady_',()=>true);
+  setFn(rt,'authSession_',()=>({user:{userId:'U1',name:'Q048',role:'ADMIN1'},deviceId:'DEV'}));
+  setFn(rt,'q046EventId_',b=>b.event_id);
+  setFn(rt,'cleanId_',v=>String(v));
+  setFn(rt,'q046PermissionEdit_',()=>true);
+  setFn(rt,'touchSessionAndDevice_',()=>{});
+  setFn(rt,'q046FinanceById_',()=>({obj:plan}));
+  setFn(rt,'q046SafeTable_',()=>t);
+  setFn(rt,'q046AllocationRows_',()=>t.rows.map(row=>Object.fromEntries(t.headers.map((h,i)=>[h,row[i]]))));
+  setFn(rt,'q046BuildCanonicalWallet_',()=>({physical_cash:11108,free_now:11108-rt.api.q046ReservedTotal_()}));
+  setFn(rt,'q046CreateFinanceInternal_',()=>{counters.created++;return {duplicate:false,item:{'ID операции':'FIN48'}};});
+  setFn(rt,'q046PatchFinance_',(_id,patch)=>{counters.planPatched++;Object.assign(plan,patch);return {duplicate:false,item:plan};});
+  setFn(rt,'q046UpdateAllocation_',(_id,patch)=>{
+    if(counters.failOnce){counters.failOnce=false;throw new Error('INJECTED_LINK_WRITE_FAIL');}
+    counters.allocUpdated++;
+    Object.keys(patch).forEach(k=>t.rows[0][t.index[k]]=patch[k]);
+    return {duplicate:false,item:Object.fromEntries(t.headers.map((h,i)=>[h,t.rows[0][i]]))};
+  });
+  const b={event_id:'Q048-SAME-EVENT',planned_finance_id:'P48',payment_source:'PRODUCTION_WALLET'};
+  const run=(req)=>mode==='SPEND'?rt.api.handleWalletPlanSpendQ046_(b,req):rt.api.handleWalletPlanCancelQ046_(b,req);
+  return {rt,t,plan,counters,run};
+}
+test(16,'Q048 Spend partial failure after Finance+plan patch preserves a RESERVED allocation',()=>{
+  const x=q048Fixture('SPEND');errCode(()=>x.run('S1'),'INJECTED_LINK_WRITE_FAIL');
+  assert.strictEqual(x.counters.created,1);assert.strictEqual(x.plan.plan_state,'EXECUTED');
+  assert.strictEqual(x.plan.executed_finance_id,'FIN48');assert.strictEqual(x.rt.api.q046ReservedTotal_(),200);
+  assert.strictEqual(x.t.rows[0][x.t.index.state],'RESERVED');
+});
+test(17,'Q048 Spend same-event retry repairs reserve and third retry is a no-op',()=>{
+  const x=q048Fixture('SPEND');errCode(()=>x.run('S1'),'INJECTED_LINK_WRITE_FAIL');
+  const b=x.run('S2');
+  assert.strictEqual(b.duplicate,true);assert.strictEqual(b.prior_result,true);
+  assert.strictEqual(b.repaired_partial,true);assert.strictEqual(b.executed_finance_id,'FIN48');
+  assert.strictEqual(x.counters.created,1);assert.strictEqual(x.counters.allocUpdated,1);
+  assert.strictEqual(x.t.rows[0][x.t.index.executed_finance_id],'FIN48');
+  assert.strictEqual(x.rt.api.q046ReservedTotal_(),0);assert.strictEqual(b.wallet.free_now,11108);
+  const before=JSON.stringify(x.t.rows),c=x.run('S3');
+  assert.strictEqual(c.duplicate,true);assert.strictEqual(c.prior_result,true);assert.strictEqual(c.repaired_partial,false);
+  assert.strictEqual(x.counters.created,1);assert.strictEqual(x.counters.allocUpdated,1);
+  assert.strictEqual(JSON.stringify(x.t.rows),before);
+});
+test(18,'Q048 Cancel partial failure after plan patch leaves cash unchanged',()=>{
+  const x=q048Fixture('CANCEL');errCode(()=>x.run('C1'),'INJECTED_LINK_WRITE_FAIL');
+  assert.strictEqual(x.plan.plan_state,'CANCELLED');assert.strictEqual(x.counters.created,0);
+  assert.strictEqual(x.rt.api.q046ReservedTotal_(),200);
+});
+test(19,'Q048 Cancel same-event retry repairs reserve and third retry is a no-op',()=>{
+  const x=q048Fixture('CANCEL');errCode(()=>x.run('C1'),'INJECTED_LINK_WRITE_FAIL');
+  const r=x.run('C2');
+  assert.strictEqual(r.duplicate,true);assert.strictEqual(r.prior_result,true);assert.strictEqual(r.repaired_partial,true);
+  assert.strictEqual(x.counters.created,0);assert.strictEqual(x.counters.allocUpdated,1);
+  assert.strictEqual(x.t.rows[0][x.t.index.state],'CANCELLED');
+  assert.strictEqual(x.rt.api.q046ReservedTotal_(),0);assert.strictEqual(r.wallet.free_now,11108);
+  const before=JSON.stringify(x.t.rows),c=x.run('C3');
+  assert.strictEqual(c.repaired_partial,false);assert.strictEqual(c.duplicate,true);assert.strictEqual(c.prior_result,true);
+  assert.strictEqual(x.counters.created,0);assert.strictEqual(x.counters.allocUpdated,1);
+  assert.strictEqual(JSON.stringify(x.t.rows),before);
+});
+test(20,'Q048 Spend partial retry with duplicate active links fails closed',()=>{
+  const x=q048Fixture('SPEND',true);x.plan.plan_state='EXECUTED';x.plan.executed_finance_id='FIN48';
+  errCode(()=>x.run('S-DUP'),'DUPLICATE_ACTIVE_LINKED_ALLOCATIONS');
+  assert.strictEqual(x.counters.created,0);assert.strictEqual(x.counters.planPatched,0);assert.strictEqual(x.counters.allocUpdated,0);
+});
+test(21,'Q048 Cancel partial retry with duplicate active links fails closed',()=>{
+  const x=q048Fixture('CANCEL',true);x.plan.plan_state='CANCELLED';
+  errCode(()=>x.run('C-DUP'),'DUPLICATE_ACTIVE_LINKED_ALLOCATIONS');
+  assert.strictEqual(x.counters.created,0);assert.strictEqual(x.counters.planPatched,0);assert.strictEqual(x.counters.allocUpdated,0);
+});
+
+console.log(JSON.stringify({ok:true,kind:'Q047_AND_Q048_ACTUAL_SOURCE_HANDLER_FIXTURE',q047:{passed:15,total:15},q048:{passed:results.length-15,total:6},passed:results.length,total:21,results},null,2));
