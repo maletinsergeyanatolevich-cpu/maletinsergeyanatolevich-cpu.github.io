@@ -1,19 +1,19 @@
 {
-  "version": "v0.3.28-staging-q046",
-  "buildId": "2026-10-08.q046.1",
-  "channel": "q046-wallet-canonical-staging",
+  "version": "v0.3.28-staging-q047",
+  "buildId": "2026-10-09.q047.1",
+  "channel": "q047-wallet-source-correction",
   "rolloutStage": "staging-only",
   "eligibleRoles": [
     "ADMIN1"
   ],
   "dbSchema": 6,
-  "minBackend": "backend-0.2.28-staging-q046",
-  "previousBuildId": "2026-10-07.3d",
+  "minBackend": "backend-0.2.29-staging-q047",
+  "previousBuildId": "2026-10-08.q046.1",
   "rollback": {
     "buildId": "2026-10-07.3d",
     "dbSchema": 5,
     "safeWithoutDataReset": true
   },
   "publishedAt": null,
-  "notes": "Q-046 staging only: canonical Wallet read-model/actions. No production release."
+  "notes": "Q-047 staging-only source correction: order future needs, linked-reserve safety, obligation overpayment guard, non-operating semantics, handler tests. No production release."
 }
