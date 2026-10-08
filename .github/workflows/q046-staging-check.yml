@@ -23,5 +23,7 @@ jobs:
         run: node --check assets/app.js
       - name: Check backend staging syntax
         run: node --check staging/q046/backend-q046.js
-      - name: Run Wallet contract tests
+      - name: Run Wallet model contract tests
         run: node tests/q046-wallet-contract.test.js
+      - name: Run Q047 actual-source handler fixture tests
+        run: node tests/q047-wallet-handler.test.js
