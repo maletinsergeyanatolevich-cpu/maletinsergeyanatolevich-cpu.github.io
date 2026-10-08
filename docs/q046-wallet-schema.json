@@ -1,6 +1,6 @@
 {
-  "packet": "Q-046",
-  "version": "1.0",
+  "packet": "Q-047",
+  "version": "1.1",
   "staging_only": true,
   "finance_additive_fields": [
     "cash_epoch_id",
@@ -56,9 +56,37 @@
       "WORKER_PAYMENT",
       "ORDER_RESERVE",
       "OTHER"
-    ]
+    ],
+    "active_link_contract": {
+      "rule": "AT_MOST_ONE_ACTIVE_PER_PLANNED_FINANCE_ID",
+      "active_states": [
+        "PLANNED",
+        "RESERVED"
+      ],
+      "duplicate_active_behavior": "FAIL_CLOSED_DUPLICATE_ACTIVE_LINKED_ALLOCATIONS",
+      "plan_spent_behavior": "single active linked allocation -> EXECUTED; no active linked allocation remains",
+      "plan_cancel_behavior": "single active linked allocation -> CANCELLED; no active linked allocation remains"
+    }
   },
   "physical_cash_formula": "latest APPLIED reconciliation.production_cash_target + active-epoch production-wallet income - active-epoch production-wallet expense",
   "free_now_formula": "physical_cash - active RESERVED wallet_allocations",
-  "production_migration_executed": false
+  "production_migration_executed": false,
+  "non_operating_financial_meanings": [
+    "NON_OPERATING_LOAN_INFLOW",
+    "NON_OPERATING_PARTNER_REPAYMENT",
+    "NON_OPERATING_OWNER_DISTRIBUTION",
+    "NON_OPERATING_OBLIGATION_PAYMENT"
+  ],
+  "order_future_completion_need": {
+    "known": "sum of concrete active planned expense facts linked to the order plus active unlinked order-targeted wallet allocations",
+    "unknown": "null with NOT_CALCULATED / «не рассчитано» when no supported linked fact or plan exists",
+    "aggregate": "known_future_completion_cash_need_total excludes unknown orders"
+  },
+  "obligation_payment_guard": {
+    "already_paid": "reject OBLIGATION_ALREADY_PAID",
+    "overpayment": "reject OBLIGATION_PAYMENT_EXCEEDS_REMAINING",
+    "exact_residual": "allowed",
+    "clamp_overpayment": false,
+    "next_payment_amount": "min(regular_payment_amount, remaining) when remaining > 0"
+  }
 }
