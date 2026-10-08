@@ -1,11 +1,11 @@
 ﻿'use strict';
 /**
-* Производство PWA — Apps Script backend v0.2.29 Q-047 WALLET STAGING SOURCE FIX
+* Производство PWA — Apps Script backend v0.2.30 Q-048 WALLET PARTIAL RETRY SOURCE FIX
 * Серверный слой: ping / access request / activation / auth check / sync inbox.
 * ВАЖНО: секреты НЕ хранить в этом файле. Recovery/owner secrets — только Script Properties.
 */
 const CFG = Object.freeze({
- VERSION: 'backend-0.2.29-staging-q047',
+ VERSION: 'backend-0.2.30-staging-q048',
  SPREADSHEET_ID: '177IVzLUaNrzKScoRo0CjT5Zo7tJm5Bo0am2z9whAWdg',
  USERS_SHEET: 'Пользователи и права',
  ACCESS_REQUESTS_SHEET: '_APP_ACCESS_REQUESTS',
@@ -3905,7 +3905,14 @@ function handleWalletPlanCancelQ046_(body,requestId){
     const hit=q046FinanceById_(id);if(!hit)throw new Error('PLANNED_FINANCE_NOT_FOUND');if(!q046PermissionEdit_(auth,hit.obj.created_by_user_id))throw new Error('PERMISSION_DENIED:wallet.edit');
     const state=String(hit.obj.plan_state||'').toUpperCase();if(state==='EXECUTED')throw new Error('EXECUTED_PLAN_REQUIRES_CORRECTION');
     q047AssertLinkedAllocationSafe_(id);
-    if(state==='CANCELLED'){touchSessionAndDevice_(auth);return {ok:true,request_id:requestId,event_id:eventId,duplicate:true,planned_finance:hit.obj,serverTime:nowIso_()};}
+    if(state==='CANCELLED'){
+      // Q-048: the plan patch may have committed before the linked reserve update failed.
+      // A same-event retry must converge the reserve before acknowledging the prior result.
+      const linked=q047AssertLinkedAllocationSafe_(id),repairedPartial=linked.active.length===1;
+      q046MarkLinkedAllocation_(id,'CANCELLED','',auth,eventId+'-ALLOC-CANCEL');
+      touchSessionAndDevice_(auth);
+      return {ok:true,request_id:requestId,event_id:eventId,duplicate:true,prior_result:true,repaired_partial:repairedPartial,planned_finance:hit.obj,wallet:q046BuildCanonicalWallet_({}),serverTime:nowIso_()};
+    }
     const r=q046PatchFinance_(id,{plan_state:'CANCELLED'},auth,eventId,'Q-047 planned expense cancel');
     q046MarkLinkedAllocation_(id,'CANCELLED','',auth,eventId+'-ALLOC-CANCEL');
     touchSessionAndDevice_(auth);return {ok:true,request_id:requestId,event_id:eventId,duplicate:r.duplicate,planned_finance:r.item,serverTime:nowIso_()};
@@ -3940,7 +3947,14 @@ function handleWalletPlanSpendQ046_(body,requestId){
     const hit=q046FinanceById_(id);if(!hit)throw new Error('PLANNED_FINANCE_NOT_FOUND');if(!q046PermissionEdit_(auth,hit.obj.created_by_user_id))throw new Error('PERMISSION_DENIED:wallet.edit');
     const state=String(hit.obj.plan_state||'').toUpperCase();if(state==='CANCELLED')throw new Error('PLAN_CANCELLED');
     q047AssertLinkedAllocationSafe_(id);
-    if(String(hit.obj.executed_finance_id||'')){touchSessionAndDevice_(auth);return {ok:true,duplicate:true,request_id:requestId,event_id:eventId,planned_finance_id:id,executed_finance_id:String(hit.obj.executed_finance_id),serverTime:nowIso_()};}
+    if(String(hit.obj.executed_finance_id||'')){
+      // Q-048: never return a duplicate while its linked allocation is still RESERVED.
+      // Reuse the committed Finance ID; no second Finance creation or event is allowed.
+      const fid=String(hit.obj.executed_finance_id),linked=q047AssertLinkedAllocationSafe_(id),repairedPartial=linked.active.length===1;
+      q046MarkLinkedAllocation_(id,'EXECUTED',fid,auth,eventId+'-ALLOC-EXEC');
+      touchSessionAndDevice_(auth);
+      return {ok:true,duplicate:true,prior_result:true,repaired_partial:repairedPartial,request_id:requestId,event_id:eventId,planned_finance_id:id,executed_finance_id:fid,wallet:q046BuildCanonicalWallet_({}),serverTime:nowIso_()};
+    }
     const type=String(hit.obj['Тип']||'Расход'),amount=q046Money_(hit.obj['Сумма']),spec={type:type,amount:amount,actual:true,category:hit.obj['Категория'],subcategory:hit.obj['Подкатегория'],order_id:hit.obj['№ заказа'],counterparty:hit.obj['Контрагент / поставщик'],comment:hit.obj['Описание'],payment_source:body.payment_source||'NONE',cash_destination:body.cash_destination||'NONE',partner_party_id:body.partner_party_id||'',counterparty_party_id:body.counterparty_party_id||'',obligation_id:body.obligation_id||''};
     const fact=q046CreateFinanceInternal_(spec,auth,eventId),fid=String(fact.item['ID операции']||'');
     q046PatchFinance_(id,{plan_state:'EXECUTED',executed_finance_id:fid},auth,eventId+'-PLAN-LINK','Q-047 planned expense spent');
