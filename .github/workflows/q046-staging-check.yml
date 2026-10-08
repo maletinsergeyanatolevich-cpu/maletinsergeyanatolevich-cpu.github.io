@@ -1,0 +1,27 @@
+name: Q046 staging checks
+
+on:
+  push:
+    branches: [ q046-wallet-staging ]
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'assets/app.js'
+      - 'staging/q046/**'
+      - 'tests/q046-wallet-contract.test.js'
+      - 'docs/q046-wallet-schema.json'
+
+jobs:
+  q046:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check PWA syntax
+        run: node --check assets/app.js
+      - name: Check backend staging syntax
+        run: node --check staging/q046/backend-q046.js
+      - name: Run Wallet contract tests
+        run: node tests/q046-wallet-contract.test.js
