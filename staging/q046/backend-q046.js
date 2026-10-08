@@ -5,7 +5,7 @@
 * ВАЖНО: секреты НЕ хранить в этом файле. Recovery/owner secrets — только Script Properties.
 */
 const CFG = Object.freeze({
- VERSION: 'backend-0.2.30-staging-q048',
+ VERSION: 'backend-0.2.31-staging-q049',
  SPREADSHEET_ID: '177IVzLUaNrzKScoRo0CjT5Zo7tJm5Bo0am2z9whAWdg',
  USERS_SHEET: 'Пользователи и права',
  ACCESS_REQUESTS_SHEET: '_APP_ACCESS_REQUESTS',
@@ -57,6 +57,8 @@ function doPost(e) {
     const q046Action = String(body.action || '');
     if (q046Action === 'wallet.canonical.get') return json_(handleWalletCanonicalGetQ046_(body, requestId));
     if (q046Action === 'wallet.schema.spec') return json_(handleWalletSchemaSpecQ046_(body, requestId));
+    if (q046Action === 'wallet.schema.migration.preview') return json_(handleWalletSchemaMigrationPreviewQ049_(body, requestId));
+    if (q046Action === 'wallet.schema.migration.apply') return json_(handleWalletSchemaMigrationApplyQ049_(body, requestId));
     if (q046Action === 'wallet.finance.create') return json_(handleWalletFinanceCreateQ046_(body, requestId));
     if (q046Action === 'wallet.plan.create') return json_(handleWalletPlanCreateQ046_(body, requestId));
     if (q046Action === 'wallet.plan.edit') return json_(handleWalletPlanEditQ046_(body, requestId));
@@ -3743,6 +3745,115 @@ function q046EnsureSchemaMigration_(){
   if(!hit)heads.appendRow([Q046_WALLET.allocationDomain,Q046_WALLET.schemaVersion,0,nowIso_(),0,'','']);
   return q046SchemaSpec_();
 }
+
+/* ===== Q-049 controlled Wallet schema migration: staging source only ===== */
+function q049MigrationState_(){
+  // Read only. Never use a generic schema-mutating "ensure" helper for preview.
+  const ss=ss_(),finance=ss.getSheetByName('Финансы'),heads=ss.getSheetByName('_DOMAIN_HEADS');
+  if(!finance||!heads)throw new Error('MIGRATION_SCHEMA_CONFLICT');
+  const flast=finance.getLastColumn(),rlast=finance.getLastRow();
+  if(flast<1||rlast<1)throw new Error('MIGRATION_SCHEMA_CONFLICT');
+  const headers=finance.getRange(1,1,1,flast).getDisplayValues()[0].map(function(x){return String(x||'').trim();});
+  if(headers[0]!=='ID операции'||q049HasDuplicateHeaders_(headers))throw new Error('MIGRATION_SCHEMA_CONFLICT');
+  const values=rlast>1?finance.getRange(2,1,rlast-1,1).getDisplayValues():[];
+  let financeCount=0,lastFinanceId='';
+  values.forEach(function(v){const id=String(v[0]||'').trim();if(id){financeCount++;lastFinanceId=id;}});
+  const f1=headers.indexOf(Q046_WALLET.financeFields[0])>=0,f2=headers.indexOf(Q046_WALLET.financeFields[1])>=0;
+  const allocation=ss.getSheetByName(Q046_WALLET.allocationSheet);
+  let aheaders=[],allocationComplete=false,allocationPartial=false,allocationDataRows=0;
+  if(allocation){
+    const alast=allocation.getLastColumn(),arows=allocation.getLastRow();
+    aheaders=alast>0?allocation.getRange(1,1,1,alast).getDisplayValues()[0].map(function(x){return String(x||'').trim();}):[];
+    // An interrupted write may leave a blank new sheet or a strict prefix of headers.
+    // Incompatible reordering, extra columns, duplicates or data without a complete contract STOP.
+    if(q049HasDuplicateHeaders_(aheaders)||aheaders.length>Q046_WALLET.allocationHeaders.length)throw new Error('MIGRATION_SCHEMA_CONFLICT');
+    for(let i=0;i<aheaders.length;i++)if(aheaders[i]!==Q046_WALLET.allocationHeaders[i])throw new Error('MIGRATION_SCHEMA_CONFLICT');
+    allocationComplete=aheaders.length===Q046_WALLET.allocationHeaders.length;
+    allocationPartial=!allocationComplete;
+    allocationDataRows=Math.max(0,arows-1);
+    if(!allocationComplete&&allocationDataRows>0)throw new Error('MIGRATION_SCHEMA_CONFLICT');
+  }
+  const hlast=heads.getLastRow(),hcols=heads.getLastColumn();
+  if(hcols<7||String(heads.getRange(1,1).getDisplayValue()||'').trim()!=='domain')throw new Error('MIGRATION_SCHEMA_CONFLICT');
+  const hr=hlast>1?heads.getRange(2,1,hlast-1,7).getValues():[];
+  const existingHeads=hr.filter(function(row){return String(row[0]||'').trim()===Q046_WALLET.allocationDomain;});
+  if(existingHeads.length>1)throw new Error('MIGRATION_SCHEMA_CONFLICT');
+  const head=existingHeads.length?existingHeads[0]:null;
+  let headState=null;
+  if(head){
+    const rev=Number(head[2]),count=Number(head[4]);
+    if(String(head[1]||'')!==Q046_WALLET.schemaVersion||
+      !Number.isInteger(rev)||rev<0||!Number.isInteger(count)||count<0||
+      (!allocation&&(rev!==0||count!==0))||
+      (allocationDataRows>0&&count!==allocationDataRows))throw new Error('MIGRATION_SCHEMA_CONFLICT');
+    headState={domain:Q046_WALLET.allocationDomain,schema_version:String(head[1]),current_rev:rev,row_count:count};
+  }
+  if(allocationDataRows>0&&!head)throw new Error('MIGRATION_SCHEMA_CONFLICT');
+  const ready=f1&&f2&&allocationComplete&&!!headState,any=f1||f2||!!allocation||!!headState;
+  const planned=[];
+  Q046_WALLET.financeFields.forEach(function(h){if(headers.indexOf(h)<0)planned.push({type:'FINANCE_ADD_COLUMN',field:h});});
+  if(!allocation)planned.push({type:'CREATE_ALLOCATION_SHEET',sheet:Q046_WALLET.allocationSheet,headers:Q046_WALLET.allocationHeaders.slice()});
+  else if(allocationPartial)planned.push({type:'FINISH_ALLOCATION_HEADERS',sheet:Q046_WALLET.allocationSheet,missing_headers:Q046_WALLET.allocationHeaders.slice(aheaders.length)});
+  if(!headState)planned.push({type:'ADD_DOMAIN_HEAD',domain:Q046_WALLET.allocationDomain,schema_version:Q046_WALLET.schemaVersion,current_rev:0,row_count:0});
+  return {finance_headers:headers,finance_row_count:financeCount,finance_last_id:lastFinanceId,
+    cash_epoch_id_exists:f1,executed_finance_id_exists:f2,
+    wallet_allocations_sheet_exists:!!allocation,wallet_allocations_headers:aheaders,
+    wallet_allocations_headers_compatible:allocationComplete,wallet_allocations_head_exists:!!headState,
+    wallet_allocations_head_state:headState,migration_needed:!ready,schema_ready:!!ready,
+    apply_allowed:true,partial_compatible:!!(any&&!ready),planned_changes:planned};
+}
+function q049HasDuplicateHeaders_(arr){const seen={};return arr.some(function(x){if(!x)return false;if(seen[x])return true;seen[x]=true;return false;});}
+function q049Admin_(body,requestId){
+  const auth=authSession_(body.session_token,null,requestId);
+  if(String(auth.user&&auth.user.role||'').toUpperCase()!=='ADMIN1')throw new Error('PERMISSION_DENIED:ADMIN1_WALLET_SCHEMA');
+  const eventId=w1EventId_(body);return {auth:auth,eventId:eventId};
+}
+function handleWalletSchemaMigrationPreviewQ049_(body,requestId){
+  const context=q049Admin_(body,requestId),state=q049MigrationState_();
+  return {ok:true,request_id:requestId,event_id:context.eventId,action:'wallet.schema.migration.preview',
+    schema:state,migration_needed:state.migration_needed,apply_allowed:state.apply_allowed,
+    planned_changes:state.planned_changes,finance_row_count:state.finance_row_count,
+    finance_last_id:state.finance_last_id,read_only:true,business_writes:0,serverTime:nowIso_()};
+}
+function handleWalletSchemaMigrationApplyQ049_(body,requestId){
+  const context=q049Admin_(body,requestId);
+  if(body.apply_authorized!==true||body.confirm_code!=='Q049_WALLET_SCHEMA_APPLY')throw new Error('MIGRATION_CONFIRMATION_REQUIRED');
+  const lock=LockService.getScriptLock();lock.waitLock(20000);
+  try{
+    // Compatibility is checked inside the mutation lock, not only at preview time.
+    const before=q049MigrationState_();
+    if(!before.apply_allowed)throw new Error('MIGRATION_SCHEMA_CONFLICT');
+    if(before.migration_needed)q046EnsureSchemaMigration_();
+    const after=q049MigrationState_();
+    if(!after.schema_ready||after.migration_needed)throw new Error('MIGRATION_INCOMPLETE');
+    if(after.finance_row_count!==before.finance_row_count||after.finance_last_id!==before.finance_last_id)
+      throw new Error('MIGRATION_FINANCE_BASELINE_CHANGED');
+    const added=Q046_WALLET.financeFields.filter(function(h){return before.finance_headers.indexOf(h)<0;});
+    // The helper updates header cells only. Verify no historical finance values were backfilled.
+    if(added.length&&after.finance_row_count){
+      const sh=sheet_('Финансы'),n=sh.getLastRow()-1;
+      added.forEach(function(h){
+        const col=after.finance_headers.indexOf(h)+1;
+        const vals=n>0?sh.getRange(2,col,n,1).getValues():[];
+        if(vals.some(function(v){return v[0]!==''&&v[0]!=null;}))throw new Error('MIGRATION_EXISTING_FINANCE_BACKFILLED');
+      });
+    }
+    const didChange=before.migration_needed;
+    return {ok:true,request_id:requestId,event_id:context.eventId,action:'wallet.schema.migration.apply',
+      finance_headers_before:before.finance_headers,finance_headers_after:after.finance_headers,
+      finance_row_count:after.finance_row_count,finance_last_id:after.finance_last_id,
+      added_finance_fields:added,wallet_allocations_sheet_created:!before.wallet_allocations_sheet_exists,
+      wallet_allocations_headers:after.wallet_allocations_headers,
+      wallet_allocations_head_created:!before.wallet_allocations_head_exists,
+      wallet_allocations_head_state:after.wallet_allocations_head_state,
+      existing_finance_rows_backfilled:0,schema_ready:true,
+      duplicate:!didChange,prior_result:!didChange,repaired_partial:!!(didChange&&before.partial_compatible),
+      business_writes:0,migration_action_evidence:{event_id:context.eventId,structural_changes:before.planned_changes.length},
+      serverTime:nowIso_()};
+  }finally{lock.releaseLock();}
+}
+/* ===== END Q-049 ===== */
+
 function q046SafeTable_(sheetName){const sh=ss_().getSheetByName(sheetName);return sh?tableByHeader_(CFG.SPREADSHEET_ID,sheetName,1):null;}
 function q046IsDeleted_(v){return v===true||['TRUE','ДА','YES','1'].indexOf(String(v==null?'':v).trim().toUpperCase())>=0;}
 function q046Money_(v){const n=numberOrNull_(v);return n==null?0:Number(n);}
