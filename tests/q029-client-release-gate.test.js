@@ -101,7 +101,19 @@ async function install(stage,role,manifestBuild){
       async databases(){return [{name:'production-v011'}];},
       open(){const q={};queueMicrotask(()=>q.onsuccess());q.result={
         objectStoreNames:{contains(){return true;}},
-        transaction(){return {objectStore(){return {get(){const g={result:{user:{role}}};queueMicrotask(()=>g.onsuccess());return g;}}};}},
+        transaction(){
+          return {
+            objectStore(){
+              return {
+                get(){
+                  const g={result:{user:{role}}};
+                  queueMicrotask(()=>g.onsuccess());
+                  return g;
+                }
+              };
+            }
+          };
+        },
         close(){}
       };return q;}
     }
