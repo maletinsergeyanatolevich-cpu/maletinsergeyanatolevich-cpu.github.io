@@ -1,4 +1,4 @@
-﻿const APP_RELEASE=Object.freeze({version:'v0.3.27.2',buildId:'2026-10-07.3d',channel:'q034-diagnostic-transport',dbSchema:5,updateStrategy:'manifest-service-worker',rolloutStage:'admin1',previousBuildId:'2026-10-07.3c'});window.APP_RELEASE=APP_RELEASE;
+﻿const APP_RELEASE=Object.freeze({version:'v0.3.28-staging-q029-rh1',buildId:'2026-10-09.q029.rh1',channel:'q029-wallet-client-release-hardening',dbSchema:5,updateStrategy:'manifest-service-worker',rolloutStage:'staging-only',previousBuildId:'2026-10-07.3d'});window.APP_RELEASE=APP_RELEASE;
 function emptySnapshot(){return {meta:{version:APP_RELEASE.version,snapshotDate:'',snapshotTime:'',timezone:'',backendConnected:false,source:'Нет загруженных бизнес-данных',schemaVersion:1},orders:[],archivedOrders:[],plannedFinance:[],calculations:{},wallet:{balance:0,income:0,expense:0,reserve:0,freeNow:0,expense7:0,free7:0,futureExpenses:[],transactions:[],futureTotal:0,futureIncome:0,ownerDebt:0,ownerDebtSergey:0,ownerDebtEvgeny:0,ownerDebtTotal:0,ownerGrossDebtSergey:0,ownerGrossDebtEvgeny:0,ownerGrossDebtTotal:0,netPosition:0,afterObligations:0},nomenclature:[],purchaseLines:[],purchaseAggregated:[],gallery:[],appIssues:[],purchaseWarnings:[]}}
 function normalizeSnapshot(x){const b=emptySnapshot();if(!x||typeof x!=='object')return b;return {...b,...x,meta:{...b.meta,...(x.meta||{})},wallet:{...b.wallet,...(x.wallet||{})},orders:Array.isArray(x.orders)?x.orders:[],archivedOrders:Array.isArray(x.archivedOrders)?x.archivedOrders:[],plannedFinance:Array.isArray(x.plannedFinance)?x.plannedFinance:[],calculations:x.calculations&&typeof x.calculations==='object'?x.calculations:{},nomenclature:Array.isArray(x.nomenclature)?x.nomenclature:[],purchaseLines:Array.isArray(x.purchaseLines)?x.purchaseLines:[],purchaseAggregated:Array.isArray(x.purchaseAggregated)?x.purchaseAggregated:[],gallery:Array.isArray(x.gallery)?x.gallery:[],appIssues:Array.isArray(x.appIssues)?x.appIssues:[],purchaseWarnings:Array.isArray(x.purchaseWarnings)?x.purchaseWarnings:[]}}
 let S=emptySnapshot(); window.SNAPSHOT=S;
@@ -3704,7 +3704,7 @@ document.addEventListener('visibilitychange',()=>{
 });
 window.addEventListener('pageshow',()=>runResumeSync('pageshow'));
 setInterval(()=>{if(backendSession()&&navigator.onLine!==false)syncReadyDrafts({auto:true,lightOnly:true,reason:'foreground-timer'}).then(r=>{if(r?.waitingHeavy)scheduleBackgroundMedia('foreground-timer')}).catch(()=>{})},15000);
-function updateEligible(v={}){const stage=String(v.rolloutStage||v.releaseStage||'stable').toLowerCase();if(stage==='paused')return false;if(stage==='admin1')return isAdmin1();return true}
+function updateEligible(v={}){if(!v||!v.buildId)return false;const stage=String(v.rolloutStage||v.releaseStage||'').toLowerCase();if(stage==='admin1')return isAdmin1()&&Array.isArray(v.eligibleRoles)&&v.eligibleRoles.includes('ADMIN1');if(stage==='stable')return true;return false}
 function showUpdateBanner(v={}){if(!updateEligible(v))return;updateState.manifest=v||{};window.__PROD_UPDATE_READY=true;const box=document.getElementById('updateBanner');const text=document.getElementById('updateText');if(text)text.textContent=`Доступно обновление${v?.buildId?' · '+v.buildId:''}`;if(box)box.classList.remove('hidden')}
 document.addEventListener('production:update-ready',e=>showUpdateBanner(e.detail||{}));
 
@@ -4009,7 +4009,7 @@ async function initPwaUpdateLayer(){
 }
 window.applyAvailableUpdate=async function(){
   const manifest=updateState.manifest||{};
-  if(manifest.buildId&&!updateEligible(manifest)){alert('Это обновление пока доступно только ADMIN1.');return false}
+  if(!manifest.buildId||!updateEligible(manifest)){alert('Обновление недоступно для текущего этапа или роли.');return false}
   setTransferProgress('update',{active:true,stage:'Проверяю версию',done:0,total:0,bytesLoaded:0});
   const reg=window.__PROD_SW_REG||await navigator.serviceWorker.getRegistration('./');
   if(!reg){finishTransferProgress('update',{stage:'Service Worker не найден'});return false}
