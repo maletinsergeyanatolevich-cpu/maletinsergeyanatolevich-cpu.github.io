@@ -40,8 +40,29 @@ async function fetchShellAsset(cache,path){
   await cache.put(path,new Response(bytes,{status:response.status,statusText:response.statusText,headers:response.headers}));
   return bytes.byteLength;
 }
+async function q029ReleasePermitsInstall(){
+  // A waiting worker activates when all old clients close. A UI button gate alone
+  // cannot prevent staging-only from taking over an already installed PWA.
+  const response=await fetch(new Request('./version.json',{cache:'reload'}));
+  if(!response.ok)throw new Error('RELEASE_MANIFEST_FETCH_FAILED');
+  const manifest=await response.json();
+  if(!manifest||manifest.buildId!==BUILD)throw new Error('APP_SHELL_VERSION_MISMATCH');
+  const stage=String(manifest.rolloutStage||'').toLowerCase();
+  if(stage==='stable')return manifest;
+  if(stage==='admin1'&&Array.isArray(manifest.eligibleRoles)&&manifest.eligibleRoles.includes('ADMIN1')&&await cachedAdmin1())return manifest;
+  throw new Error('CLIENT_RELEASE_GATE_NOT_OPEN');
+}
+async function q029ReleasePermitsActivation(){
+  const cache=await caches.open(CACHE),response=await cache.match('./version.json');
+  if(!response)return false;
+  const release=await response.json();
+  if(release.buildId!==BUILD)return false;
+  if(release.rolloutStage==='stable')return true;
+  return release.rolloutStage==='admin1'&&Array.isArray(release.eligibleRoles)&&release.eligibleRoles.includes('ADMIN1')&&await cachedAdmin1();
+}
 self.addEventListener('install',event=>{
   event.waitUntil((async()=>{
+    await q029ReleasePermitsInstall();
     const cache=await caches.open(CACHE),total=APP_SHELL.length;
     let next=0,done=0,bytesLoaded=0;
     await postUpdateProgress({stage:'downloading',label:'Скачиваю файлы приложения',done,total,bytesLoaded});
@@ -63,7 +84,7 @@ self.addEventListener('install',event=>{
     await postUpdateProgress({stage:'ready',label:'Файлы обновления готовы',done:total,total,bytesLoaded});
     const release=await (await cache.match('./version.json')).json();
     if(release.buildId!==BUILD)throw new Error('APP_SHELL_VERSION_MISMATCH');
-    if(release.rolloutStage==='admin1'&&Array.isArray(release.eligibleRoles)&&release.eligibleRoles.includes('ADMIN1')&&await cachedAdmin1()){
+    if(release.rolloutStage==='admin1'&&await q029ReleasePermitsActivation()){
       await postUpdateProgress({stage:'activating',label:'Активирую обновление ADMIN1',done:total,total,bytesLoaded});
       await self.skipWaiting();
     }
@@ -77,7 +98,12 @@ self.addEventListener('activate',event=>{
     })
   );
 });
-self.addEventListener('message',event=>{if(event.data&&event.data.type==='SKIP_WAITING')self.skipWaiting();});
+self.addEventListener('message',event=>{
+  if(!event.data||event.data.type!=='SKIP_WAITING')return;
+  event.waitUntil((async()=>{
+    if(await q029ReleasePermitsActivation())await self.skipWaiting();
+  })());
+});
 self.addEventListener('fetch',event=>{
   const req=event.request;if(req.method!=='GET')return;
   const url=new URL(req.url);
