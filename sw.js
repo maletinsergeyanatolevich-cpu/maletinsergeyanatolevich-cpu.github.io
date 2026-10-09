@@ -61,7 +61,12 @@ self.addEventListener('install',event=>{
     const concurrency=Math.min(4,total);
     await Promise.all(Array.from({length:concurrency},()=>worker()));
     await postUpdateProgress({stage:'ready',label:'Файлы обновления готовы',done:total,total,bytesLoaded});
-    if(await cachedAdmin1()){await postUpdateProgress({stage:'activating',label:'Активирую обновление ADMIN1',done:total,total,bytesLoaded});await self.skipWaiting()}
+    const release=await (await cache.match('./version.json')).json();
+    if(release.buildId!==BUILD)throw new Error('APP_SHELL_VERSION_MISMATCH');
+    if(release.rolloutStage==='admin1'&&Array.isArray(release.eligibleRoles)&&release.eligibleRoles.includes('ADMIN1')&&await cachedAdmin1()){
+      await postUpdateProgress({stage:'activating',label:'Активирую обновление ADMIN1',done:total,total,bytesLoaded});
+      await self.skipWaiting();
+    }
   })());
 });
 self.addEventListener('activate',event=>{
