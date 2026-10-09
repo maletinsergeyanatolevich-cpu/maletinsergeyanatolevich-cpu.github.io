@@ -5,6 +5,7 @@ const vm=require('vm');
 
 const app=fs.readFileSync('assets/app.js','utf8');
 const sw=fs.readFileSync('sw.js','utf8');
+const html=fs.readFileSync('index.html','utf8');
 const release=JSON.parse(fs.readFileSync('version.json','utf8'));
 const results=[];
 function test(label,fn){results.push({label,fn});}
@@ -14,6 +15,12 @@ const embedded=vm.runInNewContext('('+declaration[1]+')');
 const swBuild=sw.match(/const BUILD='([^']+)'/);
 assert.ok(swBuild,'SW BUILD missing');
 
+test('staging document title and footer match build and do not claim stale backend',()=>{
+  assert.ok(html.includes('<title>Производство '+release.version+'</title>'));
+  assert.ok(html.includes('ПРОИЗВОДСТВО · '+release.version+'</b>'));
+  assert.ok(html.includes('backend 0.2.31 · Q-029 STAGING'));
+  assert.ok(!html.includes('backend 0.2.21'));
+});
 test('staging manifest, embedded version, and SW build agree',()=>{
   assert.strictEqual(release.buildId,embedded.buildId);
   assert.strictEqual(release.version,embedded.version);
