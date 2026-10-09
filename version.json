@@ -1,19 +1,19 @@
 {
-  "version": "v0.3.28-staging-q047",
-  "buildId": "2026-10-09.q047.1",
-  "channel": "q047-wallet-source-correction",
+  "version": "v0.3.28-staging-q029-rh1",
+  "buildId": "2026-10-09.q029.rh1",
+  "channel": "q029-wallet-client-release-hardening",
   "rolloutStage": "staging-only",
   "eligibleRoles": [
     "ADMIN1"
   ],
-  "dbSchema": 6,
-  "minBackend": "backend-0.2.29-staging-q047",
-  "previousBuildId": "2026-10-08.q046.1",
+  "dbSchema": 5,
+  "minBackend": "backend-0.2.31-staging-q049",
+  "previousBuildId": "2026-10-07.3d",
   "rollback": {
     "buildId": "2026-10-07.3d",
     "dbSchema": 5,
     "safeWithoutDataReset": true
   },
   "publishedAt": null,
-  "notes": "Q-047 staging-only source correction: order future needs, linked-reserve safety, obligation overpayment guard, non-operating semantics, handler tests. No production release."
+  "notes": "Q-029 client release-hardening block 1: staging-only; keep IndexedDB schema 5 for safe rollback; match app and service worker builds. No production client release, merge, or business writes."
 }
