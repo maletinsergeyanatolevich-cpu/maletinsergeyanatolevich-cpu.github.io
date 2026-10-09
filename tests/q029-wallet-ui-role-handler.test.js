@@ -215,5 +215,32 @@ await test('pending read discarded after session replacement even if role remain
  assert.strictEqual(x.state.walletCanonical,null);
  assert.strictEqual(x.stage.loaded,false);
 });
-console.log(JSON.stringify({kind:'Q029_WALLET_UI_ROLE_ACTUAL_SOURCE',ok:true,passed:results.length,total:13},null,2));
+await test('balance screen network failure renders one error and a manual retry, no polling loop',async()=>{
+ const x=runtime('ADMIN1');x.state.walletCanonical=null;
+ x.ctx.backendPost=async p=>{x.stats.posts.push(p);throw Error('BALANCE_NETWORK_FAILURE');};
+ x.run("setWalletView('balance')");
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.strictEqual(x.stats.posts.length,1);
+ assert.ok(x.wallet.innerHTML.includes('BALANCE_NETWORK_FAILURE'));
+ assert.ok(x.wallet.innerHTML.includes('Повторить'));
+});
+await test('manual retry after initial failure loads canonical model exactly once',async()=>{
+ const x=runtime('ADMIN1');x.state.walletCanonical=null;
+ let attempts=0;
+ x.ctx.backendPost=async p=>{
+   x.stats.posts.push(p);attempts++;
+   if(attempts===1)throw Error('RETRYABLE_OFFLINE_TEST');
+   return {ok:true,wallet:fakeWallet()};
+ };
+ x.run("go('wallet')");
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.strictEqual(x.stats.posts.length,1);
+ assert.ok(x.wallet.innerHTML.includes('RETRYABLE_OFFLINE_TEST'));
+ await x.run('q046LoadCanonicalWallet(true)');
+ assert.strictEqual(x.stats.posts.length,2);
+ assert.strictEqual(x.stage.error,'');
+ assert.ok(x.wallet.innerHTML.includes('11108'));
+});
+
+console.log(JSON.stringify({kind:'Q029_WALLET_UI_ROLE_ACTUAL_SOURCE',ok:true,passed:results.length,total:15},null,2));
 })().catch(err=>{console.error(err);process.exitCode=1;});
