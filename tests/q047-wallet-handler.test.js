@@ -35,7 +35,7 @@ function runtime(){
  q047AssertLinkedAllocationSafe_,
  q046Obligations_,
  handleWalletSensitiveExecuteQ046_,
- handleWalletPlanSpendQ046_,handleWalletPlanCancelQ046_,q046ReservedTotal_
+ handleWalletPlanSpendQ046_,handleWalletPlanCancelQ046_,q046ReservedTotal_,handleWalletSchemaMigrationPreviewQ049_,handleWalletSchemaMigrationApplyQ049_
 };`;
   vm.runInContext(source+expose,ctx,{filename:sourcePath});
   return {ctx,api:ctx.__Q047_TEST_API__};
@@ -323,4 +323,126 @@ test(21,'Q048 Cancel partial retry with duplicate active links fails closed',()=
   assert.strictEqual(x.counters.created,0);assert.strictEqual(x.counters.planPatched,0);assert.strictEqual(x.counters.allocUpdated,0);
 });
 
-console.log(JSON.stringify({ok:true,kind:'Q047_AND_Q048_ACTUAL_SOURCE_HANDLER_FIXTURE',q047:{passed:15,total:15},q048:{passed:results.length-15,total:6},passed:results.length,total:21,results},null,2));
+
+function q049Fixture(opt={}){
+  const rt=runtime(),writes=[],db={},F=rt.api.Q046_WALLET.financeFields,
+    H=rt.api.Q046_WALLET.allocationHeaders,alloc=rt.api.Q046_WALLET.allocationSheet;
+  let locked=false,fail='',failed=false;
+  function check(stage){
+    if(!locked)throw Error('MIGRATION_WITHOUT_LOCK');
+    if(stage===fail&&!failed){failed=true;throw Error('INJECTED_'+stage);}
+    writes.push(stage);
+  }
+  class TestSheet{
+    constructor(rows){this.rows=rows.map(r=>r.slice());}
+    getLastRow(){return this.rows.length;}
+    getLastColumn(){return this.rows[0]?this.rows[0].length:0;}
+    getRange(r,c,n=1,w=1){const sh=this;
+      const values=()=>Array.from({length:n},(_,i)=>Array.from({length:w},(_,j)=>(sh.rows[r+i-1]||[])[c+j-1]??''));
+      return {getValues:values,getDisplayValues(){return values().map(v=>v.map(String));},getValue(){return values()[0][0];},getDisplayValue(){return String(values()[0][0]);},
+        setValue(v){check('column-'+c);while(sh.rows.length<r)sh.rows.push([]);sh.rows[r-1][c-1]=v;},
+        setValues(v){check('setValues');v.forEach((a,i)=>{while(sh.rows.length<r+i)sh.rows.push([]);a.forEach((z,j)=>sh.rows[r+i-1][c+j-1]=z);});}};
+    }
+    appendRow(r){check('appendHead');this.rows.push(r.slice());}
+    hideSheet(){}
+  }
+  function put(n,rows){db[n]=new TestSheet(rows);return db[n];}
+  put('Финансы',[['ID операции','Тип','Сумма'],...Array.from({length:116},(_,i)=>['FIN-'+(i+1),'Расход',100])]);
+  put('_DOMAIN_HEADS',[['domain','schema_version','current_rev','updated_at','row_count','last_event_id','checksum'],['finance','1.0',7,'',116,'','']]);
+  if(opt.field1)db['Финансы'].rows[0].push(F[0]);
+  if(opt.field2)db['Финансы'].rows[0].push(F[1]);
+  if(opt.alloc==='exact')put(alloc,[Array.from(H)]);
+  if(opt.alloc==='wrong')put(alloc,[['allocation_id','WRONG']]);
+  if(opt.alloc==='prefix')put(alloc,[Array.from(H).slice(0,4)]);
+  if(opt.head)db['_DOMAIN_HEADS'].rows.push(['wallet_allocations','1.0',opt.head.rev||0,'',opt.head.count||0,'','']);
+  if(opt.addData){const d=Array(H.length).fill('');d[0]='ALLOC-1';db[alloc].rows.push(d);}
+  const ss={getSheetByName(n){return db[n]||null;},insertSheet(n){check('insertSheet');const s=put(n,[]);if(fail==='afterInsert'&&!failed){failed=true;throw Error('INJECTED_afterInsert');}return s;}};
+  setFn(rt,'ss_',()=>ss);
+  setFn(rt,'authSession_',token=>{if(token!=='Q049_SESSION')throw Error('SESSION_INVALID');return {user:{userId:'U1',role:opt.role||'ADMIN1'}};});
+  setFn(rt,'nowIso_',()=> '2026-10-09T00:00:00Z');
+  rt.ctx.LockService={getScriptLock(){return {waitLock(){locked=true;},releaseLock(){locked=false;}};}};
+  const body={session_token:'Q049_SESSION',event_id:'Q049-EVENT',apply_authorized:true,confirm_code:'Q049_WALLET_SCHEMA_APPLY'};
+  return {rt,db,writes,body,F,H,alloc,
+    preview:(b=body)=>rt.api.handleWalletSchemaMigrationPreviewQ049_(b,'R49P'),
+    apply:(b=body)=>rt.api.handleWalletSchemaMigrationApplyQ049_(b,'R49A'),
+    fail:(s)=>{fail=s;failed=false;},snap:n=>JSON.stringify(db[n].rows)};
+}
+test(22,'Q049 pristine preview exact plan and no writes',()=>{
+ const x=q049Fixture(),r=x.preview();
+ assert.strictEqual(r.read_only,true);assert.strictEqual(r.finance_row_count,116);
+ assert.strictEqual(r.finance_last_id,'FIN-116');assert.strictEqual(r.planned_changes.length,4);
+ assert.strictEqual(x.writes.length,0);
+});
+test(23,'Q049 non ADMIN1 cannot preview or apply',()=>{
+ const x=q049Fixture({role:'WORKER'});
+ errCode(()=>x.preview(),'PERMISSION_DENIED:ADMIN1_WALLET_SCHEMA');
+ errCode(()=>x.apply(),'PERMISSION_DENIED:ADMIN1_WALLET_SCHEMA');
+ assert.strictEqual(x.writes.length,0);
+});
+test(24,'Q049 valid session, event and confirmation mandatory',()=>{
+ const x=q049Fixture();
+ errCode(()=>x.preview({...x.body,session_token:'BAD'}),'SESSION_INVALID');
+ errCode(()=>x.apply({...x.body,event_id:''}),'EVENT_ID_REQUIRED');
+ errCode(()=>x.apply({...x.body,apply_authorized:false}),'MIGRATION_CONFIRMATION_REQUIRED');
+ errCode(()=>x.apply({...x.body,confirm_code:'BAD'}),'MIGRATION_CONFIRMATION_REQUIRED');
+ assert.strictEqual(x.writes.length,0);
+});
+test(25,'Q049 pristine apply creates fields sheet head, blank historical values',()=>{
+ const x=q049Fixture(),pre=x.snap('Финансы'),r=x.apply();
+ assert.strictEqual(r.schema_ready,true);assert.strictEqual(r.business_writes,0);
+ assert.strictEqual(r.existing_finance_rows_backfilled,0);
+ assert.deepStrictEqual(Array.from(r.added_finance_fields),Array.from(x.F));
+ assert.deepStrictEqual(x.db[x.alloc].rows[0],Array.from(x.H));
+ assert.strictEqual(x.db['_DOMAIN_HEADS'].rows.length,3);
+ for(let i=1;i<117;i++){
+   assert.deepStrictEqual(x.db['Финансы'].rows[i].slice(0,3),JSON.parse(pre)[i].slice(0,3));
+   assert.ok(x.db['Финансы'].rows[i][3]==null||x.db['Финансы'].rows[i][3]==='');
+   assert.ok(x.db['Финансы'].rows[i][4]==null||x.db['Финансы'].rows[i][4]==='');
+ }
+});
+test(26,'Q049 same event after apply is a no-op',()=>{
+ const x=q049Fixture();x.apply();const n=x.writes.length;
+ const r=x.apply();assert.strictEqual(r.duplicate,true);assert.strictEqual(r.prior_result,true);
+ assert.strictEqual(x.writes.length,n);
+});
+test(27,'Q049 different event after completed migration is also a no-op',()=>{
+ const x=q049Fixture();x.apply();const n=x.writes.length;
+ const r=x.apply({...x.body,event_id:'Q049-NEW'});assert.strictEqual(r.duplicate,true);assert.strictEqual(x.writes.length,n);
+});
+test(28,'Q049 partial first Finance column resumes safely',()=>{
+ const x=q049Fixture();x.fail('column-5');
+ errCode(()=>x.apply(),'INJECTED_column-5');x.fail('');const r=x.apply();
+ assert.strictEqual(r.repaired_partial,true);
+ assert.strictEqual(x.db['Финансы'].rows[0].filter(v=>v===x.F[0]).length,1);
+ assert.strictEqual(x.db['Финансы'].rows[0].filter(v=>v===x.F[1]).length,1);
+});
+test(29,'Q049 existing compatible allocation headers reused',()=>{
+ const x=q049Fixture({alloc:'exact'}),pre=x.snap(x.alloc),r=x.apply();
+ assert.strictEqual(r.wallet_allocations_sheet_created,false);assert.strictEqual(x.snap(x.alloc),pre);
+});
+test(30,'Q049 incompatible allocation headers fail closed',()=>{
+ const x=q049Fixture({alloc:'wrong'});
+ errCode(()=>x.preview(),'MIGRATION_SCHEMA_CONFLICT');
+ errCode(()=>x.apply(),'MIGRATION_SCHEMA_CONFLICT');assert.strictEqual(x.writes.length,0);
+});
+test(31,'Q049 existing head rev/count preserved',()=>{
+ const x=q049Fixture({field1:true,field2:true,alloc:'exact',head:{rev:7,count:1},addData:true}),pre=x.snap('_DOMAIN_HEADS'),r=x.apply();
+ assert.strictEqual(r.duplicate,true);assert.strictEqual(r.wallet_allocations_head_state.current_rev,7);
+ assert.strictEqual(x.snap('_DOMAIN_HEADS'),pre);assert.strictEqual(x.writes.length,0);
+});
+test(32,'Q049 failure after allocation sheet insertion resumes blank sheet',()=>{
+ const x=q049Fixture();x.fail('afterInsert');errCode(()=>x.apply(),'INJECTED_afterInsert');
+ assert.strictEqual(x.db[x.alloc].getLastColumn(),0);x.fail('');const r=x.apply();
+ assert.strictEqual(r.repaired_partial,true);assert.deepStrictEqual(x.db[x.alloc].rows[0],Array.from(x.H));
+});
+test(33,'Q049 partial allocation header prefix resumes',()=>{
+ const x=q049Fixture({field1:true,field2:true,alloc:'prefix'}),r=x.apply();
+ assert.strictEqual(r.repaired_partial,true);assert.deepStrictEqual(x.db[x.alloc].rows[0],Array.from(x.H));
+});
+test(34,'Q049 failure after sheet before head append resumes',()=>{
+ const x=q049Fixture();x.fail('appendHead');errCode(()=>x.apply(),'INJECTED_appendHead');
+ const pre=x.snap(x.alloc);x.fail('');const r=x.apply();
+ assert.strictEqual(r.repaired_partial,true);assert.strictEqual(x.snap(x.alloc),pre);
+});
+
+console.log(JSON.stringify({ok:true,kind:'Q047_Q048_Q049_ACTUAL_SOURCE_HANDLER_FIXTURES',q047:{passed:15,total:15},q048:{passed:6,total:6},q049:{passed:results.length-21,total:13},passed:results.length,total:34,results},null,2));
