@@ -124,28 +124,61 @@ async function install(stage,role,manifestBuild){
   events.install({waitUntil(p){installation=p;}});
   let error=null;
   try{await installation;}catch(e){error=String(e.message||e);}
-  return {waiting,error,cacheEntries:[...entries.keys()]};
+  return {waiting,error,cacheEntries:[...entries.keys()],
+    async postSkipWaiting(){
+      let p=null;
+      events.message({data:{type:'SKIP_WAITING'},waitUntil(x){p=x;}});
+      if(p)await p;
+      return waiting;
+    }
+  };
 }
-test('staging-only install never activates, even with cached ADMIN1',async()=>{
-  const r=await install('staging-only','ADMIN1');
-  assert.strictEqual(r.error,null);
-  assert.strictEqual(r.waiting,0);
-  assert.ok(r.cacheEntries.includes('./version.json'));
+test('staging-only install rejected before caching, including after last client closes',async()=>{
+  for(const role of ['ADMIN1','WORKER']){
+    const r=await install('staging-only',role);
+    assert.strictEqual(r.error,'CLIENT_RELEASE_GATE_NOT_OPEN');
+    assert.strictEqual(r.waiting,0);
+    assert.deepStrictEqual(r.cacheEntries,[]);
+    assert.strictEqual(await r.postSkipWaiting(),0);
+  }
 });
-test('admin1 rollout activation never occurs for cached worker',async()=>{
+test('admin1 rollout cannot install for cached worker',async()=>{
   const r=await install('admin1','WORKER');
-  assert.strictEqual(r.error,null);
+  assert.strictEqual(r.error,'CLIENT_RELEASE_GATE_NOT_OPEN');
   assert.strictEqual(r.waiting,0);
+  assert.deepStrictEqual(r.cacheEntries,[]);
+  assert.strictEqual(await r.postSkipWaiting(),0);
 });
 test('explicit admin1 rollout allows cached ADMIN1 installation',async()=>{
   const r=await install('admin1','ADMIN1');
   assert.strictEqual(r.error,null);
   assert.strictEqual(r.waiting,1);
+  assert.ok(r.cacheEntries.includes('./version.json'));
 });
-test('service worker refuses mismatched manifest build',async()=>{
+test('service worker refuses mismatched manifest build before caching',async()=>{
   const r=await install('admin1','ADMIN1','UNEXPECTED-BUILD');
   assert.strictEqual(r.waiting,0);
   assert.strictEqual(r.error,'APP_SHELL_VERSION_MISMATCH');
+  assert.deepStrictEqual(r.cacheEntries,[]);
+});
+test('staging-only message SKIP_WAITING cannot bypass install gate',async()=>{
+  const r=await install('paused','ADMIN1');
+  assert.strictEqual(r.error,'CLIENT_RELEASE_GATE_NOT_OPEN');
+  assert.strictEqual(await r.postSkipWaiting(),0);
+});
+test('stable release installation can proceed only with matching manifest',async()=>{
+  const r=await install('stable','WORKER');
+  assert.strictEqual(r.error,null);
+  assert.strictEqual(r.waiting,0);
+  assert.ok(r.cacheEntries.includes('./index.html'));
+  assert.strictEqual(await r.postSkipWaiting(),1);
+});
+test('application keeps rollback-compatible DB schema5 and no destructive db upgrade',()=>{
+  assert.ok(app.includes("const DB_NAME='production-v011';"));
+  assert.ok(app.includes("const DB_SCHEMA=APP_RELEASE.dbSchema;"));
+  assert.strictEqual(release.dbSchema,5);
+  assert.strictEqual(release.rollback.dbSchema,5);
+  assert.ok(!app.includes('indexedDB.deleteDatabase(DB_NAME)'));
 });
 (async()=>{
  for(const t of results){await t.fn();console.log('PASS '+t.label);}
