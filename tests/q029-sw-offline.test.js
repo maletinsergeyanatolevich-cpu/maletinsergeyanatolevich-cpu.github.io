@@ -28,7 +28,7 @@ function harness(){
     delete:async name=>{meta.removed.push(name);return true;}
   };
   const self={
-    location:{origin:ORIGIN},
+    location:{origin:new URL(ORIGIN).origin},
     clients:{async matchAll(){return [];},async claim(){meta.claimed++;}},
     addEventListener(n,callback){callbacks[n]=callback;},
     async skipWaiting(){throw Error('UNEXPECTED_ACTIVATION');}
