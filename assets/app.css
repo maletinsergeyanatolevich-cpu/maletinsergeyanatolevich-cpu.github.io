@@ -498,3 +498,9 @@ main{padding-bottom:178px!important}
 #orderDetail .order-comment-text{background:#fff;border:1px solid var(--line);border-radius:14px;padding:13px 14px;font-size:17px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}
 html[data-theme="dark"] #orderDetail .order-edit-main,html[data-theme="dark"] #orderDetail .order-finance-actions button,html[data-theme="dark"] #orderDetail .order-text-head button{background:#3f2e24!important;color:#ffd7b8!important;border-color:#8c6247!important}
 html[data-theme="dark"] #orderDetail .order-comment-text{background:#1b2026!important;color:#f2f4f6!important;border-color:#313942!important}
+
+/* Q029 Wallet: second row stays horizontal (scroll on narrow screens). */
+.q029-wallet-secondary-actions{display:flex;flex-wrap:nowrap;gap:6px;overflow-x:auto;max-width:100%;padding:8px 0 5px;scrollbar-width:thin}
+.q029-wallet-secondary-actions button{flex:1 0 auto;white-space:nowrap;padding:10px 9px;min-width:0;font-size:12px}
+.q029-wallet-forecast{grid-template-columns:repeat(3,minmax(0,1fr))}
+.q029-wallet-reserve-hint{font-size:12px;color:var(--muted);line-height:1.4;margin:6px 0 10px}

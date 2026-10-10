@@ -1,19 +1,21 @@
 {
-  "version": "v0.3.27.2",
-  "buildId": "2026-10-07.3d",
-  "channel": "q034-diagnostic-transport",
-  "rolloutStage": "admin1",
+  "version": "v0.3.28-staging-q029-rh3",
+  "buildId": "2026-10-10.q029.rh3",
+  "channel": "q029-wallet-client-release-hardening",
+  "rolloutStage": "staging-only",
   "eligibleRoles": [
-    "ADMIN1"
+    "ADMIN1",
+    "ADMIN2",
+    "USER"
   ],
   "dbSchema": 5,
-  "minBackend": "backend-0.2.25",
-  "previousBuildId": "2026-10-07.3c",
+  "minBackend": "backend-0.2.31-staging-q049",
+  "previousBuildId": "2026-10-07.3d",
   "rollback": {
-    "buildId": "2026-10-07.3c",
+    "buildId": "2026-10-07.3d",
     "dbSchema": 5,
     "safeWithoutDataReset": true
   },
-  "publishedAt": "2026-10-07T04:38:00Z",
-  "notes": "Q-034 diagnostic-only fix: replace undefined CURRENT_USER reference with current backend/session role source."
+  "publishedAt": null,
+  "notes": "Q-066 Wallet multiuser role and owner guards (staging only). Previous Q-029 Wallet UX refinement: planned income/receipt, Russian reserve labels and validation, two-row actions; staging-only; keep IndexedDB schema 5 for safe rollback; match app and service worker builds. No production client release, merge, or business writes."
 }
