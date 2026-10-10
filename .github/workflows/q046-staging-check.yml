@@ -41,6 +41,8 @@ jobs:
         run: node --check staging/q046/backend-q046.js
       - name: Run Wallet model contract tests
         run: node tests/q046-wallet-contract.test.js
+      - name: Test Q029 Option B cutoff synthetic design-only invariants
+        run: node tests/q029-wallet-cutoff-design.test.js
       - name: Test Q066 Dima order price-state, receivable and idempotency
         run: node tests/q066-dima-price-contract.test.js
       - name: Run Q047 actual-source handler fixture tests
