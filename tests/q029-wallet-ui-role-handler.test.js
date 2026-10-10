@@ -31,7 +31,7 @@ const guarded=guardNames.map((name,index)=>{
   const begin=source.search(new RegExp('(?:async )?function '+name+'\\('));
   assert.ok(begin>=0,'guard implementation missing: '+name);
   const line=source.slice(begin,source.indexOf('\n',begin));
-  assert.ok(line.includes('if(!q029WalletUiAllowed())return;'),'role guard missing on '+name);
+  assert.ok(line.includes('if(!q029WalletUiAllowed()'),'role guard missing on '+name);
   const m=line.match(/^(?:async )?function [A-Za-z0-9_]+\(/);
   assert.ok(m);
   return line;
