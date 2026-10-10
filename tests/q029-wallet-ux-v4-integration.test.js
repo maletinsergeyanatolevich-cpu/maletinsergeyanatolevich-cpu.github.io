@@ -13,7 +13,7 @@ const wallet={physical_cash:11108,free_now:11108,reserved_total:0,forecast:{expe
 const elements={wallet:{innerHTML:''},q046PlanAmt:{value:'2000'},q046PlanDue:{value:'2026-10-24'},q046PlanCat:{value:'Ожидаемая оплата'},q046PlanComment:{value:'Тест'},q046ResAmt:{value:'8800'},q046ResType:{value:'MATERIALS'},q046ResLabel:{value:'Тестовый резерв'}};
 let admin=true,modalHtml='',toast='',actions=[];
 const ctx={console,Date,Number,String,Math,Promise,Array,Object,JSON,Map,Set,
-  S:{walletCanonical:wallet},Q046_WALLET_STAGE:{loaded:true,loading:false,error:''},WALLET_VIEW:'main',
+  S:{walletCanonical:wallet},Q046_WALLET_STAGE:{loaded:true,loading:false,error:''},WALLET_VIEW:'main',q046WalletCanAdd:()=>true,q046WalletCanEdit:()=>true,
   document:{getElementById(id){return elements[id]||null}},q029WalletUiAllowed:()=>admin,
   q046WalletModel:()=>admin?wallet:null,q029LegacyRenderWallet:()=>{elements.wallet.innerHTML='LEGACY'},
   q046LoadCanonicalWallet:async()=>({ok:true}),

@@ -44,7 +44,7 @@ test('safe offline IndexedDB migration and rollback contract',()=>{
 test('declared staging source requires accepted backend version',()=>{
   assert.strictEqual(release.minBackend,'backend-0.2.31-staging-q049');
   assert.strictEqual(release.rolloutStage,'staging-only');
-  assert.deepStrictEqual(release.eligibleRoles,['ADMIN1']);
+  assert.deepStrictEqual(release.eligibleRoles,['ADMIN1','ADMIN2','USER']);
 });
 const allowSource=app.match(/function updateEligible\(v=\{\}\)\{[^\r\n]+\}/);
 assert.ok(allowSource,'updateEligible not found');

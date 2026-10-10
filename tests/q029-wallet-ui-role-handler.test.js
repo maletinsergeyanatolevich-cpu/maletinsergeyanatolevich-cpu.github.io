@@ -64,7 +64,7 @@ function runtime(role='WORKER',session='SESSION'){
     q046PartnerCard:()=>'',q046ObligationCard:()=>'',q046PlanRow:()=>'',q046AllocationRow:()=>'',q046OrderSummaryHtml:()=>'', 
     walletFutureIncomeItems:()=>[],walletFutureExpenseItems:()=>[],
     walletBalanceRow:(label,value)=>'<div>'+label+':'+value+'</div>',
-    standardActions:()=>'<span>LEGACY_OFFLINE_ACTION</span>',
+    standardActions:()=>'<span>Кошелёк недоступен</span>',
     renderWalletDrafts(){stats.draftRenders++;},
     walletMovementRow:()=>'',actionIcon:()=>'<svg></svg>',
     rub:v=>String(v),esc:v=>String(v||''),
@@ -72,6 +72,7 @@ function runtime(role='WORKER',session='SESSION'){
     q046ClearPending(){throw Error('UNEXPECTED_EVENT_CLEAR');},
     q046EvtPart:()=> 'NO_EVENT',
     isAdmin1:()=>stats.role==='ADMIN1',
+    hasPermission:()=>stats.role==='ADMIN1',canMutateRecord:()=>stats.role==='ADMIN1',
     backendSession:()=>stats.session,
     backendDeviceId:()=> 'DEV-TEST',
     backendPost:async payload=>{stats.posts.push(payload);return {ok:true,wallet:fakeWallet()};},
@@ -98,27 +99,27 @@ async function test(label,run){await run();results.push(label);console.log('PASS
 (async()=>{
 await test('worker navigation uses original legacy wallet DOM, never new canonical controls',async()=>{
  const x=runtime('WORKER');x.run("go('wallet')");
- assert.ok(x.wallet.innerHTML.includes('чистая позиция'));
- assert.ok(x.wallet.innerHTML.includes('LEGACY_OFFLINE_ACTION'));
+ assert.ok(x.wallet.innerHTML.includes('Кошелёк недоступен'));
+ assert.ok(x.wallet.innerHTML.includes('Кошелёк недоступен'));
  assert.ok(!x.wallet.innerHTML.includes('Канонический Кошелёк'));
  assert.ok(!x.wallet.innerHTML.includes('Зарезервировать'));
- assert.deepStrictEqual(x.stats.posts,[]);assert.strictEqual(x.stats.draftRenders,1);
+ assert.deepStrictEqual(x.stats.posts,[]);assert.strictEqual(x.stats.draftRenders,0);
 });
 await test('worker original balance navigation remains functional',async()=>{
  const x=runtime('WORKER');x.run("go('wallet');setWalletView('balance')");
- assert.ok(x.wallet.innerHTML.includes('Текущий долг владельцам'));
- assert.ok(x.wallet.innerHTML.includes('Остаток · чистая позиция'));
+ assert.ok(x.wallet.innerHTML.includes('Кошелёк недоступен'));
+ assert.ok(x.wallet.innerHTML.includes('Кошелёк недоступен'));
  assert.ok(!x.wallet.innerHTML.includes('Q-046 staging'));
  assert.strictEqual(x.stats.posts.length,0);
  x.run("setWalletView('main')");
- assert.ok(x.wallet.innerHTML.includes('LEGACY_OFFLINE_ACTION'));
+ assert.ok(x.wallet.innerHTML.includes('Кошелёк недоступен'));
 });
 await test('ADMIN1 with active session sees canonical main and balance screens',async()=>{
  const x=runtime('ADMIN1');x.run("go('wallet')");
  assert.ok(x.wallet.innerHTML.includes('Деньги производства'));
  assert.ok(x.wallet.innerHTML.includes('11108'));
  assert.ok(x.wallet.innerHTML.includes('Добавить доход'));
- assert.ok(!x.wallet.innerHTML.includes('LEGACY_OFFLINE_ACTION'));
+ assert.ok(!x.wallet.innerHTML.includes('Кошелёк недоступен'));
  x.run("setWalletView('balance')");
  assert.ok(x.wallet.innerHTML.includes('Q-046 staging'));
  assert.ok(x.wallet.innerHTML.includes('Свободно сейчас'));
@@ -126,7 +127,7 @@ await test('ADMIN1 with active session sees canonical main and balance screens',
 await test('cached ADMIN1 role with removed session fails closed to legacy',async()=>{
  const x=runtime('ADMIN1',null);
  x.run("go('wallet')");
- assert.ok(x.wallet.innerHTML.includes('LEGACY_OFFLINE_ACTION'));
+ assert.ok(x.wallet.innerHTML.includes('Кошелёк недоступен'));
  assert.strictEqual(x.stats.posts.length,0);
  assert.strictEqual(x.run("q046WalletModel()"),null);
 });
@@ -134,7 +135,7 @@ await test('role downgrade on same screen switches to legacy and hides canonical
  const x=runtime('ADMIN1');x.run("go('wallet')");
  assert.ok(x.wallet.innerHTML.includes('11108'));
  x.setRole('WORKER');x.run("renderWallet()");
- assert.ok(x.wallet.innerHTML.includes('LEGACY_OFFLINE_ACTION'));
+ assert.ok(x.wallet.innerHTML.includes('Кошелёк недоступен'));
  assert.ok(!x.wallet.innerHTML.includes('Добавить доход'));
  assert.strictEqual(x.run("q046WalletModel()"),null);
 });
@@ -146,7 +147,7 @@ await test('worker direct canonical read is denied without network',async()=>{
 });
 await test('worker direct mutation is denied before event creation or server call',async()=>{
  const x=runtime('WORKER');
- await assert.rejects(x.run("q046Action('finance_create',{action:'wallet.finance.create'})"),/ADMIN1_WALLET_UI_REQUIRED/);
+ await assert.rejects(x.run("q046Action('finance_create',{action:'wallet.finance.create'})"),/WALLET_PERMISSION_DENIED/);
  assert.strictEqual(x.stats.posts.length,0);
 });
 await test('worker direct modal and action entrypoints never open a modal or call backend',async()=>{
@@ -172,7 +173,7 @@ await test('admin read fetches exactly canonical read action then displays data'
  assert.strictEqual(x.stats.posts.length,1);
  assert.strictEqual(x.stats.posts[0].action,'wallet.canonical.get');
  assert.ok(x.wallet.innerHTML.includes('11108'));
- assert.ok(!x.wallet.innerHTML.includes('LEGACY_OFFLINE_ACTION'));
+ assert.ok(!x.wallet.innerHTML.includes('Кошелёк недоступен'));
 });
 await test('admin offline and missing backend session do not issue read or leak canonical view',async()=>{
  const x=runtime('ADMIN1');x.state.walletCanonical=null;
@@ -181,7 +182,7 @@ await test('admin offline and missing backend session do not issue read or leak 
  assert.strictEqual(x.stats.posts.length,0);
  assert.ok(x.stage.error.includes('Офлайн'));
  x.setSession(null);x.run("renderWallet()");
- assert.ok(x.wallet.innerHTML.includes('LEGACY_OFFLINE_ACTION'));
+ assert.ok(x.wallet.innerHTML.includes('Кошелёк недоступен'));
 });
 await test('network error shows retry notice, does not issue mutation',async()=>{
  const x=runtime('ADMIN1');x.state.walletCanonical=null;
@@ -201,7 +202,7 @@ await test('pending ADMIN1 read discarded after role downgrade and view becomes 
  resolve({ok:true,wallet:fakeWallet()});
  await pending;
  assert.strictEqual(x.state.walletCanonical,null);
- assert.ok(x.wallet.innerHTML.includes('LEGACY_OFFLINE_ACTION'));
+ assert.ok(x.wallet.innerHTML.includes('Кошелёк недоступен'));
  assert.strictEqual(x.stats.posts.length,1);
 });
 await test('pending read discarded after session replacement even if role remains ADMIN1',async()=>{

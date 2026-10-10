@@ -29,6 +29,8 @@ jobs:
         run: node tests/q029-client-release-gate.test.js
       - name: Test Q029 Wallet UI role isolation, navigation and network recovery
         run: node tests/q029-wallet-ui-role-handler.test.js
+      - name: Test Q066 Wallet multiuser permissions
+        run: node tests/q066-wallet-multiuser-access.test.js
       - name: Test Q029 Wallet planned income, reserve validation and layout
         run: node tests/q029-wallet-ux-v4-integration.test.js
       - name: Test Q029 offline PWA service worker fetch behavior
