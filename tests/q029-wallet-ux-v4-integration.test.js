@@ -15,7 +15,7 @@ let admin=true,modalHtml='',toast='',actions=[];
 const ctx={console,Date,Number,String,Math,Promise,Array,Object,JSON,Map,Set,
   S:{walletCanonical:wallet},Q046_WALLET_STAGE:{loaded:true,loading:false,error:''},WALLET_VIEW:'main',q046WalletCanAdd:()=>true,q046WalletCanEdit:()=>true,
   document:{getElementById(id){return elements[id]||null}},q029WalletUiAllowed:()=>admin,
-  q046WalletModel:()=>admin?wallet:null,q029LegacyRenderWallet:()=>{elements.wallet.innerHTML='LEGACY'},
+  q046WalletModel:()=>admin?wallet:null,q029LegacyRenderWallet:()=>{elements.wallet.innerHTML='LEGACY'},q046WalletNoAccess:()=>{elements.wallet.innerHTML='ACCESS_DENIED'},
   q046LoadCanonicalWallet:async()=>({ok:true}),
   rub:n=>String(n)+' ₽',esc:x=>String(x||''),q046PartnerCard:()=>'',q046FinanceModal:()=>{},
   closeModal(){},showAppToast:s=>{toast=s},modal:(title,body)=>{modalHtml=title+': '+body},
@@ -45,7 +45,7 @@ assert.equal(actions.length,n);assert(toast.includes('Доступно 8108 ₽'
 elements.q046ResAmt.value='1000';await run('q046CreateReserve()');assert.equal(actions.length,n+1);
 assert.equal(actions[n].purpose_type,'MATERIALS');
 admin=false;const k=actions.length;await run("q046CreatePlan('income')");await run('q046CreateReserve()');
-assert.equal(actions.length,k);await run('renderWallet()');assert.equal(elements.wallet.innerHTML,'LEGACY');
+assert.equal(actions.length,k);await run('renderWallet()');assert.equal(elements.wallet.innerHTML,'ACCESS_DENIED');
 assert(backend.includes("if (q046Action === 'wallet.plan.create')"));
 assert(backend.includes("expected_real_inflows:"));
 assert(backend.includes("cash_destination:body.cash_destination||'NONE'"));
