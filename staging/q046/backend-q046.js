@@ -1340,7 +1340,15 @@ function mutateOrder_(body,auth,requestId,action){
    const p=body.patch||{};
    if(p.title!=null)setByHeader_(hit.table,hit.row,'Название заказа',cleanText_(p.title,180));
    if(p.description!=null)setByHeader_(hit.table,hit.row,'Краткое описание',cleanText_(p.description,5000));
-   if(p.client_price!=null)setByHeader_(hit.table,hit.row,'Цена клиенту',parseAmount_(p.client_price)||'');
+   if(p.client_price!=null){
+     // Q-066: setting a known positive price is an Order update, never a Finance receipt.
+     // Keep price_state consistent so canonical Wallet receivables become calculable.
+     // Invalid values must be rejected before changing either financial cell.
+     const priceValue=numberOrNull_(p.client_price);
+     if(priceValue==null||!(priceValue>0))throw new Error('ORDER_PRICE_INVALID');
+     setByHeader_(hit.table,hit.row,'Цена клиенту',priceValue);
+     setByHeader_(hit.table,hit.row,'price_state','KNOWN');
+   }
    if(p.received!=null)setByHeader_(hit.table,hit.row,'Получено',parseAmount_(p.received)||0);
    if(p.calc_cost!=null)setByHeader_(hit.table,hit.row,'Себестоимость расчётная',parseAmount_(p.calc_cost)||0);
    if(p.actual_cost!=null)setByHeader_(hit.table,hit.row,'Фактические прямые затраты',parseAmount_(p.actual_cost)||0);
