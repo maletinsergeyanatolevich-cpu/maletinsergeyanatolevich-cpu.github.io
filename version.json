@@ -1,6 +1,6 @@
 {
-  "version": "v0.3.28-staging-q029-rh1",
-  "buildId": "2026-10-09.q029.rh1",
+  "version": "v0.3.28-staging-q029-rh2",
+  "buildId": "2026-10-10.q029.rh2",
   "channel": "q029-wallet-client-release-hardening",
   "rolloutStage": "staging-only",
   "eligibleRoles": [
@@ -15,5 +15,5 @@
     "safeWithoutDataReset": true
   },
   "publishedAt": null,
-  "notes": "Q-029 client release-hardening block 1: staging-only; keep IndexedDB schema 5 for safe rollback; match app and service worker builds. No production client release, merge, or business writes."
+  "notes": "Q-029 Wallet UX refinement: planned income/receipt, Russian reserve labels and validation, two-row actions; staging-only; keep IndexedDB schema 5 for safe rollback; match app and service worker builds. No production client release, merge, or business writes."
 }
