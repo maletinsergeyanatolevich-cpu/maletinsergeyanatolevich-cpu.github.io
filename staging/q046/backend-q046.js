@@ -4024,10 +4024,25 @@ function q046PartnerCards_(financeTable,recon){
     if(String(obj.status||'').toUpperCase()!=='POSTED'||!String(obj.finance_id||''))return;
     const id=String(obj.finance_id),fr=financeById[id];
     linkedFinance[id]=true;
-    if(fr&&!q046IsDeleted_(valueBy_(ft,fr,'is_deleted')))return;
     const pid=String(obj.partner_party_id||'');if(!pid||!by[pid])return;
-    // Ignore stale posted settlement references in the read-model, without
-    // deleting the immutable settlement/audit row in Google Sheets.
+    if(fr&&!q046IsDeleted_(valueBy_(ft,fr,'is_deleted'))){
+      // A manually edited real Finance amount supersedes a linked historic
+      // settlement's original amount in the derived view, not the audit row.
+      const oldAmount=q046Money_(obj.amount),newAmount=q046Money_(valueBy_(ft,fr,'Сумма'));
+      const actual=yes_(valueBy_(ft,fr,'Фактическая операция'));
+      if(!actual||!(newAmount>0)){
+        by[pid].funding_due-=q046Money_(obj.funding_delta);
+        by[pid].distribution_balance-=q046Money_(obj.distribution_delta);return;
+      }
+      if(oldAmount>0&&Math.abs(newAmount-oldAmount)>0.009){
+        const ratio=newAmount/oldAmount;
+        by[pid].funding_due+=q046Money_(obj.funding_delta)*(ratio-1);
+        by[pid].distribution_balance+=q046Money_(obj.distribution_delta)*(ratio-1);
+      }
+      return;
+    }
+    // Physical removal removes linked settlement from the read projection,
+    // never deleting the posted settlement record or its audit history.
     by[pid].funding_due-=q046Money_(obj.funding_delta);
     by[pid].distribution_balance-=q046Money_(obj.distribution_delta);
   });
