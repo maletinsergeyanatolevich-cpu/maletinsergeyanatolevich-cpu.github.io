@@ -10,6 +10,7 @@ function extract(start,end){
   return source.slice(a,b);
 }
 const code=[
+  extract('const Q029_WALLET_BACKEND_VERSION=','function q029WalletUiAllowed(){'),
   extract('function q029LegacyRenderWalletBalance(){','function q029LegacyRenderWallet(){'),
   extract('function q029LegacyRenderWallet(){','let nomLimit=70;'),
   extract('function q029WalletUiAllowed(){','function q046WalletModel(){'),
@@ -38,9 +39,9 @@ const guarded=guardNames.map((name,index)=>{
 });
 
 function fakeWallet(){
-  return {physical_cash:11108,reserved_total:0,free_now:11108,
+  return {contract_id:'Q029_FINANCE_IDSET_V1',physical_cash:11108,reserved_total:0,free_now:11108,
     partners:[],obligations:[],planned_items:[],allocations:[],orders:{},
-    finance_ledger:{source:'GOOGLE_SHEETS_FINANCE',row_count:0,items:[],head_row_count:0,head_matches_source:true},
+    finance_ledger:{source:'GOOGLE_SHEETS_FINANCE',source_generation:'FINANCE_IDS_SHA256_V1',row_count:0,items:[],head_row_count:0,head_matches_source:true},
     forecast:{planned_future_real_payments:0,forecast_cash:11108,horizon_end:'2026-11-09'}};
 }
 function runtime(role='WORKER',session='SESSION'){
@@ -76,7 +77,7 @@ function runtime(role='WORKER',session='SESSION'){
     hasPermission:()=>stats.role==='ADMIN1',canMutateRecord:()=>stats.role==='ADMIN1',
     backendSession:()=>stats.session,
     backendDeviceId:()=> 'DEV-TEST',
-    backendPost:async payload=>{stats.posts.push(payload);return {ok:true,wallet:fakeWallet()};},
+    backendPost:async payload=>{stats.posts.push(payload);return {ok:true,backend_version:'backend-0.2.32-staging-q067',wallet:fakeWallet()};},
     renderBottomNav(){stats.nav++;},
     titles:{wallet:'Кошелёк'},
     renderHome(){},renderChecklists(){},renderSync(){},renderNom(){},renderGallery(){},
@@ -203,7 +204,7 @@ await test('pending ADMIN1 read discarded after role downgrade and view becomes 
  x.ctx.backendPost=p=>{x.stats.posts.push(p);return new Promise(res=>{resolve=res;});};
  const pending=x.run('q046LoadCanonicalWallet(true)');
  x.setRole('WORKER');
- resolve({ok:true,wallet:fakeWallet()});
+ resolve({ok:true,backend_version:'backend-0.2.32-staging-q067',wallet:fakeWallet()});
  await pending;
  assert.strictEqual(x.state.walletCanonical,null);
  assert.ok(x.wallet.innerHTML.includes('Кошелёк недоступен'));
@@ -215,7 +216,7 @@ await test('pending read discarded after session replacement even if role remain
  x.ctx.backendPost=p=>new Promise(res=>{resolve=res;});
  const pending=x.run('q046LoadCanonicalWallet(true)');
  x.setSession('OTHER_SESSION');
- resolve({ok:true,wallet:fakeWallet()});
+ resolve({ok:true,backend_version:'backend-0.2.32-staging-q067',wallet:fakeWallet()});
  await pending;
  assert.strictEqual(x.state.walletCanonical,null);
  assert.strictEqual(x.stage.loaded,false);
@@ -235,7 +236,7 @@ await test('manual retry after initial failure loads canonical model exactly onc
  x.ctx.backendPost=async p=>{
    x.stats.posts.push(p);attempts++;
    if(attempts===1)throw Error('RETRYABLE_OFFLINE_TEST');
-   return {ok:true,wallet:fakeWallet()};
+   return {ok:true,backend_version:'backend-0.2.32-staging-q067',wallet:fakeWallet()};
  };
  x.run("go('wallet')");
  await new Promise(resolve=>setImmediate(resolve));
