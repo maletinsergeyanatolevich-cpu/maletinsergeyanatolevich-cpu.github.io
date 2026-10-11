@@ -16,6 +16,7 @@ function fixture(options={}){
  w1HeadObject_:domain=>({...head,domain}),
  w1PhysicalRowCount_:()=>{reads++;return count;},
  q046SafeTable_:sheet=>{assert.equal(sheet,'Финансы');reads++;return table;},
+ q029FinanceSourceStamp_:()=>({row_count:count,source_ids_hash:hash(JSON.stringify(rows.map(r=>r[0]).sort())),source_rows_hash:'b'.repeat(64),source_generation:'FINANCE_ROWS_SHA256_V1'}),
  sha256Hex_:hash,valueBy_:(t,r,key)=>r[t.index[key]],
  tableByHeader_:(_,sheet)=>table,tableRowObject_:(t,r)=>({id:r[0],_SYNC_REV:r[1]}),
  touchSessionAndDevice_:()=>{},nowIso_:()=> '2026-10-11T07:00:00.000Z',
@@ -73,7 +74,7 @@ t('physical count changing between reads prevents approval',()=>{
 t('head already equals actual count has no repair proposal or reset',()=>{
  const x=fixture();x.setHead({row_count:106});
  const r=x.call('handleDomainHead_',{domain:'finance'});
- assert.equal(r.reset_required,undefined);assert.equal(r.metadata_preview,undefined);
+ assert.equal(r.reset_required,true);assert.equal(r.reason,'FINANCE_SOURCE_GENERATION_CHANGED');assert.equal(r.metadata_preview,null);
 });
 t('non-Finance domains are not inspected or mutated',()=>{
  const x=fixture(),r=x.call('handleDomainHead_',{domain:'parties'});
