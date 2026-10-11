@@ -45,6 +45,8 @@ jobs:
         run: node tests/q029-cash-source-provenance.test.js
       - name: Test Q029 full Wallet source rebase and stale response denial
         run: node tests/q029-wallet-full-rebase.test.js
+      - name: Test Q067 Finance 116 to 106 persistent offline baseline without losing drafts
+        run: node tests/q029-finance-baseline-cache-rebase.test.js
       - name: Test Q029 source-truth Finance metadata preview
         run: node tests/q029-finance-metadata-preview.test.js
       - name: Test Q029 Finance HEAD drift and safe full-resync signal
