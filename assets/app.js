@@ -4179,7 +4179,7 @@ async function q046LoadCanonicalWallet(force=false){
     if(typeof openDB==='function')await q029PersistFinanceSourceBaseline(full.finance_ledger,userId);
     // SHA256 and IndexedDB persist are async: stale session responses must not publish.
     if(generation!==Q046_WALLET_STAGE.generation||!q029WalletUiAllowed()||
-       backendSession()!==token||String(SESSION.userId||'')!==userId)return;
+       backendSession()!==token||(typeof SESSION!=='undefined'&&String(SESSION.userId||'')!==userId))return;
     S.walletCanonical=full; // replace the entire authoritative snapshot, including deletions
     Q046_WALLET_STAGE.session=token;Q046_WALLET_STAGE.userId=userId;
     Q046_WALLET_STAGE.backendVersion=d.backend_version;
