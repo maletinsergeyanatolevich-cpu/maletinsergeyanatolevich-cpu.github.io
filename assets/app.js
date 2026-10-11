@@ -4076,7 +4076,9 @@ startApplication();
 
 
 /* Q-046 WALLET CANONICAL STAGING UI */
-const Q046_WALLET_STAGE={loading:false,loaded:false,error:'',generation:0,session:'',userId:''};
+const Q029_WALLET_BACKEND_VERSION='backend-0.2.32-staging-q067';
+const Q029_WALLET_PAIR_CONTRACT='Q029_FINANCE_IDSET_V1';
+const Q046_WALLET_STAGE={loading:false,loaded:false,error:'',generation:0,session:'',userId:'',backendVersion:''};
 function q029WalletUiAllowed(){return !!backendSession()&&hasPermission('wallet.view')}
 function q046WalletCanAdd(){return q029WalletUiAllowed()&&hasPermission('wallet.add')}
 function q046WalletCanEdit(record){return q029WalletUiAllowed()&&!!record&&canMutateRecord('wallet','update',String(record.created_by_user_id||''))}
@@ -4100,8 +4102,13 @@ function q029WalletInvalidate(){
   // role changes or offline transitions, and never re-use a delayed old response.
   Q046_WALLET_STAGE.generation=(Number(Q046_WALLET_STAGE.generation)||0)+1;
   Q046_WALLET_STAGE.loaded=false;Q046_WALLET_STAGE.loading=false;
-  Q046_WALLET_STAGE.session='';Q046_WALLET_STAGE.userId='';
+  Q046_WALLET_STAGE.session='';Q046_WALLET_STAGE.userId='';Q046_WALLET_STAGE.backendVersion='';
   Q046_WALLET_STAGE.error='';S.walletCanonical=null;
+}
+function q029WalletValidatePairResponse(d){
+  if(d?.backend_version!==Q029_WALLET_BACKEND_VERSION||d?.wallet?.contract_id!==Q029_WALLET_PAIR_CONTRACT||
+     d?.wallet?.finance_ledger?.source_generation!=='FINANCE_IDS_SHA256_V1')
+    throw new Error('WALLET_BACKEND_PAIR_INCOMPATIBLE');
 }
 function q029WalletValidateFull(wallet){
   const ledger=wallet?.finance_ledger,items=ledger?.items;
@@ -4127,7 +4134,26 @@ function q046WalletModel(){
 function q046EvtPart(){try{return crypto.randomUUID()}catch(_){return Date.now()+'-'+Math.random().toString(16).slice(2)}}
 function q046PendingEvent(kind,payload){const target=payload.planned_finance_id||payload.allocation_id||payload.obligation_id||payload.partner_party_id||'new',key='q046_pending_'+kind+'_'+target,canon=JSON.stringify({...payload,session_token:undefined,request_id:undefined,event_id:undefined});try{const old=JSON.parse(localStorage.getItem(key)||'null');if(old&&old.payload===canon&&old.event_id)return {key,event_id:old.event_id}}catch(_){}const event_id='Q046-'+kind.toUpperCase()+'-'+q046EvtPart();localStorage.setItem(key,JSON.stringify({event_id,payload:canon,at:Date.now()}));return {key,event_id}}
 function q046ClearPending(x){try{localStorage.removeItem(x.key)}catch(_){}}
-async function q046Action(kind,payload){if(!q046WalletActionAllowed(payload))throw new Error('WALLET_PERMISSION_DENIED');const token=backendSession();if(!token)throw new Error('NO_SESSION');const p=q046PendingEvent(kind,payload),req={...payload,event_id:p.event_id,session_token:token,device_id:backendDeviceId(),request_id:'Q046-'+kind+'-'+Date.now()};const d=await backendPost(req,{timeoutMs:60000});if(!d?.ok)throw new Error(d?.detail||d?.error||'Q046_ACTION_FAILED');q046ClearPending(p);await q046LoadCanonicalWallet(true);return d}
+async function q046Action(kind,payload){
+  if(!q046WalletActionAllowed(payload))throw new Error('WALLET_PERMISSION_DENIED');
+  const token=backendSession(),userId=String(SESSION.userId||''),model=q046WalletModel();
+  if(!token||!model||Q046_WALLET_STAGE.backendVersion!==Q029_WALLET_BACKEND_VERSION||
+     model.contract_id!==Q029_WALLET_PAIR_CONTRACT||navigator.onLine===false)
+    throw new Error('WALLET_BACKEND_PAIR_NOT_VERIFIED');
+  // Read-only version pin before mutation; event ID is not made until server is verified.
+  const ping=await backendPing({timeoutMs:6000});
+  if(!ping?.ok||ping.version!==Q029_WALLET_BACKEND_VERSION)
+    throw new Error('WALLET_BACKEND_VERSION_CHANGED');
+  if(backendSession()!==token||String(SESSION.userId||'')!==userId||
+     !q046WalletActionAllowed(payload)||q046WalletModel()!==model)
+    throw new Error('WALLET_SESSION_CHANGED_BEFORE_WRITE');
+  const p=q046PendingEvent(kind,payload),req={...payload,wallet_contract_id:Q029_WALLET_PAIR_CONTRACT,
+    event_id:p.event_id,session_token:token,device_id:backendDeviceId(),
+    request_id:'Q046-'+kind+'-'+Date.now()};
+  const d=await backendPost(req,{timeoutMs:60000});
+  if(!d?.ok)throw new Error(d?.detail||d?.error||'Q046_ACTION_FAILED');
+  q046ClearPending(p);await q046LoadCanonicalWallet(true);return d;
+}
 async function q046LoadCanonicalWallet(force=false){
   if(!q029WalletUiAllowed()){q029WalletInvalidate();return}
   if(Q046_WALLET_STAGE.loading&&!force)return;
@@ -4148,10 +4174,15 @@ async function q046LoadCanonicalWallet(force=false){
     if(generation!==Q046_WALLET_STAGE.generation||!q029WalletUiAllowed()||
        backendSession()!==token||(typeof SESSION!=='undefined'&&String(SESSION.userId||'')!==userId))return;
     if(!d?.ok)throw new Error(d?.detail||d?.error||'WALLET_CANONICAL_FAILED');
+    q029WalletValidatePairResponse(d);
     const full=q029WalletValidateFull(d.wallet);
     if(typeof openDB==='function')await q029PersistFinanceSourceBaseline(full.finance_ledger,userId);
+    // SHA256 and IndexedDB persist are async: stale session responses must not publish.
+    if(generation!==Q046_WALLET_STAGE.generation||!q029WalletUiAllowed()||
+       backendSession()!==token||String(SESSION.userId||'')!==userId)return;
     S.walletCanonical=full; // replace the entire authoritative snapshot, including deletions
     Q046_WALLET_STAGE.session=token;Q046_WALLET_STAGE.userId=userId;
+    Q046_WALLET_STAGE.backendVersion=d.backend_version;
     Q046_WALLET_STAGE.loaded=true;Q046_WALLET_STAGE.error='';
   }catch(e){
     if(generation===Q046_WALLET_STAGE.generation){
