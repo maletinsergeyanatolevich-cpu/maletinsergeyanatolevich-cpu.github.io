@@ -3955,8 +3955,10 @@ function q029LegacyFinanceSourceTable_(){
   return {headers:headers,index:index,rows:rows};
 }
 function q029IsBeforeCutover_(v,iso){
-  const s=String(v||''),m=s.match(/^([0-9]{2})\.([0-9]{2})\.([0-9]{4})/);
-  const day=m?m[3]+'-'+m[2]+'-'+m[1]:s.slice(0,10);
+  const str=Object.prototype.toString.call(v)==='[object Date]'&&!isNaN(v.getTime())?
+     Utilities.formatDate(v,spreadsheetTz_(),'yyyy-MM-dd'):String(v||'');
+  const m=str.match(/^([0-9]{2})\.([0-9]{2})\.([0-9]{4})/);
+  const day=m?m[3]+'-'+m[2]+'-'+m[1]:str.slice(0,10);
   return /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(day)&&day<String(iso||'').slice(0,10);
 }
 function q029FinancePartnerEffect_(t,r,cutoff){
