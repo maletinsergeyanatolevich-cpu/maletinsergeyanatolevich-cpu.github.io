@@ -5,7 +5,7 @@
 * ВАЖНО: секреты НЕ хранить в этом файле. Recovery/owner secrets — только Script Properties.
 */
 const CFG = Object.freeze({
- VERSION: 'backend-0.2.31-staging-q049',
+ VERSION: 'backend-0.2.32-staging-q067',
  SPREADSHEET_ID: '177IVzLUaNrzKScoRo0CjT5Zo7tJm5Bo0am2z9whAWdg',
  USERS_SHEET: 'Пользователи и права',
  ACCESS_REQUESTS_SHEET: '_APP_ACCESS_REQUESTS',
@@ -55,6 +55,7 @@ function doPost(e) {
  const requestId = String(body.request_id || body.requestId || uuid_());
  try {
     const q046Action = String(body.action || '');
+    if (['wallet.finance.create','wallet.plan.create','wallet.plan.edit','wallet.plan.cancel','wallet.plan.spend','wallet.allocation.create','wallet.allocation.cancel','wallet.sensitive.execute'].indexOf(q046Action)>=0) q029RequireWalletPair_(body);
     if (q046Action === 'wallet.canonical.get') return json_(handleWalletCanonicalGetQ046_(body, requestId));
     if (q046Action === 'wallet.schema.spec') return json_(handleWalletSchemaSpecQ046_(body, requestId));
     if (q046Action === 'wallet.schema.migration.preview') return json_(handleWalletSchemaMigrationPreviewQ049_(body, requestId));
@@ -3981,6 +3982,8 @@ function q046OrderSummary_(){
   });
   return {known_receivable_total:Math.round(total*100)/100,known_orders:known,unknown_price_orders:unknown,known_future_completion_cash_need_total:Math.round(knownNeedTotal*100)/100,unknown_future_completion_cost_orders:unknownNeed,unknown_future_completion_cost_order_count:unknownNeed.length};
 }
+const Q029_WALLET_PAIR_CONTRACT='Q029_FINANCE_IDSET_V1';
+function q029RequireWalletPair_(body){if(String(body.wallet_contract_id||'')!==Q029_WALLET_PAIR_CONTRACT)throw new Error('WALLET_CLIENT_CONTRACT_REQUIRED');}
 function q029SheetFinanceHistory_(){
   // Authoritative source is the actual Finance sheet rows, not _DOMAIN_HEADS.row_count
   // and not the legacy Wallet summary. This is a wallet.view-protected read only.
@@ -4035,9 +4038,9 @@ function q029CashSourceProvenance_(recon,financeTable,epochId){
 }
 function q046BuildCanonicalWallet_(body){
   const recon=q046LatestAppliedRecon_();if(!recon)throw new Error('APPLIED_RECONCILIATION_REQUIRED');const epochId=String(recon.reconciliation_id||''),opening=q046Money_(recon.production_cash_target),ft=q046SafeTable_('Финансы');let delta=0;if(ft)ft.rows.forEach(function(r){delta+=q046FinanceCashDelta_(ft,r,epochId);});const physical=Math.round((opening+delta)*100)/100,reserved=Math.round(q046ReservedTotal_()*100)/100,free=Math.round((physical-reserved)*100)/100,forecastDate=q046ForecastDate_(body||{}),planned=q046PlannedFinance_(forecastDate),futureIn=planned.filter(function(x){return /^Приход$/i.test(x.type);}).reduce(function(s,x){return s+x.amount;},0),futureOut=planned.filter(function(x){return /^Расход$/i.test(x.type);}).reduce(function(s,x){return s+x.amount;},0),orders=q046OrderSummary_();let legacy={};try{const sh=sheet_('Кошелёк');legacy={wallet_b1:q046Money_(sh.getRange(1,2).getValue()),wallet_b2:q046Money_(sh.getRange(2,2).getValue())};}catch(_){}
-  return {schema_version:Q046_WALLET.schemaVersion,source:'CANONICAL_RECONCILIATION_EPOCH',active_reconciliation_id:epochId,opening_cash:opening,post_cutover_cash_delta:Math.round(delta*100)/100,physical_cash:physical,reserved_total:reserved,free_now:free,partners:q046PartnerCards_(),obligations:q046Obligations_(),planned_items:planned,allocations:q046AllocationRows_(),forecast:{horizon_end:Utilities.formatDate(forecastDate,spreadsheetTz_(),'yyyy-MM-dd'),expected_real_inflows:Math.round(futureIn*100)/100,planned_future_real_payments:Math.round(futureOut*100)/100,forecast_cash:Math.round((physical+futureIn-futureOut)*100)/100},orders:orders,finance_ledger:q029SheetFinanceHistory_(),cash_provenance:q029CashSourceProvenance_(recon,ft,epochId),legacy_compatibility_only:legacy};
+  return {schema_version:Q046_WALLET.schemaVersion,contract_id:Q029_WALLET_PAIR_CONTRACT,source:'CANONICAL_RECONCILIATION_EPOCH',active_reconciliation_id:epochId,opening_cash:opening,post_cutover_cash_delta:Math.round(delta*100)/100,physical_cash:physical,reserved_total:reserved,free_now:free,partners:q046PartnerCards_(),obligations:q046Obligations_(),planned_items:planned,allocations:q046AllocationRows_(),forecast:{horizon_end:Utilities.formatDate(forecastDate,spreadsheetTz_(),'yyyy-MM-dd'),expected_real_inflows:Math.round(futureIn*100)/100,planned_future_real_payments:Math.round(futureOut*100)/100,forecast_cash:Math.round((physical+futureIn-futureOut)*100)/100},orders:orders,finance_ledger:q029SheetFinanceHistory_(),cash_provenance:q029CashSourceProvenance_(recon,ft,epochId),legacy_compatibility_only:legacy};
 }
-function handleWalletCanonicalGetQ046_(body,requestId){const auth=authSession_(body.session_token,'wallet.view',requestId),model=q046BuildCanonicalWallet_(body);touchSessionAndDevice_(auth);return {ok:true,request_id:requestId,wallet:model,serverTime:nowIso_()};}
+function handleWalletCanonicalGetQ046_(body,requestId){const auth=authSession_(body.session_token,'wallet.view',requestId),model=q046BuildCanonicalWallet_(body);touchSessionAndDevice_(auth);return {ok:true,request_id:requestId,backend_version:CFG.VERSION,wallet:model,serverTime:nowIso_()};}
 function handleWalletSchemaSpecQ046_(body,requestId){const auth=authSession_(body.session_token,'wallet.view',requestId);touchSessionAndDevice_(auth);return {ok:true,request_id:requestId,spec:q046SchemaSpec_(),migration_executed:false,serverTime:nowIso_()};}
 
 
