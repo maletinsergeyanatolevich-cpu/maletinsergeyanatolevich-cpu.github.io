@@ -1,6 +1,6 @@
 {
-  "version": "v0.3.28-staging-q029-rh7",
-  "buildId": "2026-10-11.q029.rh7",
+  "version": "v0.3.28-staging-q029-rh8",
+  "buildId": "2026-10-12.q029.rh8",
   "channel": "q029-wallet-client-release-hardening",
   "rolloutStage": "staging-only",
   "eligibleRoles": [
@@ -9,7 +9,7 @@
     "USER"
   ],
   "dbSchema": 5,
-  "minBackend": "backend-0.2.32-staging-q067",
+  "minBackend": "backend-0.2.33-staging-q069",
   "previousBuildId": "2026-10-07.3d",
   "rollback": {
     "buildId": "2026-10-07.3d",
