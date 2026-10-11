@@ -2791,7 +2791,8 @@ async function q029PersistFinanceSourceBaseline(ledger,userId){
  const db=await openDB(),tx=db.transaction('snapshotCache','readwrite');
  tx.objectStore('snapshotCache').put({id:'finance-source-baseline:'+String(userId),
    userId:String(userId),source:'GOOGLE_SHEETS_FINANCE',source_ids_hash:hash,
-   row_count:ids.length,head_current_rev:ledger.head_current_rev??null,
+   row_count:ids.length,source_rows_hash:String(ledger.source_rows_hash||''),
+   head_current_rev:ledger.head_current_rev??null,
    verifiedAt:new Date().toISOString(),mode:'AUTHORITATIVE_FULL_READ_V1'});
  await new Promise((resolve,reject)=>{tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error||new Error('FINANCE_BASELINE_SAVE_FAILED'));tx.onabort=()=>reject(tx.error||new Error('FINANCE_BASELINE_SAVE_ABORTED'))});
  return true;
@@ -4076,7 +4077,7 @@ startApplication();
 
 
 /* Q-046 WALLET CANONICAL STAGING UI */
-const Q029_WALLET_BACKEND_VERSION='backend-0.2.32-staging-q067';
+const Q029_WALLET_BACKEND_VERSION='backend-0.2.33-staging-q069';
 const Q029_WALLET_PAIR_CONTRACT='Q029_FINANCE_IDSET_V1';
 const Q046_WALLET_STAGE={loading:false,loaded:false,error:'',generation:0,session:'',userId:'',backendVersion:''};
 function q029WalletUiAllowed(){return !!backendSession()&&hasPermission('wallet.view')}
@@ -4107,7 +4108,8 @@ function q029WalletInvalidate(){
 }
 function q029WalletValidatePairResponse(d){
   if(d?.backend_version!==Q029_WALLET_BACKEND_VERSION||d?.wallet?.contract_id!==Q029_WALLET_PAIR_CONTRACT||
-     d?.wallet?.finance_ledger?.source_generation!=='FINANCE_IDS_SHA256_V1')
+     d?.wallet?.finance_ledger?.source_generation!=='FINANCE_ROWS_SHA256_V1'||
+     !/^[0-9a-f]{64}$/.test(String(d?.wallet?.finance_ledger?.source_rows_hash||'')))
     throw new Error('WALLET_BACKEND_PAIR_INCOMPATIBLE');
 }
 function q029WalletValidateFull(wallet){
@@ -4196,6 +4198,16 @@ async function q046LoadCanonicalWallet(force=false){
     }
   }
 }
+// When Google Sheets is edited directly, the next online Wallet refresh reads
+// physical Finance rows again (including deletions). This never touches drafts.
+setInterval(()=>{
+ if(navigator.onLine===false||!backendSession()||!q029WalletUiAllowed()||
+    Q046_WALLET_STAGE.loading||document.visibilityState==='hidden'||
+    !document.getElementById('wallet')?.classList.contains('active'))return;
+ const overlay=document.querySelector?.('dialog[open], .modal.show, .modal.active');
+ if(overlay)return;
+ q046LoadCanonicalWallet(true).catch(()=>{});
+},45000);
 function q046PartnerLabel(p){return p?.display_name||p?.party_id||'Партнёр'}
 function q046PartnerCard(p){return `<button class="wallet-balance-row" onclick="q046PartnerDetail('${esc(p.party_id)}')"><span><b>${esc(q046PartnerLabel(p))}</b><small>funding_due ${rub(p.funding_due||0)} · distribution ${rub(p.distribution_balance||0)}</small></span><strong>›</strong></button>`}
 function q046ObligationCard(o){return `<button class="wallet-balance-row" onclick="q046ObligationDetail('${esc(o.obligation_id)}')"><span><b>${esc(o.title||'Обязательство')}</b><small>${esc(o.payment_frequency||'')} · оплачено ${rub(o.paid_principal||0)}</small></span><strong>${rub(o.remaining||0)}</strong></button>`}
