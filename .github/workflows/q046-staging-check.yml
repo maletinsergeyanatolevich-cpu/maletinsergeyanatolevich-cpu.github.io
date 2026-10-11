@@ -41,6 +41,8 @@ jobs:
         run: node --check staging/q046/backend-q046.js
       - name: Run Wallet model contract tests
         run: node tests/q046-wallet-contract.test.js
+      - name: Test Q029 full Wallet source rebase and stale response denial
+        run: node tests/q029-wallet-full-rebase.test.js
       - name: Test Q029 Finance HEAD drift and safe full-resync signal
         run: node tests/q029-finance-source-head-parity.test.js
       - name: Test Q029 Google Sheets Finance source-of-truth Wallet history

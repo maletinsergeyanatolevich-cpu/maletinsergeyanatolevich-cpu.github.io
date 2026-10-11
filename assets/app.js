@@ -1,4 +1,4 @@
-﻿const APP_RELEASE=Object.freeze({version:'v0.3.28-staging-q029-rh4',buildId:'2026-10-11.q029.rh4',channel:'q029-wallet-client-release-hardening',dbSchema:5,updateStrategy:'manifest-service-worker',rolloutStage:'staging-only',previousBuildId:'2026-10-07.3d'});window.APP_RELEASE=APP_RELEASE;
+﻿const APP_RELEASE=Object.freeze({version:'v0.3.28-staging-q029-rh5',buildId:'2026-10-11.q029.rh5',channel:'q029-wallet-client-release-hardening',dbSchema:5,updateStrategy:'manifest-service-worker',rolloutStage:'staging-only',previousBuildId:'2026-10-07.3d'});window.APP_RELEASE=APP_RELEASE;
 function emptySnapshot(){return {meta:{version:APP_RELEASE.version,snapshotDate:'',snapshotTime:'',timezone:'',backendConnected:false,source:'Нет загруженных бизнес-данных',schemaVersion:1},orders:[],archivedOrders:[],plannedFinance:[],calculations:{},wallet:{balance:0,income:0,expense:0,reserve:0,freeNow:0,expense7:0,free7:0,futureExpenses:[],transactions:[],futureTotal:0,futureIncome:0,ownerDebt:0,ownerDebtSergey:0,ownerDebtEvgeny:0,ownerDebtTotal:0,ownerGrossDebtSergey:0,ownerGrossDebtEvgeny:0,ownerGrossDebtTotal:0,netPosition:0,afterObligations:0},nomenclature:[],purchaseLines:[],purchaseAggregated:[],gallery:[],appIssues:[],purchaseWarnings:[]}}
 function normalizeSnapshot(x){const b=emptySnapshot();if(!x||typeof x!=='object')return b;return {...b,...x,meta:{...b.meta,...(x.meta||{})},wallet:{...b.wallet,...(x.wallet||{})},orders:Array.isArray(x.orders)?x.orders:[],archivedOrders:Array.isArray(x.archivedOrders)?x.archivedOrders:[],plannedFinance:Array.isArray(x.plannedFinance)?x.plannedFinance:[],calculations:x.calculations&&typeof x.calculations==='object'?x.calculations:{},nomenclature:Array.isArray(x.nomenclature)?x.nomenclature:[],purchaseLines:Array.isArray(x.purchaseLines)?x.purchaseLines:[],purchaseAggregated:Array.isArray(x.purchaseAggregated)?x.purchaseAggregated:[],gallery:Array.isArray(x.gallery)?x.gallery:[],appIssues:Array.isArray(x.appIssues)?x.appIssues:[],purchaseWarnings:Array.isArray(x.purchaseWarnings)?x.purchaseWarnings:[]}}
 let S=emptySnapshot(); window.SNAPSHOT=S;
@@ -880,7 +880,7 @@ function go(id){
  document.querySelectorAll('.screen').forEach(x=>x.classList.remove('active'));target.classList.add('active');
  document.getElementById('pageTitle').textContent=titles[id]||'Производство';
  renderBottomNav();window.scrollTo({top:0,behavior:'smooth'});
- if(id==='home')renderHome();if(id==='checklists')renderChecklists();if(id==='sync')renderSync();if(id==='wallet')renderWallet();if(id==='nom')renderNom();if(id==='avito')renderAvito();if(id==='gallery')renderGallery();if(id==='admin')renderAdmin();if(id==='activityLog')renderActivityLog();if(id==='analytics')renderAnalytics();if(id==='calculator')renderCalculator();if(id==='salesAnalytics')renderSalesAnalytics();if(id==='appdev')renderAppDev();
+ if(id==='home')renderHome();if(id==='checklists')renderChecklists();if(id==='sync')renderSync();if(id==='wallet'){q029WalletInvalidate();renderWallet()}if(id==='nom')renderNom();if(id==='avito')renderAvito();if(id==='gallery')renderGallery();if(id==='admin')renderAdmin();if(id==='activityLog')renderActivityLog();if(id==='analytics')renderAnalytics();if(id==='calculator')renderCalculator();if(id==='salesAnalytics')renderSalesAnalytics();if(id==='appdev')renderAppDev();
  if((id==='gallery'||id==='appdev')&&backendSession()&&navigator.onLine!==false){runCoreSync('screen-'+id,{force:false,manual:false,cooldownMs:12000}).then(d=>{if(!d?.ok&&!d?.skipped)return;if(document.querySelector('.screen.active')?.id!==id)return;if(id==='gallery')renderGallery();else renderAppDev()}).catch(()=>{})}
 }
 function badge(text,kind=''){return `<span class="badge ${kind}">${esc(text)}</span>`}
@@ -3694,12 +3694,18 @@ function network(){
     setTimeout(()=>runResumeSync('online'),250);
     setTimeout(()=>ensureNomenclatureDeltaSetup().catch(()=>{}),1200);
   }
+  if(document.getElementById('wallet')?.classList.contains('active')){
+    q029WalletInvalidate();renderWallet();
+  }
 }
 window.addEventListener('online',network);
 window.addEventListener('offline',network);
 let LAST_VISIBLE_REFRESH=0;
 document.addEventListener('visibilitychange',()=>{
   if(document.visibilityState!=='visible'||!backendSession())return;
+  if(document.getElementById('wallet')?.classList.contains('active')){
+    q029WalletInvalidate();renderWallet();
+  }
   const now=Date.now();if(now-LAST_VISIBLE_REFRESH>30000){LAST_VISIBLE_REFRESH=now;runResumeSync('visibility')}
 });
 window.addEventListener('pageshow',()=>runResumeSync('pageshow'));
@@ -4035,7 +4041,7 @@ startApplication();
 
 
 /* Q-046 WALLET CANONICAL STAGING UI */
-const Q046_WALLET_STAGE={loading:false,loaded:false,error:''};
+const Q046_WALLET_STAGE={loading:false,loaded:false,error:'',generation:0,session:'',userId:''};
 function q029WalletUiAllowed(){return !!backendSession()&&hasPermission('wallet.view')}
 function q046WalletCanAdd(){return q029WalletUiAllowed()&&hasPermission('wallet.add')}
 function q046WalletCanEdit(record){return q029WalletUiAllowed()&&!!record&&canMutateRecord('wallet','update',String(record.created_by_user_id||''))}
@@ -4054,12 +4060,75 @@ function q046WalletNoAccess(){
  el.innerHTML='<button class="back" onclick="go(\'home\')">← Главная</button><div class="card"><b>Кошелёк недоступен</b><p>Требуются активная сессия и разрешение «Кошелёк: видеть».</p></div>';
 }
 
-function q046WalletModel(){return q029WalletUiAllowed()?(S.walletCanonical||null):null}
+function q029WalletInvalidate(){
+  // Wallet is a replace-only live view. Never carry Finance ledger across opens,
+  // role changes or offline transitions, and never re-use a delayed old response.
+  Q046_WALLET_STAGE.generation=(Number(Q046_WALLET_STAGE.generation)||0)+1;
+  Q046_WALLET_STAGE.loaded=false;Q046_WALLET_STAGE.loading=false;
+  Q046_WALLET_STAGE.session='';Q046_WALLET_STAGE.userId='';
+  Q046_WALLET_STAGE.error='';S.walletCanonical=null;
+}
+function q029WalletValidateFull(wallet){
+  const ledger=wallet?.finance_ledger,items=ledger?.items;
+  if(ledger?.source!=='GOOGLE_SHEETS_FINANCE'||!Array.isArray(items)||
+     !Number.isSafeInteger(ledger.row_count)||ledger.row_count!==items.length)
+    throw new Error('FINANCE_REBASE_INCOMPLETE');
+  const ids=new Set();
+  for(const item of items){
+    const id=typeof item?.finance_id==='string'?item.finance_id.trim():'';
+    if(!id||ids.has(id))throw new Error('FINANCE_REBASE_DUPLICATE_OR_MISSING_ID');
+    ids.add(id);
+  }
+  return wallet; // never append/merge with an older Finance collection
+}
+function q046WalletModel(){
+  if(!q029WalletUiAllowed()||!Q046_WALLET_STAGE.loaded)return null;
+  if((Q046_WALLET_STAGE.session&&Q046_WALLET_STAGE.session!==backendSession())||
+     (Q046_WALLET_STAGE.userId&&typeof SESSION!=='undefined'&&Q046_WALLET_STAGE.userId!==SESSION.userId)){
+    q029WalletInvalidate();return null;
+  }
+  return S.walletCanonical||null;
+}
 function q046EvtPart(){try{return crypto.randomUUID()}catch(_){return Date.now()+'-'+Math.random().toString(16).slice(2)}}
 function q046PendingEvent(kind,payload){const target=payload.planned_finance_id||payload.allocation_id||payload.obligation_id||payload.partner_party_id||'new',key='q046_pending_'+kind+'_'+target,canon=JSON.stringify({...payload,session_token:undefined,request_id:undefined,event_id:undefined});try{const old=JSON.parse(localStorage.getItem(key)||'null');if(old&&old.payload===canon&&old.event_id)return {key,event_id:old.event_id}}catch(_){}const event_id='Q046-'+kind.toUpperCase()+'-'+q046EvtPart();localStorage.setItem(key,JSON.stringify({event_id,payload:canon,at:Date.now()}));return {key,event_id}}
 function q046ClearPending(x){try{localStorage.removeItem(x.key)}catch(_){}}
 async function q046Action(kind,payload){if(!q046WalletActionAllowed(payload))throw new Error('WALLET_PERMISSION_DENIED');const token=backendSession();if(!token)throw new Error('NO_SESSION');const p=q046PendingEvent(kind,payload),req={...payload,event_id:p.event_id,session_token:token,device_id:backendDeviceId(),request_id:'Q046-'+kind+'-'+Date.now()};const d=await backendPost(req,{timeoutMs:60000});if(!d?.ok)throw new Error(d?.detail||d?.error||'Q046_ACTION_FAILED');q046ClearPending(p);await q046LoadCanonicalWallet(true);return d}
-async function q046LoadCanonicalWallet(force=false){if(!q029WalletUiAllowed()){Q046_WALLET_STAGE.loaded=false;Q046_WALLET_STAGE.error='';return}if(Q046_WALLET_STAGE.loading)return;if(Q046_WALLET_STAGE.loaded&&!force)return;const token=backendSession();if(!token||navigator.onLine===false){Q046_WALLET_STAGE.error=!token?'Нет backend-сессии':'Офлайн';if(document.getElementById('wallet')?.classList.contains('active'))renderWallet();return}Q046_WALLET_STAGE.loading=true;try{const d=await backendPost({action:'wallet.canonical.get',session_token:token,device_id:backendDeviceId(),request_id:'Q046-WALLET-'+Date.now(),horizon:'month'},{timeoutMs:30000});if(!d?.ok)throw new Error(d?.detail||d?.error||'WALLET_CANONICAL_FAILED');if(!q029WalletUiAllowed()||backendSession()!==token)return;S.walletCanonical=d.wallet;Q046_WALLET_STAGE.loaded=true;Q046_WALLET_STAGE.error=''}catch(e){Q046_WALLET_STAGE.error=String(e?.message||e)}finally{Q046_WALLET_STAGE.loading=false;if(document.getElementById('wallet')?.classList.contains('active'))renderWallet()}}
+async function q046LoadCanonicalWallet(force=false){
+  if(!q029WalletUiAllowed()){q029WalletInvalidate();return}
+  if(Q046_WALLET_STAGE.loading&&!force)return;
+  if(Q046_WALLET_STAGE.loaded&&!force)return;
+  if(force)q029WalletInvalidate();
+  const token=backendSession(),userId=typeof SESSION==='undefined'?'':String(SESSION.userId||'');
+  if(!token||navigator.onLine===false){
+    q029WalletInvalidate();
+    Q046_WALLET_STAGE.error=!token?'Нет backend-сессии':'Офлайн: данные Кошелька необходимо обновить';
+    if(document.getElementById('wallet')?.classList.contains('active'))renderWallet();
+    return;
+  }
+  const generation=(Number(Q046_WALLET_STAGE.generation)||0)+1;
+  Q046_WALLET_STAGE.generation=generation;Q046_WALLET_STAGE.loading=true;
+  try{
+    const d=await backendPost({action:'wallet.canonical.get',session_token:token,
+      device_id:backendDeviceId(),request_id:'Q046-WALLET-'+Date.now(),horizon:'month'},{timeoutMs:30000});
+    if(generation!==Q046_WALLET_STAGE.generation||!q029WalletUiAllowed()||
+       backendSession()!==token||(typeof SESSION!=='undefined'&&String(SESSION.userId||'')!==userId))return;
+    if(!d?.ok)throw new Error(d?.detail||d?.error||'WALLET_CANONICAL_FAILED');
+    const full=q029WalletValidateFull(d.wallet);
+    S.walletCanonical=full; // replace the entire authoritative snapshot, including deletions
+    Q046_WALLET_STAGE.session=token;Q046_WALLET_STAGE.userId=userId;
+    Q046_WALLET_STAGE.loaded=true;Q046_WALLET_STAGE.error='';
+  }catch(e){
+    if(generation===Q046_WALLET_STAGE.generation){
+      S.walletCanonical=null;Q046_WALLET_STAGE.loaded=false;
+      Q046_WALLET_STAGE.error=String(e?.message||e);
+    }
+  }finally{
+    if(generation===Q046_WALLET_STAGE.generation){
+      Q046_WALLET_STAGE.loading=false;
+      if(document.getElementById('wallet')?.classList.contains('active'))renderWallet();
+    }
+  }
+}
 function q046PartnerLabel(p){return p?.display_name||p?.party_id||'Партнёр'}
 function q046PartnerCard(p){return `<button class="wallet-balance-row" onclick="q046PartnerDetail('${esc(p.party_id)}')"><span><b>${esc(q046PartnerLabel(p))}</b><small>funding_due ${rub(p.funding_due||0)} · distribution ${rub(p.distribution_balance||0)}</small></span><strong>›</strong></button>`}
 function q046ObligationCard(o){return `<button class="wallet-balance-row" onclick="q046ObligationDetail('${esc(o.obligation_id)}')"><span><b>${esc(o.title||'Обязательство')}</b><small>${esc(o.payment_frequency||'')} · оплачено ${rub(o.paid_principal||0)}</small></span><strong>${rub(o.remaining||0)}</strong></button>`}
