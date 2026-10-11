@@ -3,7 +3,7 @@ const fs=require('fs'),vm=require('vm'),assert=require('assert');
 const client=fs.readFileSync('assets/app.js','utf8'),backend=fs.readFileSync('staging/q046/backend-q046.js','utf8');
 function source(start,end){const i=client.indexOf(start),j=client.indexOf(end,i+start.length);assert(i>=0&&j>i,'actual source anchor '+start);return client.slice(i,j)}
 const script=[
- source('const Q029_WALLET_BACKEND_VERSION=','function q029WalletUiAllowed(){'),
+ source('const Q029_WALLET_BACKEND_VERSION=','const Q046_WALLET_STAGE='),
  source('function q029WalletUiAllowed(){','function q046EvtPart(){'),
  source('async function q046LoadCanonicalWallet(','function q046PartnerLabel('),
  source('function go(','function badge(')
