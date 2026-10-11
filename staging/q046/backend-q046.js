@@ -3999,7 +3999,8 @@ function q029HistoricPartnerCorrections_(live,recon){
   });
   if(unclassified.length)throw new Error('FINANCE_HISTORICAL_PARTNER_ID_MISSING');
   Object.keys(adjustments).forEach(function(id){adjustments[id]=Math.round(adjustments[id]*100)/100;});
-  return {source:'Q044_POST_CUTOVER_HISTORICAL_RESTATEMENT',baseline_file_id:Q029_PRE_Q050_FINANCE_BACKUP,
+  return {source:'Q044_HISTORICAL_SOURCE_AUDIT_ONLY',applied_partner_adjustment:0,
+    accounting_rule:'APPROVED_Q044_OPENING_NOT_HISTORICALLY_REPLAYED',baseline_file_id:Q029_PRE_Q050_FINANCE_BACKUP,
     baseline_row_count:Object.keys(past).length,source_row_count:Object.keys(now).length,
     changed_partner_ids:Object.keys(affected).length,changed_compared_to_baseline:changed,
     funding_delta_by_partner:adjustments,reconciliation_id:String(recon.reconciliation_id||'')};
@@ -4009,17 +4010,42 @@ function q046PartnerCards_(financeTable,recon){
   const parties={};if(pt)pt.rows.forEach(function(r){const id=String(valueBy_(pt,r,'party_id')||'');if(id)parties[id]=tableRowObject_(pt,r);});
   const by={},now=new Date(),ym=Utilities.formatDate(now,spreadsheetTz_(),'yyyy-MM');
   st.rows.forEach(function(r){if(String(valueBy_(st,r,'status')||'').toUpperCase()!=='POSTED')return;const pid=String(valueBy_(st,r,'partner_party_id')||'');if(!pid)return;const o=tableRowObject_(st,r);if(!by[pid])by[pid]={party_id:pid,display_name:parties[pid]?String(parties[pid].display_name||''):pid,funding_due:0,distribution_balance:0,current_month_rows:[],history_rows:[]};by[pid].funding_due+=q046Money_(o.funding_delta);by[pid].distribution_balance+=q046Money_(o.distribution_delta);const row={settlement_entry_id:o.settlement_entry_id,effective_date:o.effective_date,entry_type:o.entry_type,funding_delta:q046Money_(o.funding_delta),distribution_delta:q046Money_(o.distribution_delta),amount:q046Money_(o.amount),order_id:o.order_id||'',finance_id:o.finance_id||'',comment:o.comment||''};by[pid].history_rows.push(row);if(String(o.effective_date||'').slice(0,7)===ym)by[pid].current_month_rows.push(row);});
-  const baseRecon=recon||q046LatestAppliedRecon_();
-  const overlay=baseRecon?q029HistoricPartnerCorrections_(financeTable||q046SafeTable_('Финансы'),baseRecon):null;
-  if(overlay)Object.keys(overlay.funding_delta_by_partner).forEach(function(id){
-    if(!by[id])by[id]={party_id:id,display_name:parties[id]?String(parties[id].display_name||''):id,
+  // Q044 opening is an independently approved as-of balance, not the sum
+  // of replayed pre-cutover Finance rows. NEVER subtract prior removed
+  // PERSON/OWNER rows from Q044 again: that recreates the rejected 14084.83.
+  // Only real post-cutover Finance changes may affect this live projection.
+  const activeRecon=recon||q046LatestAppliedRecon_(),epochId=String(activeRecon?.reconciliation_id||'');
+  const ft=financeTable||q046SafeTable_('Финансы'),financeById={};
+  if(ft)ft.rows.forEach(function(fr){
+    const id=String(valueBy_(ft,fr,'ID операции')||'').trim();if(id)financeById[id]=fr;
+  });
+  const linkedFinance={};
+  st.rows.forEach(function(r){const obj=tableRowObject_(st,r);
+    if(String(obj.status||'').toUpperCase()!=='POSTED'||!String(obj.finance_id||''))return;
+    const id=String(obj.finance_id),fr=financeById[id];
+    linkedFinance[id]=true;
+    if(fr&&!q046IsDeleted_(valueBy_(ft,fr,'is_deleted')))return;
+    const pid=String(obj.partner_party_id||'');if(!pid||!by[pid])return;
+    // Ignore stale posted settlement references in the read-model, without
+    // deleting the immutable settlement/audit row in Google Sheets.
+    by[pid].funding_due-=q046Money_(obj.funding_delta);
+    by[pid].distribution_balance-=q046Money_(obj.distribution_delta);
+  });
+  if(ft&&epochId)ft.rows.forEach(function(fr){
+    const id=String(valueBy_(ft,fr,'ID операции')||'').trim();
+    if(!id||linkedFinance[id]||q046IsDeleted_(valueBy_(ft,fr,'is_deleted'))||
+       !yes_(valueBy_(ft,fr,'Фактическая операция'))||
+       String(valueBy_(ft,fr,'cash_epoch_id')||'')!==epochId)return;
+    const effect=String(valueBy_(ft,fr,'partner_effect')||'').toUpperCase(),
+      source=String(valueBy_(ft,fr,'Источник денег / оплаты')||'').toUpperCase(),
+      type=String(valueBy_(ft,fr,'Тип')||''),pid=String(valueBy_(ft,fr,'partner_party_id')||''),
+      amount=q046Money_(valueBy_(ft,fr,'Сумма'));
+    if(effect!=='FUNDING_INCREASE'||source!=='PERSON'||!/^Расход$/i.test(type)||!pid||!(amount>0))return;
+    if(!by[pid])by[pid]={party_id:pid,display_name:parties[pid]?String(parties[pid].display_name||''):pid,
       funding_due:0,distribution_balance:0,current_month_rows:[],history_rows:[]};
-    const delta=overlay.funding_delta_by_partner[id];
-    by[id].funding_due+=delta;
-    if(delta!==0)by[id].history_rows.push({settlement_entry_id:'SOURCE-REBASE',entry_type:'HISTORICAL_FINANCE_SOURCE_CORRECTION',
-      funding_delta:delta,distribution_delta:0,amount:Math.abs(delta),
-      comment:'Автоматический пересчёт исторических строк Финансы после утверждённой сверки; исходные проводки сохранены',
-      finance_id:'',order_id:''});
+    by[pid].funding_due+=amount;
+    by[pid].history_rows.push({entry_type:'SOURCE_ONLY_PERSONAL_FUNDING',funding_delta:amount,
+      distribution_delta:0,amount:amount,finance_id:id,comment:'Источник: Финансы; без дублирования проводки'});
   });
   return Object.keys(by).map(function(k){const x=by[k];x.funding_due=Math.round(x.funding_due*100)/100;x.distribution_balance=Math.round(x.distribution_balance*100)/100;return x;});
 }
