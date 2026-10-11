@@ -4029,8 +4029,14 @@ function q046PartnerCards_(financeTable,recon){
       // A manually edited real Finance amount supersedes a linked historic
       // settlement's original amount in the derived view, not the audit row.
       const oldAmount=q046Money_(obj.amount),newAmount=q046Money_(valueBy_(ft,fr,'Сумма'));
-      const actual=yes_(valueBy_(ft,fr,'Фактическая операция'));
-      if(!actual||!(newAmount>0)){
+      const actual=yes_(valueBy_(ft,fr,'Фактическая операция')),
+        kind=String(valueBy_(ft,fr,'Тип')||''),src=String(valueBy_(ft,fr,'Источник денег / оплаты')||'').toUpperCase(),
+        effect=String(valueBy_(ft,fr,'partner_effect')||'').toUpperCase(),
+        matchParty=String(valueBy_(ft,fr,'partner_party_id')||'')===pid;
+      const expected=(Number(obj.funding_delta)>0&&effect==='FUNDING_INCREASE'&&src==='PERSON')||
+       (Number(obj.funding_delta)<0&&effect==='FUNDING_REPAYMENT'&&src==='PRODUCTION_WALLET')||
+       (Number(obj.distribution_delta)<0&&effect==='DISTRIBUTION_DECREASE'&&src==='PRODUCTION_WALLET');
+      if(!actual||!(newAmount>0)||!/^Расход$/i.test(kind)||!matchParty||!expected){
         by[pid].funding_due-=q046Money_(obj.funding_delta);
         by[pid].distribution_balance-=q046Money_(obj.distribution_delta);return;
       }
@@ -4055,12 +4061,17 @@ function q046PartnerCards_(financeTable,recon){
       source=String(valueBy_(ft,fr,'Источник денег / оплаты')||'').toUpperCase(),
       type=String(valueBy_(ft,fr,'Тип')||''),pid=String(valueBy_(ft,fr,'partner_party_id')||''),
       amount=q046Money_(valueBy_(ft,fr,'Сумма'));
-    if(effect!=='FUNDING_INCREASE'||source!=='PERSON'||!/^Расход$/i.test(type)||!pid||!(amount>0))return;
+    if(!/^Расход$/i.test(type)||!pid||!(amount>0))return;
+    const fundingDelta=effect==='FUNDING_INCREASE'&&source==='PERSON'?amount:
+      effect==='FUNDING_REPAYMENT'&&source==='PRODUCTION_WALLET'?-amount:0,
+      distributionDelta=effect==='DISTRIBUTION_DECREASE'&&source==='PRODUCTION_WALLET'?-amount:0;
+    if(!fundingDelta&&!distributionDelta)return;
     if(!by[pid])by[pid]={party_id:pid,display_name:parties[pid]?String(parties[pid].display_name||''):pid,
       funding_due:0,distribution_balance:0,current_month_rows:[],history_rows:[]};
-    by[pid].funding_due+=amount;
-    by[pid].history_rows.push({entry_type:'SOURCE_ONLY_PERSONAL_FUNDING',funding_delta:amount,
-      distribution_delta:0,amount:amount,finance_id:id,comment:'Источник: Финансы; без дублирования проводки'});
+    by[pid].funding_due+=fundingDelta;by[pid].distribution_balance+=distributionDelta;
+    by[pid].history_rows.push({entry_type:'SOURCE_ONLY_CLASSIFIED_FINANCE',funding_delta:fundingDelta,
+      distribution_delta:distributionDelta,amount:amount,finance_id:id,
+      comment:'Источник: Финансы; без дублирования проводки'});
   });
   return Object.keys(by).map(function(k){const x=by[k];x.funding_due=Math.round(x.funding_due*100)/100;x.distribution_balance=Math.round(x.distribution_balance*100)/100;return x;});
 }
