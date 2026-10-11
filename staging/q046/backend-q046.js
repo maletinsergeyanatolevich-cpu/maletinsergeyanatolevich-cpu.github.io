@@ -5,7 +5,7 @@
 * ВАЖНО: секреты НЕ хранить в этом файле. Recovery/owner secrets — только Script Properties.
 */
 const CFG = Object.freeze({
- VERSION: 'backend-0.2.32-staging-q067',
+ VERSION: 'backend-0.2.33-staging-q069',
  SPREADSHEET_ID: '177IVzLUaNrzKScoRo0CjT5Zo7tJm5Bo0am2z9whAWdg',
  USERS_SHEET: 'Пользователи и права',
  ACCESS_REQUESTS_SHEET: '_APP_ACCESS_REQUESTS',
@@ -3920,11 +3920,99 @@ function q046AllocationRows_(){
   return t.rows.filter(function(r){return String(valueBy_(t,r,'allocation_id')||'').trim()&&!q046IsDeleted_(valueBy_(t,r,'is_deleted'));}).map(function(r){return tableRowObject_(t,r);});
 }
 function q046ReservedTotal_(){return q046AllocationRows_().filter(function(o){return String(o.state||'').toUpperCase()==='RESERVED';}).reduce(function(s,o){return s+q046Money_(o.amount);},0);}
-function q046PartnerCards_(){
+/* Q029: readonly authoritative physical Finance generation and cutover attribution.
+   Historical reconciliation is immutable; its displayed partner balance is a
+   view over the approved opening plus subsequent source corrections. No Sheet writes. */
+const Q029_PRE_Q050_FINANCE_BACKUP='1-04uDJefawl5Koqsw3OkRLLWkNq31OvX5dZZi8QE3-8';
+function q029FinanceSourceStamp_(t){
+  if(!t)throw new Error('FINANCE_SOURCE_UNAVAILABLE');
+  const rows=[],seen=Object.create(null);
+  t.rows.forEach(function(r){
+    const id=String(valueBy_(t,r,'ID операции')||'').trim();if(!id)return;
+    if(seen[id])throw new Error('FINANCE_DUPLICATE_SOURCE_ID');
+    seen[id]=1;
+    const values=t.headers.map(function(k){const v=valueBy_(t,r,k);
+      return Object.prototype.toString.call(v)==='[object Date]'?v.toISOString():String(v==null?'':v).trim();
+    });
+    rows.push({id:id,values:values});
+  });
+  rows.sort(function(a,b){return a.id.localeCompare(b.id);});
+  return {row_count:rows.length,source_ids_hash:sha256Hex_(JSON.stringify(rows.map(function(x){return x.id;}))),
+    source_rows_hash:sha256Hex_(JSON.stringify(rows)),source_generation:'FINANCE_ROWS_SHA256_V1'};
+}
+function q029LegacyFinanceSourceTable_(){
+  const sh=SpreadsheetApp.openById(Q029_PRE_Q050_FINANCE_BACKUP).getSheetByName('Финансы');
+  if(!sh)throw new Error('Q029_HISTORICAL_SOURCE_UNAVAILABLE');
+  const col=sh.getLastColumn(),last=sh.getLastRow(),headers=sh.getRange(1,1,1,col).getDisplayValues()[0],index={};
+  headers.forEach(function(h,i){const key=String(h||'').trim();if(key)index[key]=i;});
+  const rows=last>1?sh.getRange(2,1,last-1,col).getValues():[];
+  return {headers:headers,index:index,rows:rows};
+}
+function q029IsBeforeCutover_(v,iso){
+  const s=String(v||''),m=s.match(/^(\\d{2})\\.(\\d{2})\\.(\\d{4})/);
+  const day=m?m[3]+'-'+m[2]+'-'+m[1]:s.slice(0,10);
+  return /^\\d{4}-\\d{2}-\\d{2}$/.test(day)&&day<String(iso||'').slice(0,10);
+}
+function q029FinancePartnerEffect_(t,r,cutoff){
+  if(!r||q046IsDeleted_(valueBy_(t,r,'is_deleted'))||!yes_(valueBy_(t,r,'Фактическая операция'))||
+     !q029IsBeforeCutover_(valueBy_(t,r,'Дата'),cutoff))return null;
+  const amount=q046Money_(valueBy_(t,r,'Сумма')),kind=String(valueBy_(t,r,'Тип')||''),
+    category=String(valueBy_(t,r,'Категория')||''),src=String(valueBy_(t,r,'Источник денег / оплаты')||'').toUpperCase(),
+    effect=String(valueBy_(t,r,'partner_effect')||'').toUpperCase();
+  if(!(amount>0))return null;
+  if(effect==='FUNDING_INCREASE'&&src==='PERSON'&&/^Расход$/i.test(kind))
+    return {party_id:String(valueBy_(t,r,'partner_party_id')||''),funding_delta:amount,distribution_delta:0};
+  if(/^Приход$/i.test(kind)&&category==='Вклад владельца'){
+    const label=[valueBy_(t,r,'Подкатегория'),valueBy_(t,r,'Контрагент / поставщик')].join(' ').toLowerCase();
+    if(label.includes('серге'))return {party_id:'PTY-Q029-SERGEY',funding_delta:amount,distribution_delta:0};
+    if(label.includes('евген'))return {party_id:'PTY-Q029-EVGENY',funding_delta:amount,distribution_delta:0};
+  }
+  return null;
+}
+function q029HistoricPartnerCorrections_(live,recon){
+  const baseline=q029LegacyFinanceSourceTable_(),cutoff=String(recon.effective_at||recon.applied_at||'').slice(0,10),
+    past={},now={},adjustments={},affected={},unclassified=[];
+  function collect(t,out){
+    t.rows.forEach(function(r){const id=String(valueBy_(t,r,'ID операции')||'').trim();if(id)out[id]=r;});
+  }
+  collect(baseline,past);collect(live,now);
+  const ids=Object.keys(Object.assign({},past,now));
+  let changed=0;
+  ids.forEach(function(id){
+    const old=q029FinancePartnerEffect_(baseline,past[id],cutoff),
+      fresh=q029FinancePartnerEffect_(live,now[id],cutoff);
+    const oldParty=old?.party_id||'',newParty=fresh?.party_id||'';
+    const oldAmount=old?.funding_delta||0,newAmount=fresh?.funding_delta||0;
+    if(oldParty===newParty&&oldAmount===newAmount)return;
+    changed++;
+    if(oldParty){adjustments[oldParty]=(adjustments[oldParty]||0)-oldAmount;affected[id]=true;}
+    if(newParty){adjustments[newParty]=(adjustments[newParty]||0)+newAmount;affected[id]=true;}
+    if((old&&!oldParty)||(fresh&&!newParty))unclassified.push(id);
+  });
+  if(unclassified.length)throw new Error('FINANCE_HISTORICAL_PARTNER_ID_MISSING');
+  Object.keys(adjustments).forEach(function(id){adjustments[id]=Math.round(adjustments[id]*100)/100;});
+  return {source:'Q044_POST_CUTOVER_HISTORICAL_RESTATEMENT',baseline_file_id:Q029_PRE_Q050_FINANCE_BACKUP,
+    baseline_row_count:Object.keys(past).length,source_row_count:Object.keys(now).length,
+    changed_partner_ids:Object.keys(affected).length,changed_compared_to_baseline:changed,
+    funding_delta_by_partner:adjustments,reconciliation_id:String(recon.reconciliation_id||'')};
+}
+function q046PartnerCards_(financeTable,recon){
   const pt=q046SafeTable_('Контрагенты'),st=q046SafeTable_('Расчёты с партнёрами');if(!st)return [];
   const parties={};if(pt)pt.rows.forEach(function(r){const id=String(valueBy_(pt,r,'party_id')||'');if(id)parties[id]=tableRowObject_(pt,r);});
   const by={},now=new Date(),ym=Utilities.formatDate(now,spreadsheetTz_(),'yyyy-MM');
   st.rows.forEach(function(r){if(String(valueBy_(st,r,'status')||'').toUpperCase()!=='POSTED')return;const pid=String(valueBy_(st,r,'partner_party_id')||'');if(!pid)return;const o=tableRowObject_(st,r);if(!by[pid])by[pid]={party_id:pid,display_name:parties[pid]?String(parties[pid].display_name||''):pid,funding_due:0,distribution_balance:0,current_month_rows:[],history_rows:[]};by[pid].funding_due+=q046Money_(o.funding_delta);by[pid].distribution_balance+=q046Money_(o.distribution_delta);const row={settlement_entry_id:o.settlement_entry_id,effective_date:o.effective_date,entry_type:o.entry_type,funding_delta:q046Money_(o.funding_delta),distribution_delta:q046Money_(o.distribution_delta),amount:q046Money_(o.amount),order_id:o.order_id||'',finance_id:o.finance_id||'',comment:o.comment||''};by[pid].history_rows.push(row);if(String(o.effective_date||'').slice(0,7)===ym)by[pid].current_month_rows.push(row);});
+  const baseRecon=recon||q046LatestAppliedRecon_();
+  const overlay=baseRecon?q029HistoricPartnerCorrections_(financeTable||q046SafeTable_('Финансы'),baseRecon):null;
+  if(overlay)Object.keys(overlay.funding_delta_by_partner).forEach(function(id){
+    if(!by[id])by[id]={party_id:id,display_name:parties[id]?String(parties[id].display_name||''):id,
+      funding_due:0,distribution_balance:0,current_month_rows:[],history_rows:[]};
+    const delta=overlay.funding_delta_by_partner[id];
+    by[id].funding_due+=delta;
+    if(delta!==0)by[id].history_rows.push({settlement_entry_id:'SOURCE-REBASE',entry_type:'HISTORICAL_FINANCE_SOURCE_CORRECTION',
+      funding_delta:delta,distribution_delta:0,amount:Math.abs(delta),
+      comment:'Автоматический пересчёт исторических строк Финансы после утверждённой сверки; исходные проводки сохранены',
+      finance_id:'',order_id:''});
+  });
   return Object.keys(by).map(function(k){const x=by[k];x.funding_due=Math.round(x.funding_due*100)/100;x.distribution_balance=Math.round(x.distribution_balance*100)/100;return x;});
 }
 function q046Obligations_(){
@@ -3984,10 +4072,10 @@ function q046OrderSummary_(){
 }
 const Q029_WALLET_PAIR_CONTRACT='Q029_FINANCE_IDSET_V1';
 function q029RequireWalletPair_(body){if(String(body.wallet_contract_id||'')!==Q029_WALLET_PAIR_CONTRACT)throw new Error('WALLET_CLIENT_CONTRACT_REQUIRED');}
-function q029SheetFinanceHistory_(){
+function q029SheetFinanceHistory_(financeTable){
   // Authoritative source is the actual Finance sheet rows, not _DOMAIN_HEADS.row_count
   // and not the legacy Wallet summary. This is a wallet.view-protected read only.
-  const t=q046SafeTable_('Финансы'),items=[];if(t)t.rows.forEach(function(r){
+  const t=financeTable||q046SafeTable_('Финансы'),items=[];if(t)t.rows.forEach(function(r){
     const id=String(valueBy_(t,r,'ID операции')||'').trim();if(!id)return;
     items.push({finance_id:id,finance_date:formatDateMaybe_(valueBy_(t,r,'Дата')),
       type:String(valueBy_(t,r,'Тип')||''),amount:q046Money_(valueBy_(t,r,'Сумма')),
@@ -4038,7 +4126,7 @@ function q029CashSourceProvenance_(recon,financeTable,epochId){
 }
 function q046BuildCanonicalWallet_(body){
   const recon=q046LatestAppliedRecon_();if(!recon)throw new Error('APPLIED_RECONCILIATION_REQUIRED');const epochId=String(recon.reconciliation_id||''),opening=q046Money_(recon.production_cash_target),ft=q046SafeTable_('Финансы');let delta=0;if(ft)ft.rows.forEach(function(r){delta+=q046FinanceCashDelta_(ft,r,epochId);});const physical=Math.round((opening+delta)*100)/100,reserved=Math.round(q046ReservedTotal_()*100)/100,free=Math.round((physical-reserved)*100)/100,forecastDate=q046ForecastDate_(body||{}),planned=q046PlannedFinance_(forecastDate),futureIn=planned.filter(function(x){return /^Приход$/i.test(x.type);}).reduce(function(s,x){return s+x.amount;},0),futureOut=planned.filter(function(x){return /^Расход$/i.test(x.type);}).reduce(function(s,x){return s+x.amount;},0),orders=q046OrderSummary_();let legacy={};try{const sh=sheet_('Кошелёк');legacy={wallet_b1:q046Money_(sh.getRange(1,2).getValue()),wallet_b2:q046Money_(sh.getRange(2,2).getValue())};}catch(_){}
-  return {schema_version:Q046_WALLET.schemaVersion,contract_id:Q029_WALLET_PAIR_CONTRACT,source:'CANONICAL_RECONCILIATION_EPOCH',active_reconciliation_id:epochId,opening_cash:opening,post_cutover_cash_delta:Math.round(delta*100)/100,physical_cash:physical,reserved_total:reserved,free_now:free,partners:q046PartnerCards_(),obligations:q046Obligations_(),planned_items:planned,allocations:q046AllocationRows_(),forecast:{horizon_end:Utilities.formatDate(forecastDate,spreadsheetTz_(),'yyyy-MM-dd'),expected_real_inflows:Math.round(futureIn*100)/100,planned_future_real_payments:Math.round(futureOut*100)/100,forecast_cash:Math.round((physical+futureIn-futureOut)*100)/100},orders:orders,finance_ledger:q029SheetFinanceHistory_(),cash_provenance:q029CashSourceProvenance_(recon,ft,epochId),legacy_compatibility_only:legacy};
+  return {schema_version:Q046_WALLET.schemaVersion,contract_id:Q029_WALLET_PAIR_CONTRACT,source:'CANONICAL_RECONCILIATION_EPOCH',active_reconciliation_id:epochId,opening_cash:opening,post_cutover_cash_delta:Math.round(delta*100)/100,physical_cash:physical,reserved_total:reserved,free_now:free,partners:q046PartnerCards_(ft,recon),obligations:q046Obligations_(),planned_items:planned,allocations:q046AllocationRows_(),forecast:{horizon_end:Utilities.formatDate(forecastDate,spreadsheetTz_(),'yyyy-MM-dd'),expected_real_inflows:Math.round(futureIn*100)/100,planned_future_real_payments:Math.round(futureOut*100)/100,forecast_cash:Math.round((physical+futureIn-futureOut)*100)/100},orders:orders,finance_ledger:q029SheetFinanceHistory_(ft),source_provenance:q029HistoricPartnerCorrections_(ft,recon),cash_provenance:q029CashSourceProvenance_(recon,ft,epochId),legacy_compatibility_only:legacy};
 }
 function handleWalletCanonicalGetQ046_(body,requestId){const auth=authSession_(body.session_token,'wallet.view',requestId),model=q046BuildCanonicalWallet_(body);touchSessionAndDevice_(auth);return {ok:true,request_id:requestId,backend_version:CFG.VERSION,wallet:model,serverTime:nowIso_()};}
 function handleWalletSchemaSpecQ046_(body,requestId){const auth=authSession_(body.session_token,'wallet.view',requestId);touchSessionAndDevice_(auth);return {ok:true,request_id:requestId,spec:q046SchemaSpec_(),migration_executed:false,serverTime:nowIso_()};}
