@@ -3993,9 +3993,31 @@ function q029SheetFinanceHistory_(){
     head_row_count:headCount,head_current_rev:headRev,
     head_matches_source:headCount===null?null:headCount===items.length};
 }
+function q029CashSourceProvenance_(recon,financeTable,epochId){
+  // Read-only explanation for the existing Q044 reconciliation math.
+  // Count rows by membership only; DO NOT recalculate physical/free/partner money.
+  let sourceRows=0,historicalRows=0,epochRows=0,eligibleRows=0;
+  if(financeTable)financeTable.rows.forEach(function(r){
+    if(!String(valueBy_(financeTable,r,'ID операции')||'').trim())return;
+    sourceRows++;
+    if(String(valueBy_(financeTable,r,'cash_epoch_id')||'')!==epochId){historicalRows++;return;}
+    epochRows++;
+    if(!q046IsDeleted_(valueBy_(financeTable,r,'is_deleted'))&&yes_(valueBy_(financeTable,r,'Фактическая операция'))){
+      const kind=String(valueBy_(financeTable,r,'Тип')||''),
+        src=String(valueBy_(financeTable,r,'Источник денег / оплаты')||'').toUpperCase(),
+        dest=String(valueBy_(financeTable,r,'cash_destination')||'').toUpperCase();
+      if((/^Приход$/i.test(kind)&&dest==='PRODUCTION_WALLET')||
+         (/^Расход$/i.test(kind)&&src==='PRODUCTION_WALLET'))eligibleRows++;
+    }
+  });
+  return {source:'APPLIED_RECONCILIATION',reconciliation_id:epochId,
+    applied_date:String(recon.applied_at||recon.effective_at||'').slice(0,10),
+    historical_without_epoch_count:historicalRows,epoch_linked_count:epochRows,
+    cash_movement_count:eligibleRows,source_finance_count:sourceRows};
+}
 function q046BuildCanonicalWallet_(body){
   const recon=q046LatestAppliedRecon_();if(!recon)throw new Error('APPLIED_RECONCILIATION_REQUIRED');const epochId=String(recon.reconciliation_id||''),opening=q046Money_(recon.production_cash_target),ft=q046SafeTable_('Финансы');let delta=0;if(ft)ft.rows.forEach(function(r){delta+=q046FinanceCashDelta_(ft,r,epochId);});const physical=Math.round((opening+delta)*100)/100,reserved=Math.round(q046ReservedTotal_()*100)/100,free=Math.round((physical-reserved)*100)/100,forecastDate=q046ForecastDate_(body||{}),planned=q046PlannedFinance_(forecastDate),futureIn=planned.filter(function(x){return /^Приход$/i.test(x.type);}).reduce(function(s,x){return s+x.amount;},0),futureOut=planned.filter(function(x){return /^Расход$/i.test(x.type);}).reduce(function(s,x){return s+x.amount;},0),orders=q046OrderSummary_();let legacy={};try{const sh=sheet_('Кошелёк');legacy={wallet_b1:q046Money_(sh.getRange(1,2).getValue()),wallet_b2:q046Money_(sh.getRange(2,2).getValue())};}catch(_){}
-  return {schema_version:Q046_WALLET.schemaVersion,source:'CANONICAL_RECONCILIATION_EPOCH',active_reconciliation_id:epochId,opening_cash:opening,post_cutover_cash_delta:Math.round(delta*100)/100,physical_cash:physical,reserved_total:reserved,free_now:free,partners:q046PartnerCards_(),obligations:q046Obligations_(),planned_items:planned,allocations:q046AllocationRows_(),forecast:{horizon_end:Utilities.formatDate(forecastDate,spreadsheetTz_(),'yyyy-MM-dd'),expected_real_inflows:Math.round(futureIn*100)/100,planned_future_real_payments:Math.round(futureOut*100)/100,forecast_cash:Math.round((physical+futureIn-futureOut)*100)/100},orders:orders,finance_ledger:q029SheetFinanceHistory_(),legacy_compatibility_only:legacy};
+  return {schema_version:Q046_WALLET.schemaVersion,source:'CANONICAL_RECONCILIATION_EPOCH',active_reconciliation_id:epochId,opening_cash:opening,post_cutover_cash_delta:Math.round(delta*100)/100,physical_cash:physical,reserved_total:reserved,free_now:free,partners:q046PartnerCards_(),obligations:q046Obligations_(),planned_items:planned,allocations:q046AllocationRows_(),forecast:{horizon_end:Utilities.formatDate(forecastDate,spreadsheetTz_(),'yyyy-MM-dd'),expected_real_inflows:Math.round(futureIn*100)/100,planned_future_real_payments:Math.round(futureOut*100)/100,forecast_cash:Math.round((physical+futureIn-futureOut)*100)/100},orders:orders,finance_ledger:q029SheetFinanceHistory_(),cash_provenance:q029CashSourceProvenance_(recon,ft,epochId),legacy_compatibility_only:legacy};
 }
 function handleWalletCanonicalGetQ046_(body,requestId){const auth=authSession_(body.session_token,'wallet.view',requestId),model=q046BuildCanonicalWallet_(body);touchSessionAndDevice_(auth);return {ok:true,request_id:requestId,wallet:model,serverTime:nowIso_()};}
 function handleWalletSchemaSpecQ046_(body,requestId){const auth=authSession_(body.session_token,'wallet.view',requestId);touchSessionAndDevice_(auth);return {ok:true,request_id:requestId,spec:q046SchemaSpec_(),migration_executed:false,serverTime:nowIso_()};}
