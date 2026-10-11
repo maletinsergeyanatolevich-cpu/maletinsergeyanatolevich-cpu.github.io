@@ -16,6 +16,7 @@ function sandbox(){
  touchSessionAndDevice_:()=>{touched++},nowIso_:()=> '2026-10-11T02:00:00.000Z',
  tableByHeader_:(id,sheet)=>{assert(sheet==='Финансы'||sheet==='Контрагенты');return table;},
  q046SafeTable_:sheet=>sheet==='Финансы'?table:null,
+ q029FinanceSourceStamp_:()=>({row_count:count,source_ids_hash:'a'.repeat(64),source_rows_hash:'b'.repeat(64),source_generation:'FINANCE_ROWS_SHA256_V1'}),
  sha256Hex_:input=>require('crypto').createHash('sha256').update(String(input)).digest('hex'),
  CFG:{SPREADSHEET_ID:'TEST_SPREADSHEET'},
  valueBy_:(t,r,k)=>r[t.index[k]],tableRowObject_:(t,r)=>({finance_id:r[0],_SYNC_REV:r[1]})
@@ -27,7 +28,7 @@ function sandbox(){
 let passed=0;const check=(title,fn)=>{fn();passed++;console.log('PASS '+title)};
 check('Finance domain HEAD shows both 106 physical and 116 stale rows without overwrite',()=>{
  const x=sandbox(),r=x.call('handleDomainHead_',{domain:'finance'});
- assert.equal(r.ok,true);assert.equal(r.row_count,116);assert.equal(r.source_row_count,106);
+ assert.equal(r.ok,true);assert.equal(r.row_count,106);assert.equal(r.source_row_count,106);
  assert.equal(r.head_row_count,116);assert.equal(r.head_matches_source,false);
  assert.equal(r.reset_required,true);assert.equal(r.reason,'FINANCE_SOURCE_HEAD_DRIFT');
  assert.equal(x.touched(),1);
@@ -58,15 +59,15 @@ check('Other domain HEAD remains compatible, no Finance counters exposed',()=>{
  assert.equal(x.reads(),0);
 });
 check('Matching authoritative source and HEAD allows ordinary delta',()=>{
- const x=sandbox();x.head({row_count:106});const h=x.call('handleDomainHead_',{domain:'finance'});
+ const x=sandbox();x.head({row_count:106});const h=x.call('handleDomainHead_',{domain:'finance',source_rows_hash:'b'.repeat(64)});
  assert.equal(h.source_row_count,106);assert.equal(h.head_matches_source,true);assert.equal(h.reset_required,undefined);
- const d=x.call('handleDomainDelta_',{domain:'finance',since_rev:7});
+ const d=x.call('handleDomainDelta_',{domain:'finance',since_rev:7,source_rows_hash:'b'.repeat(64)});
  assert.equal(d.reset_required,undefined);assert.equal(d.total_count,1);
  assert.equal(d.items[0].finance_id,'ROW-2');
 });
 check('Normal new authorized operation increments physical/HEAD counts without phantom restoration',()=>{
  const x=sandbox();x.count(107);x.head({row_count:107,current_rev:8});
- const d=x.call('handleDomainDelta_',{domain:'finance',since_rev:7});
+ const d=x.call('handleDomainDelta_',{domain:'finance',since_rev:7,source_rows_hash:'b'.repeat(64)});
  assert.equal(d.reset_required,undefined);assert.equal(d.to_rev,8);
  assert.equal(d.items.length,1);
 });
