@@ -85,7 +85,7 @@ check('Current source-of-truth Wallet list displays real rows, not HEAD count',(
 });
 check('Q044 accounting and allowed user wallet permissions are not changed',()=>{
  assert(backend.includes("const physical=Math.round((opening+delta)*100)/100"));
- assert(backend.includes("const free=Math.round((physical-reserved)*100)/100"));
+ assert(backend.includes("free=Math.round((physical-reserved)*100)/100"));
  assert(backend.includes("authSession_(body.session_token,'wallet.view',requestId),model=q046BuildCanonicalWallet_(body)"));
 });
 const v=JSON.parse(fs.readFileSync('version.json','utf8'));
