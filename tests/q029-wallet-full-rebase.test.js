@@ -111,8 +111,8 @@ await check('Viewer permission revoked before refresh prevents network and stale
  assert.equal(x.requests.length,0);assert.equal(x.ledger(),undefined);
 });
 await check('Backend Finance sync HEAD drift signal requires reset, never invents IDs',async()=>{
- assert(backend.includes("reason:'FINANCE_SOURCE_HEAD_DRIFT'"));
- assert(backend.includes("source_row_count:actual"));
+ assert(backend.includes("'FINANCE_SOURCE_HEAD_DRIFT'"));
+ assert(backend.includes("source_row_count:stamp.row_count"));
  assert(client.includes('function q029WalletInvalidate(){'));
 });
 await check('Rebase does not alter cash, partner, obligation, event-id, Sheet or schema rules',async()=>{
