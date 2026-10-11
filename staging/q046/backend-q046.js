@@ -2993,13 +2993,32 @@ function financeWaveEnsureGunDateCorrection_(eventId,obligation,auth){const orig
 function handleReconciliationApply_(body,requestId){const auth=authSession_(body.session_token,null,requestId);if(String(auth.user.role||'')!=='ADMIN1')throw new Error('ADMIN1_REQUIRED');if(String(body.profile||'').toUpperCase()!=='Q030'||String(body.confirm_code||'')!=='Q030_APPLY')throw new Error('Q030_CONFIRM_REQUIRED');const eventId=w1EventId_(body),lock=LockService.getScriptLock();lock.waitLock(30000);try{let recon=financeWaveFindReconByEvent_(eventId);if(recon&&String(recon.obj.status||'')==='APPLIED'){touchSessionAndDevice_(auth);return {ok:true,duplicate:true,request_id:requestId,reconciliation_id:recon.obj.reconciliation_id,status:'APPLIED',serverTime:nowIso_()};}recon=financeWaveCreateReconDraft_(eventId,auth);const rid=recon.obj.reconciliation_id,sergey=financeWaveDirectPartyCreate_('sergey',eventId+'-PARTY-SERGEY',auth),evgeny=financeWaveDirectPartyCreate_('evgeny',eventId+'-PARTY-EVGENY',auth);
  const hist=[['S-BENCH-ACC','PROFIT_SHARE_ACCRUAL',sergey.party_id,5000,0,5000,'2026-09-16','Скамейка: начисление доли Сергею 5 000'],['S-BENCH-WD','PARTNER_WITHDRAWAL',sergey.party_id,5000,0,-5000,'2026-09-16','Скамейка: выплата Сергею 5 000; событие закрыто'],['E-BENCH-ACC','PROFIT_SHARE_ACCRUAL',evgeny.party_id,5000,0,5000,'2026-09-16','Скамейка: начисление доли Евгению 5 000'],['E-BENCH-WD','PARTNER_WITHDRAWAL',evgeny.party_id,5000,0,-5000,'2026-09-16','Скамейка: выплата Евгению 5 000; событие закрыто'],['S-PAINT-ACC','PROFIT_SHARE_ACCRUAL',sergey.party_id,1100,0,1100,'2026-09-18','Покраска: начисление Сергею 1 100'],['S-PAINT-WD','PARTNER_WITHDRAWAL',sergey.party_id,1100,0,-1100,'2026-09-18','Покраска: выплата Сергею 1 100; история сентября'],['E-OCT-WD','PARTNER_WITHDRAWAL',evgeny.party_id,2000,0,-2000,'2026-10-04','Авансовый вывод Евгению 2 000; текущий distribution_balance -2 000'],['S-OPEN-FUND','RECONCILIATION_OPENING',sergey.party_id,14084.83,14084.83,0,Utilities.formatDate(new Date(),spreadsheetTz_(),'yyyy-MM-dd'),'Q-030 opening funding_due Сергея +14 084,83']];hist.forEach(function(x){financeWaveAppendSettlementAt_(eventId+'-'+x[0],x[1],x[2],x[3],x[4],x[5],x[6],rid,'',auth.user.userId,x[7],eventId);});const obligation=financeWaveEnsureObligation_(eventId+'-GUN-OBL',auth);financeWaveEnsureGunDateCorrection_(eventId,obligation,auth);
  recon=financeWaveFindReconByEvent_(eventId);const t=recon.table,now=nowIso_();setByHeader_(t,recon.row,'status','APPLIED');setByHeader_(t,recon.row,'applied_at',now);setByHeader_(t,recon.row,'applied_by_user_id',auth.user.userId);setByHeader_(t,recon.row,'record_version',Number(recon.obj.record_version||1)+1);w1TouchDomainRow_('reconciliations',t,recon.row,eventId+'-APPLIED');const after=financeWaveFindReconByEvent_(eventId).obj;w1Audit_('reconciliations',rid,'apply',auth,eventId,recon.obj,after,'','');touchSessionAndDevice_(auth);return {ok:true,request_id:requestId,reconciliation_id:rid,status:'APPLIED',production_cash_target:11108,sergey_party_id:sergey.party_id,evgeny_party_id:evgeny.party_id,obligation_id:obligation.obligation_id,serverTime:now};}finally{lock.releaseLock();}}
+function q029FinanceSourceParity_(domain,head){
+  // One read-only safety check on Finance. Never silently repair _DOMAIN_HEADS.
+  if(domain!=='finance')return null;
+  const actual=w1PhysicalRowCount_(W1_DOMAIN_SCHEMA.finance);
+  return {source_row_count:actual,head_row_count:head.row_count,
+    head_matches_source:actual===head.row_count};
+}
 function handleDomainHead_(body,requestId){
  const domain=String(body.domain||'').trim(),x=w1AuthDomain_(body,domain,requestId),h=w1HeadObject_(domain);
+ const parity=q029FinanceSourceParity_(domain,h);
  touchSessionAndDevice_(x.auth);
- return Object.assign({ok:true,request_id:requestId,serverTime:nowIso_()},h);
+ return Object.assign({ok:true,request_id:requestId,serverTime:nowIso_()},h,
+   parity?(parity.head_matches_source?parity:
+   {...parity,reset_required:true,reason:'FINANCE_SOURCE_HEAD_DRIFT'}):{});
 }
 function handleDomainDelta_(body,requestId){
  const domain=String(body.domain||'').trim(),x=w1AuthDomain_(body,domain,requestId),h=w1HeadObject_(domain),since=Math.max(0,Math.floor(Number(body.since_rev||0))),offset=Math.max(0,Math.floor(Number(body.offset||0))),limit=Math.max(20,Math.min(250,Math.floor(Number(body.limit||150))));
+ const parity=q029FinanceSourceParity_(domain,h);
+ if(parity&&!parity.head_matches_source){
+   // A deleted spreadsheet row has no _SYNC_REV tombstone; delta cannot recover it.
+   // Force clients to discard their stale Finance cache and re-read authoritative rows.
+   touchSessionAndDevice_(x.auth);
+   return {ok:true,request_id:requestId,domain:domain,reset_required:true,
+     reason:'FINANCE_SOURCE_HEAD_DRIFT',current_rev:h.current_rev,
+     ...parity,items:[],total_count:0,next_offset:0,has_more:false,serverTime:nowIso_()};
+ }
  if(since>h.current_rev)return {ok:true,request_id:requestId,domain:domain,reset_required:true,reason:'CLIENT_REV_AHEAD',current_rev:h.current_rev,serverTime:nowIso_()};
  if(!x.cfg.sync){touchSessionAndDevice_(x.auth);return {ok:true,request_id:requestId,domain:domain,from_rev:since,to_rev:h.current_rev,items:[],total_count:0,next_offset:0,has_more:false,reason:'LEGACY_ACTIVITY_BASELINE',serverTime:nowIso_()};}
  const t=tableByHeader_(CFG.SPREADSHEET_ID,x.cfg.sheet,1);
