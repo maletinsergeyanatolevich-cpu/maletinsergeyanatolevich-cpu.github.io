@@ -3,7 +3,7 @@ const assert=require('assert'),fs=require('fs'),vm=require('vm'),crypto=require(
 const backend=fs.readFileSync('staging/q046/backend-q046.js','utf8');
 const client=fs.readFileSync('assets/app.js','utf8');
 function extract(s,a,b){let i=s.indexOf(a),j=s.indexOf(b,i+a.length);assert(i>=0&&j>i,'source anchor '+a);return s.slice(i,j)}
-const realRead=extract(backend,'function q029SheetFinanceHistory_(){','function q046BuildCanonicalWallet_(');
+const realRead=extract(backend,'function q029SheetFinanceHistory_(financeTable){','function q046BuildCanonicalWallet_(');
 const realUi=extract(client,'function q029FinanceHistoryRowHtml(x){','function q046AllocationRow(a){');
 const financeHeaders=['ID операции','Дата','Тип','Сумма','Категория','Описание','№ заказа','Источник денег / оплаты','cash_destination','Фактическая операция','is_deleted'];
 const headHeaders=['domain','schema_version','current_rev','updated_at','row_count'];
@@ -17,6 +17,7 @@ const t=table(financeHeaders,data),h=table(headHeaders,heads);
 const ctx={console,Date,Math,Number,String,Array,Object,JSON,Promise,
  sha256Hex_:v=>crypto.createHash('sha256').update(String(v)).digest('hex'),
  q046SafeTable_:name=>name==='Финансы'?t:name==='_DOMAIN_HEADS'?h:null,
+ q029FinanceSourceStamp_:tab=>({row_count:tab.rows.length,source_ids_hash:crypto.createHash('sha256').update(JSON.stringify(tab.rows.map(r=>r[0]).sort())).digest('hex'),source_rows_hash:'a'.repeat(64)}),
  valueBy_:(tab,row,key)=>row[tab.index[key]],
  formatDateMaybe_:x=>String(x||''),q046Money_:x=>Number(x)||0,
  q046IsDeleted_:x=>x===true||x==='TRUE',yes_:x=>x==='Да'||x===true,
