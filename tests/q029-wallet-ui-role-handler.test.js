@@ -61,7 +61,7 @@ function runtime(role='WORKER',session='SESSION'){
   const ctx={console,Date,Math,JSON,Object,Array,String,Number,Boolean,Promise,
     Error,RegExp,Set,Map,navigator:{onLine:true},
     document:doc,window:{scrollTo(){}},S:state,
-    q046PartnerCard:()=>'',q046ObligationCard:()=>'',q046PlanRow:()=>'',q046AllocationRow:()=>'',q046OrderSummaryHtml:()=>'', 
+    q046PartnerCard:()=>'',q046ObligationCard:()=>'',q046PlanRow:()=>'',q046AllocationRow:()=>'',q046OrderSummaryHtml:()=>'',q029FinanceHistoryHtml:()=>'', 
     walletFutureIncomeItems:()=>[],walletFutureExpenseItems:()=>[],
     walletBalanceRow:(label,value)=>'<div>'+label+':'+value+'</div>',
     standardActions:()=>'<span>Кошелёк недоступен</span>',

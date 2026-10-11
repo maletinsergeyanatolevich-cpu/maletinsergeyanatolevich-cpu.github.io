@@ -3948,9 +3948,35 @@ function q046OrderSummary_(){
   });
   return {known_receivable_total:Math.round(total*100)/100,known_orders:known,unknown_price_orders:unknown,known_future_completion_cash_need_total:Math.round(knownNeedTotal*100)/100,unknown_future_completion_cost_orders:unknownNeed,unknown_future_completion_cost_order_count:unknownNeed.length};
 }
+function q029SheetFinanceHistory_(){
+  // Authoritative source is the actual Finance sheet rows, not _DOMAIN_HEADS.row_count
+  // and not the legacy Wallet summary. This is a wallet.view-protected read only.
+  const t=q046SafeTable_('Финансы'),items=[];if(t)t.rows.forEach(function(r){
+    const id=String(valueBy_(t,r,'ID операции')||'').trim();if(!id)return;
+    items.push({finance_id:id,finance_date:formatDateMaybe_(valueBy_(t,r,'Дата')),
+      type:String(valueBy_(t,r,'Тип')||''),amount:q046Money_(valueBy_(t,r,'Сумма')),
+      category:String(valueBy_(t,r,'Категория')||''),comment:String(valueBy_(t,r,'Описание')||''),
+      order_no:String(valueBy_(t,r,'№ заказа')||''),source:String(valueBy_(t,r,'Источник денег / оплаты')||''),
+      cash_destination:String(valueBy_(t,r,'cash_destination')||''),
+      actual:yes_(valueBy_(t,r,'Фактическая операция')),
+      is_deleted:q046IsDeleted_(valueBy_(t,r,'is_deleted'))});
+  });
+  // Last sheet rows first; read-model does not alter source order or money.
+  items.reverse();
+  const h=q046SafeTable_('_DOMAIN_HEADS');
+  let headCount=null,headRev=null;
+  if(h)h.rows.some(function(r){
+    if(String(valueBy_(h,r,'domain')||'')!=='finance')return false;
+    const c=Number(valueBy_(h,r,'row_count'));
+    headCount=Number.isFinite(c)?c:null;headRev=Number(valueBy_(h,r,'current_rev')||0);return true;
+  });
+  return {source:'GOOGLE_SHEETS_FINANCE',items:items,row_count:items.length,
+    head_row_count:headCount,head_current_rev:headRev,
+    head_matches_source:headCount===null?null:headCount===items.length};
+}
 function q046BuildCanonicalWallet_(body){
   const recon=q046LatestAppliedRecon_();if(!recon)throw new Error('APPLIED_RECONCILIATION_REQUIRED');const epochId=String(recon.reconciliation_id||''),opening=q046Money_(recon.production_cash_target),ft=q046SafeTable_('Финансы');let delta=0;if(ft)ft.rows.forEach(function(r){delta+=q046FinanceCashDelta_(ft,r,epochId);});const physical=Math.round((opening+delta)*100)/100,reserved=Math.round(q046ReservedTotal_()*100)/100,free=Math.round((physical-reserved)*100)/100,forecastDate=q046ForecastDate_(body||{}),planned=q046PlannedFinance_(forecastDate),futureIn=planned.filter(function(x){return /^Приход$/i.test(x.type);}).reduce(function(s,x){return s+x.amount;},0),futureOut=planned.filter(function(x){return /^Расход$/i.test(x.type);}).reduce(function(s,x){return s+x.amount;},0),orders=q046OrderSummary_();let legacy={};try{const sh=sheet_('Кошелёк');legacy={wallet_b1:q046Money_(sh.getRange(1,2).getValue()),wallet_b2:q046Money_(sh.getRange(2,2).getValue())};}catch(_){}
-  return {schema_version:Q046_WALLET.schemaVersion,source:'CANONICAL_RECONCILIATION_EPOCH',active_reconciliation_id:epochId,opening_cash:opening,post_cutover_cash_delta:Math.round(delta*100)/100,physical_cash:physical,reserved_total:reserved,free_now:free,partners:q046PartnerCards_(),obligations:q046Obligations_(),planned_items:planned,allocations:q046AllocationRows_(),forecast:{horizon_end:Utilities.formatDate(forecastDate,spreadsheetTz_(),'yyyy-MM-dd'),expected_real_inflows:Math.round(futureIn*100)/100,planned_future_real_payments:Math.round(futureOut*100)/100,forecast_cash:Math.round((physical+futureIn-futureOut)*100)/100},orders:orders,legacy_compatibility_only:legacy};
+  return {schema_version:Q046_WALLET.schemaVersion,source:'CANONICAL_RECONCILIATION_EPOCH',active_reconciliation_id:epochId,opening_cash:opening,post_cutover_cash_delta:Math.round(delta*100)/100,physical_cash:physical,reserved_total:reserved,free_now:free,partners:q046PartnerCards_(),obligations:q046Obligations_(),planned_items:planned,allocations:q046AllocationRows_(),forecast:{horizon_end:Utilities.formatDate(forecastDate,spreadsheetTz_(),'yyyy-MM-dd'),expected_real_inflows:Math.round(futureIn*100)/100,planned_future_real_payments:Math.round(futureOut*100)/100,forecast_cash:Math.round((physical+futureIn-futureOut)*100)/100},orders:orders,finance_ledger:q029SheetFinanceHistory_(),legacy_compatibility_only:legacy};
 }
 function handleWalletCanonicalGetQ046_(body,requestId){const auth=authSession_(body.session_token,'wallet.view',requestId),model=q046BuildCanonicalWallet_(body);touchSessionAndDevice_(auth);return {ok:true,request_id:requestId,wallet:model,serverTime:nowIso_()};}
 function handleWalletSchemaSpecQ046_(body,requestId){const auth=authSession_(body.session_token,'wallet.view',requestId);touchSessionAndDevice_(auth);return {ok:true,request_id:requestId,spec:q046SchemaSpec_(),migration_executed:false,serverTime:nowIso_()};}
