@@ -1,5 +1,5 @@
 'use strict';
-const assert=require('assert'),fs=require('fs'),vm=require('vm');
+const assert=require('assert'),fs=require('fs'),vm=require('vm'),crypto=require('crypto');
 const backend=fs.readFileSync('staging/q046/backend-q046.js','utf8');
 const client=fs.readFileSync('assets/app.js','utf8');
 function extract(s,a,b){let i=s.indexOf(a),j=s.indexOf(b,i+a.length);assert(i>=0&&j>i,'source anchor '+a);return s.slice(i,j)}
@@ -15,6 +15,7 @@ const writes=[];
 function table(headers,rows){return {rows,headers,index:Object.fromEntries(headers.map((x,i)=>[x,i]))};}
 const t=table(financeHeaders,data),h=table(headHeaders,heads);
 const ctx={console,Date,Math,Number,String,Array,Object,JSON,Promise,
+ sha256Hex_:v=>crypto.createHash('sha256').update(String(v)).digest('hex'),
  q046SafeTable_:name=>name==='Финансы'?t:name==='_DOMAIN_HEADS'?h:null,
  valueBy_:(tab,row,key)=>row[tab.index[key]],
  formatDateMaybe_:x=>String(x||''),q046Money_:x=>Number(x)||0,
