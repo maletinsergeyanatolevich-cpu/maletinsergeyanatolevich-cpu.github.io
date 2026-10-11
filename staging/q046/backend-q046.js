@@ -4003,7 +4003,11 @@ function q029SheetFinanceHistory_(){
     const c=Number(valueBy_(h,r,'row_count'));
     headCount=Number.isFinite(c)?c:null;headRev=Number(valueBy_(h,r,'current_rev')||0);return true;
   });
+  // Persisted client generation uses the physical ID set, never the HEAD row count
+  // alone (old 116-row cache must remain invalid after HEAD reaches 106).
+  const sourceHash=sha256Hex_(JSON.stringify(items.map(function(x){return x.finance_id;}).sort()));
   return {source:'GOOGLE_SHEETS_FINANCE',items:items,row_count:items.length,
+    source_generation:'FINANCE_IDS_SHA256_V1',source_ids_hash:sourceHash,
     head_row_count:headCount,head_current_rev:headRev,
     head_matches_source:headCount===null?null:headCount===items.length};
 }
