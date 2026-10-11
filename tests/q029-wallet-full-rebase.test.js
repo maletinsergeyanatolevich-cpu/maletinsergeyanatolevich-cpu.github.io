@@ -3,6 +3,7 @@ const fs=require('fs'),vm=require('vm'),assert=require('assert');
 const client=fs.readFileSync('assets/app.js','utf8'),backend=fs.readFileSync('staging/q046/backend-q046.js','utf8');
 function source(start,end){const i=client.indexOf(start),j=client.indexOf(end,i+start.length);assert(i>=0&&j>i,'actual source anchor '+start);return client.slice(i,j)}
 const script=[
+ source('const Q029_WALLET_BACKEND_VERSION=','function q029WalletUiAllowed(){'),
  source('function q029WalletUiAllowed(){','function q046EvtPart(){'),
  source('async function q046LoadCanonicalWallet(','function q046PartnerLabel('),
  source('function go(','function badge(')
@@ -10,8 +11,8 @@ const script=[
 function full(count,options={}){
  const ids=Array.from({length:count},(_,i)=>({finance_id:'SOURCE-FIN-'+String(i).padStart(3,'0'),
    finance_date:i%2?'04.10.2026':'05.10.2026',type:'Приход',amount:2}));
- return {physical_cash:11108,free_now:11108,reserved_total:0,
-  finance_ledger:{source:'GOOGLE_SHEETS_FINANCE',row_count:count,items:ids,
+ return {contract_id:'Q029_FINANCE_IDSET_V1',physical_cash:11108,free_now:11108,reserved_total:0,
+  finance_ledger:{source:'GOOGLE_SHEETS_FINANCE',source_generation:'FINANCE_IDS_SHA256_V1',row_count:count,items:ids,
     head_row_count:options.head||count,head_matches_source:(options.head||count)===count}};
 }
 const deferred=()=>{let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no});return{promise,resolve,reject}};
@@ -26,7 +27,7 @@ function create(){
   window:{scrollTo(){}},renderBottomNav(){},renderWallet(){renderCount++},
   backendSession:()=>token,backendDeviceId:()=> 'DEV',
   hasPermission:x=>role&&x==='wallet.view',isAdmin1:()=>false,
-  backendPost:async req=>{requests.push(req);return remote(req)},
+  backendPost:async req=>{requests.push(req);return {backend_version:'backend-0.2.32-staging-q067',...await remote(req)};},
   esc:v=>String(v),rub:v=>String(v),go(){},
  };
  vm.createContext(ctx);vm.runInContext(script,ctx,{filename:'actual-wallet-client-rebase'});
