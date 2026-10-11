@@ -79,7 +79,7 @@ test('Backend actual cash and free-money formulas remain exact unchanged semanti
  assert(b.includes('const physical=Math.round((opening+delta)*100)/100'));
  assert(b.includes('free=Math.round((physical-reserved)*100)/100'));
  assert(b.includes('cash_provenance:q029CashSourceProvenance_(recon,ft,epochId)'));
- assert(b.includes('finance_ledger:q029SheetFinanceHistory_()'));
+ assert(b.includes('finance_ledger:q029SheetFinanceHistory_(ft)'));
 });
 test('Provenance is strictly read-only, and UI escapes derived labels',()=>{
  assert(!/\b(?:setValue|setValues|appendRow|deleteRow|w1CommitHead_)\s*\(/.test(realBackend));
