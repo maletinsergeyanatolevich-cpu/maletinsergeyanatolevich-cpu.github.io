@@ -2995,11 +2995,12 @@ function handleReconciliationApply_(body,requestId){const auth=authSession_(body
  const hist=[['S-BENCH-ACC','PROFIT_SHARE_ACCRUAL',sergey.party_id,5000,0,5000,'2026-09-16','Скамейка: начисление доли Сергею 5 000'],['S-BENCH-WD','PARTNER_WITHDRAWAL',sergey.party_id,5000,0,-5000,'2026-09-16','Скамейка: выплата Сергею 5 000; событие закрыто'],['E-BENCH-ACC','PROFIT_SHARE_ACCRUAL',evgeny.party_id,5000,0,5000,'2026-09-16','Скамейка: начисление доли Евгению 5 000'],['E-BENCH-WD','PARTNER_WITHDRAWAL',evgeny.party_id,5000,0,-5000,'2026-09-16','Скамейка: выплата Евгению 5 000; событие закрыто'],['S-PAINT-ACC','PROFIT_SHARE_ACCRUAL',sergey.party_id,1100,0,1100,'2026-09-18','Покраска: начисление Сергею 1 100'],['S-PAINT-WD','PARTNER_WITHDRAWAL',sergey.party_id,1100,0,-1100,'2026-09-18','Покраска: выплата Сергею 1 100; история сентября'],['E-OCT-WD','PARTNER_WITHDRAWAL',evgeny.party_id,2000,0,-2000,'2026-10-04','Авансовый вывод Евгению 2 000; текущий distribution_balance -2 000'],['S-OPEN-FUND','RECONCILIATION_OPENING',sergey.party_id,14084.83,14084.83,0,Utilities.formatDate(new Date(),spreadsheetTz_(),'yyyy-MM-dd'),'Q-030 opening funding_due Сергея +14 084,83']];hist.forEach(function(x){financeWaveAppendSettlementAt_(eventId+'-'+x[0],x[1],x[2],x[3],x[4],x[5],x[6],rid,'',auth.user.userId,x[7],eventId);});const obligation=financeWaveEnsureObligation_(eventId+'-GUN-OBL',auth);financeWaveEnsureGunDateCorrection_(eventId,obligation,auth);
  recon=financeWaveFindReconByEvent_(eventId);const t=recon.table,now=nowIso_();setByHeader_(t,recon.row,'status','APPLIED');setByHeader_(t,recon.row,'applied_at',now);setByHeader_(t,recon.row,'applied_by_user_id',auth.user.userId);setByHeader_(t,recon.row,'record_version',Number(recon.obj.record_version||1)+1);w1TouchDomainRow_('reconciliations',t,recon.row,eventId+'-APPLIED');const after=financeWaveFindReconByEvent_(eventId).obj;w1Audit_('reconciliations',rid,'apply',auth,eventId,recon.obj,after,'','');touchSessionAndDevice_(auth);return {ok:true,request_id:requestId,reconciliation_id:rid,status:'APPLIED',production_cash_target:11108,sergey_party_id:sergey.party_id,evgeny_party_id:evgeny.party_id,obligation_id:obligation.obligation_id,serverTime:now};}finally{lock.releaseLock();}}
 function q029FinanceSourceParity_(domain,head){
-  // One read-only safety check on Finance. Never silently repair _DOMAIN_HEADS.
-  if(domain!=='finance')return null;
-  const actual=w1PhysicalRowCount_(W1_DOMAIN_SCHEMA.finance);
-  return {source_row_count:actual,head_row_count:head.row_count,
-    head_matches_source:actual===head.row_count};
+ if(domain!=='finance')return null;
+ const t=q046SafeTable_('Финансы'),stamp=q029FinanceSourceStamp_(t);
+ return {source_row_count:stamp.row_count,head_row_count:head.row_count,
+   head_matches_source:head.row_count===stamp.row_count,
+   source_ids_hash:stamp.source_ids_hash,source_rows_hash:stamp.source_rows_hash,
+   source_generation:stamp.source_generation};
 }
 function q029FinanceMetadataPreview_(head,parity){
  const tab=q046SafeTable_('Финансы'),ids=[],seen=Object.create(null);let duplicates=0;
@@ -3016,23 +3017,28 @@ function q029FinanceMetadataPreview_(head,parity){
   requires_full_client_rebase:true};
 }
 function handleDomainHead_(body,requestId){
- const domain=String(body.domain||'').trim(),x=w1AuthDomain_(body,domain,requestId),h=w1HeadObject_(domain);
- const parity=q029FinanceSourceParity_(domain,h);
+ const domain=String(body.domain||'').trim(),x=w1AuthDomain_(body,domain,requestId),h=w1HeadObject_(domain),
+   parity=q029FinanceSourceParity_(domain,h);
  touchSessionAndDevice_(x.auth);
- return Object.assign({ok:true,request_id:requestId,serverTime:nowIso_()},h,
-   parity?(parity.head_matches_source?parity:
-   {...parity,reset_required:true,reason:'FINANCE_SOURCE_HEAD_DRIFT',metadata_preview:q029FinanceMetadataPreview_(h,parity)}):{});
+ if(!parity)return {ok:true,request_id:requestId,serverTime:nowIso_(),...h};
+ const changed=!parity.head_matches_source||!String(body.source_rows_hash||'')||
+    body.source_rows_hash!==parity.source_rows_hash;
+ return {ok:true,request_id:requestId,serverTime:nowIso_(),...h,
+   ...parity,row_count:parity.source_row_count,
+   ...(changed?{reset_required:true,reason:parity.head_matches_source?
+      'FINANCE_SOURCE_GENERATION_CHANGED':'FINANCE_SOURCE_HEAD_DRIFT',
+      metadata_preview:parity.head_matches_source?null:q029FinanceMetadataPreview_(h,parity)}:{})};
 }
 function handleDomainDelta_(body,requestId){
  const domain=String(body.domain||'').trim(),x=w1AuthDomain_(body,domain,requestId),h=w1HeadObject_(domain),since=Math.max(0,Math.floor(Number(body.since_rev||0))),offset=Math.max(0,Math.floor(Number(body.offset||0))),limit=Math.max(20,Math.min(250,Math.floor(Number(body.limit||150))));
  const parity=q029FinanceSourceParity_(domain,h);
- if(parity&&!parity.head_matches_source){
+ if(parity&&(!parity.head_matches_source||!String(body.source_rows_hash||'')||body.source_rows_hash!==parity.source_rows_hash)){
    // A deleted spreadsheet row has no _SYNC_REV tombstone; delta cannot recover it.
    // Force clients to discard their stale Finance cache and re-read authoritative rows.
    touchSessionAndDevice_(x.auth);
    return {ok:true,request_id:requestId,domain:domain,reset_required:true,
-     reason:'FINANCE_SOURCE_HEAD_DRIFT',current_rev:h.current_rev,
-     ...parity,metadata_preview:q029FinanceMetadataPreview_(h,parity),items:[],total_count:0,next_offset:0,has_more:false,serverTime:nowIso_()};
+     reason:parity.head_matches_source?'FINANCE_SOURCE_GENERATION_CHANGED':'FINANCE_SOURCE_HEAD_DRIFT',current_rev:h.current_rev,
+     ...parity,metadata_preview:parity.head_matches_source?null:q029FinanceMetadataPreview_(h,parity),items:[],total_count:0,next_offset:0,has_more:false,serverTime:nowIso_()};
  }
  if(since>h.current_rev)return {ok:true,request_id:requestId,domain:domain,reset_required:true,reason:'CLIENT_REV_AHEAD',current_rev:h.current_rev,serverTime:nowIso_()};
  if(!x.cfg.sync){touchSessionAndDevice_(x.auth);return {ok:true,request_id:requestId,domain:domain,from_rev:since,to_rev:h.current_rev,items:[],total_count:0,next_offset:0,has_more:false,reason:'LEGACY_ACTIVITY_BASELINE',serverTime:nowIso_()};}
@@ -3949,9 +3955,9 @@ function q029LegacyFinanceSourceTable_(){
   return {headers:headers,index:index,rows:rows};
 }
 function q029IsBeforeCutover_(v,iso){
-  const s=String(v||''),m=s.match(/^(\\d{2})\\.(\\d{2})\\.(\\d{4})/);
+  const s=String(v||''),m=s.match(/^([0-9]{2})\.([0-9]{2})\.([0-9]{4})/);
   const day=m?m[3]+'-'+m[2]+'-'+m[1]:s.slice(0,10);
-  return /^\\d{4}-\\d{2}-\\d{2}$/.test(day)&&day<String(iso||'').slice(0,10);
+  return /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(day)&&day<String(iso||'').slice(0,10);
 }
 function q029FinancePartnerEffect_(t,r,cutoff){
   if(!r||q046IsDeleted_(valueBy_(t,r,'is_deleted'))||!yes_(valueBy_(t,r,'Фактическая операция'))||
@@ -4097,8 +4103,11 @@ function q029SheetFinanceHistory_(financeTable){
   // Persisted client generation uses the physical ID set, never the HEAD row count
   // alone (old 116-row cache must remain invalid after HEAD reaches 106).
   const sourceHash=sha256Hex_(JSON.stringify(items.map(function(x){return x.finance_id;}).sort()));
+  const stamp=q029FinanceSourceStamp_(t);
+  if(stamp.row_count!==items.length||stamp.source_ids_hash!==sourceHash)throw new Error('FINANCE_SOURCE_TORN_READ');
   return {source:'GOOGLE_SHEETS_FINANCE',items:items,row_count:items.length,
-    source_generation:'FINANCE_IDS_SHA256_V1',source_ids_hash:sourceHash,
+    source_generation:'FINANCE_ROWS_SHA256_V1',source_ids_hash:sourceHash,
+    source_rows_hash:stamp.source_rows_hash,
     head_row_count:headCount,head_current_rev:headRev,
     head_matches_source:headCount===null?null:headCount===items.length};
 }
