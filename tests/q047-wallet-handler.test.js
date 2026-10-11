@@ -66,6 +66,7 @@ test(1,'canonical Wallet ignores legacy B1/B2',()=>{
   setFn(rt,'q046SafeTable_',name=>name==='Финансы'?table(['cash_epoch_id'],[]):null);
   setFn(rt,'q046ReservedTotal_',()=>0);
   setFn(rt,'q046PartnerCards_',()=>[{party_id:'SERGEY',funding_due:26109.52},{party_id:'EVGENY',distribution_balance:-2000}]);
+  setFn(rt,'q029HistoricPartnerCorrections_',()=>({funding_delta_by_partner:{},changed_partner_ids:0}));
   setFn(rt,'q046Obligations_',()=>[{obligation_id:'GUN',remaining:18954}]);
   setFn(rt,'q046PlannedFinance_',()=>[]);
   setFn(rt,'q046AllocationRows_',()=>[]);
