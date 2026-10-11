@@ -29,7 +29,7 @@ vm.runInContext(actual,ctx,{filename:'Q029-actual-client-baseline'});
 const run=(expr,vars={})=>{Object.assign(ctx,vars);return vm.runInContext(expr,ctx)};
 const hash=x=>crypto.createHash('sha256').update(JSON.stringify(x.slice().sort())).digest('hex');
 const ledger=(ids,head=116)=>({source:'GOOGLE_SHEETS_FINANCE',items:ids.map(finance_id=>({finance_id})),
- row_count:ids.length,head_current_rev:7,head_row_count:head,source_ids_hash:hash(ids),source_generation:'FINANCE_IDS_SHA256_V1'});
+ row_count:ids.length,head_current_rev:7,head_row_count:head,source_ids_hash:hash(ids),source_generation:'FINANCE_ROWS_SHA256_V1'});
 let pass=0;
 async function test(name,fn){await fn();pass++;console.log('PASS '+name)}
 (async()=>{
@@ -75,7 +75,7 @@ async function test(name,fn){await fn();pass++;console.log('PASS '+name)}
    assert.equal(records.get('finance-source-baseline:USER-1').source_ids_hash,before);
  });
  await test('Actual client and backend are limited to source generation and snapshotCache only',async()=>{
-   assert(backend.includes("source_generation:'FINANCE_IDS_SHA256_V1'"));
+   assert(backend.includes("source_generation:'FINANCE_ROWS_SHA256_V1'"));
    assert(backend.includes("source_ids_hash:sourceHash"));
    assert(app.includes('snapshot:q029FinanceCacheClean(snapshot)'));
    assert(app.includes('const safe=await q029RepairOldSnapshotCache(rec)'));
