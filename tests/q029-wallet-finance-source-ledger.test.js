@@ -44,7 +44,7 @@ test('Finance/Wallet money rules stay reconciliation-epoch based and unchanged',
  assert(backend.includes("String(valueBy_(t,r,'cash_epoch_id')||'')!==epochId"));
  assert(backend.includes("opening+delta"));
  assert(backend.includes("physical-reserved"));
- assert(backend.includes("finance_ledger:q029SheetFinanceHistory_()"));
+ assert(backend.includes("finance_ledger:q029SheetFinanceHistory_(ft)"));
 });
 test('UI history cannot create, delete, or update source records',()=>{assert(!/\b(?:appendRow|setValue|setValues|deleteRow|deleteRows)\s*\(/.test(realRead));assert(!/\b(?:backendPost|q046Action)\s*\(/.test(realUi));assert.deepEqual(writes,[])});
 test('sensitive ledger only attached to authenticated wallet.view canonical handler',()=>{
