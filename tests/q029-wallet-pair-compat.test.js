@@ -8,11 +8,11 @@ const clientSource=[
  section(client,'const Q029_WALLET_BACKEND_VERSION=','function q046EvtPart(){'),
  section(client,'async function q046Action(','function q046PartnerLabel(')
 ].join('\n');
-const backendGuard=section(backend,'const Q029_WALLET_PAIR_CONTRACT=','function q029SheetFinanceHistory_(){');
+const backendGuard=section(backend,'const Q029_WALLET_PAIR_CONTRACT=','function q029SheetFinanceHistory_(financeTable){');
 const VERSION='backend-0.2.33-staging-q069',CONTRACT='Q029_FINANCE_IDSET_V1';
 function wallet(){
  return {contract_id:CONTRACT,source:'CANONICAL_RECONCILIATION_EPOCH',physical_cash:11108,
-  finance_ledger:{source:'GOOGLE_SHEETS_FINANCE',source_generation:'FINANCE_IDS_SHA256_V1',
+  finance_ledger:{source:'GOOGLE_SHEETS_FINANCE',source_generation:'FINANCE_ROWS_SHA256_V1',source_rows_hash:'a'.repeat(64),
    row_count:2,items:[{finance_id:'FIN-A'},{finance_id:'FIN-B'}]}};
 }
 function response(version=VERSION,contract=CONTRACT){
