@@ -40,6 +40,7 @@ const guarded=guardNames.map((name,index)=>{
 function fakeWallet(){
   return {physical_cash:11108,reserved_total:0,free_now:11108,
     partners:[],obligations:[],planned_items:[],allocations:[],orders:{},
+    finance_ledger:{source:'GOOGLE_SHEETS_FINANCE',row_count:0,items:[],head_row_count:0,head_matches_source:true},
     forecast:{planned_future_real_payments:0,forecast_cash:11108,horizon_end:'2026-11-09'}};
 }
 function runtime(role='WORKER',session='SESSION'){
@@ -116,6 +117,8 @@ await test('worker original balance navigation remains functional',async()=>{
 });
 await test('ADMIN1 with active session sees canonical main and balance screens',async()=>{
  const x=runtime('ADMIN1');x.run("go('wallet')");
+ assert.ok(!x.wallet.innerHTML.includes('11108'),'must not render stale cash before refetch');
+ await new Promise(resolve=>setImmediate(resolve));
  assert.ok(x.wallet.innerHTML.includes('Деньги производства'));
  assert.ok(x.wallet.innerHTML.includes('11108'));
  assert.ok(x.wallet.innerHTML.includes('Добавить доход'));
@@ -133,6 +136,7 @@ await test('cached ADMIN1 role with removed session fails closed to legacy',asyn
 });
 await test('role downgrade on same screen switches to legacy and hides canonical cached state',async()=>{
  const x=runtime('ADMIN1');x.run("go('wallet')");
+ await new Promise(resolve=>setImmediate(resolve));
  assert.ok(x.wallet.innerHTML.includes('11108'));
  x.setRole('WORKER');x.run("renderWallet()");
  assert.ok(x.wallet.innerHTML.includes('Кошелёк недоступен'));
