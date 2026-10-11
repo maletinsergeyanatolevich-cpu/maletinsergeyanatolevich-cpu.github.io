@@ -2761,17 +2761,52 @@ const DB_MIGRATIONS={
 function runDbMigrations(db,oldVersion,newVersion){for(let v=Math.max(1,oldVersion+1);v<=newVersion;v++){const migrate=DB_MIGRATIONS[v];if(migrate)migrate(db)}}
 function openDB(){return new Promise((resolve,reject)=>{const r=indexedDB.open(DB_NAME,DB_SCHEMA);r.onupgradeneeded=e=>runDbMigrations(r.result,e.oldVersion,e.newVersion||DB_SCHEMA);r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);r.onblocked=()=>console.warn('IndexedDB upgrade blocked by another open app window')})}
 function offlineAccessValid(){const until=lsGet(BACKEND_KEYS.offlineUntil);const t=Date.parse(until||'');return Number.isFinite(t)&&t>Date.now()}
+/* Q029 / Q067: Finance is server-authoritative. Do not persist or hydrate pre-cutover
+   Wallet cash/history from the generic offline snapshot. Offline drafts/outbox are
+   separate stores and MUST NOT be cleared by source generation changes. */
+function q029FinanceCacheClean(snapshot){
+ const v=normalizeSnapshot(snapshot);
+ return {...v,wallet:{...emptySnapshot().wallet},plannedFinance:[],walletCanonical:null,
+   meta:{...v.meta,financeCacheTrust:'SERVER_ONLY_FULL_REBASE_V1'}};
+}
+async function q029RepairOldSnapshotCache(rec){
+ const safe={...rec,snapshot:q029FinanceCacheClean(rec.snapshot),
+   financeCacheTrust:'SERVER_ONLY_FULL_REBASE_V1'};
+ if(rec.financeCacheTrust==='SERVER_ONLY_FULL_REBASE_V1')return safe;
+ const db=await openDB(),tx=db.transaction('snapshotCache','readwrite');
+ tx.objectStore('snapshotCache').put(safe);
+ await new Promise((resolve,reject)=>{tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error||new Error('FINANCE_CACHE_REBASE_FAILED'));tx.onabort=()=>reject(tx.error||new Error('FINANCE_CACHE_REBASE_ABORTED'))});
+ return safe;
+}
+async function q029PersistFinanceSourceBaseline(ledger,userId){
+ const hash=String(ledger?.source_ids_hash||''),ids=(ledger?.items||[]).map(x=>String(x.finance_id||'').trim());
+ if(!userId||ledger?.source!=='GOOGLE_SHEETS_FINANCE'||!Number.isSafeInteger(ledger?.row_count)||
+    ledger.row_count!==ids.length||!/^[0-9a-f]{64}$/.test(hash))
+   throw new Error('FINANCE_BASELINE_PROOF_MISSING');
+ if(typeof crypto==='undefined'||!crypto.subtle||typeof TextEncoder==='undefined')
+   throw new Error('FINANCE_BASELINE_CRYPTO_UNAVAILABLE');
+ const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(ids.slice().sort())));
+ const actual=Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,'0')).join('');
+ if(actual!==hash)throw new Error('FINANCE_BASELINE_SOURCE_HASH_MISMATCH');
+ const db=await openDB(),tx=db.transaction('snapshotCache','readwrite');
+ tx.objectStore('snapshotCache').put({id:'finance-source-baseline:'+String(userId),
+   userId:String(userId),source:'GOOGLE_SHEETS_FINANCE',source_ids_hash:hash,
+   row_count:ids.length,head_current_rev:ledger.head_current_rev??null,
+   verifiedAt:new Date().toISOString(),mode:'AUTHORITATIVE_FULL_READ_V1'});
+ await new Promise((resolve,reject)=>{tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error||new Error('FINANCE_BASELINE_SAVE_FAILED'));tx.onabort=()=>reject(tx.error||new Error('FINANCE_BASELINE_SAVE_ABORTED'))});
+ return true;
+}
 async function purgeExpiredSnapshotCache(){return false}
-async function putSnapshotCache(snapshot){const db=await openDB();const tx=db.transaction('snapshotCache','readwrite');const rec={id:'current',savedAt:new Date().toISOString(),offlineAccessUntil:lsGet(BACKEND_KEYS.offlineUntil),user:backendUserPublic(),snapshot:normalizeSnapshot(snapshot)};tx.objectStore('snapshotCache').put(rec);return new Promise((res,rej)=>{tx.oncomplete=()=>{DATA_STATE.lastCacheAt=rec.savedAt;res(rec)};tx.onerror=()=>rej(tx.error)})}
+async function putSnapshotCache(snapshot){const db=await openDB();const tx=db.transaction('snapshotCache','readwrite');const rec={id:'current',savedAt:new Date().toISOString(),offlineAccessUntil:lsGet(BACKEND_KEYS.offlineUntil),user:backendUserPublic(),snapshot:q029FinanceCacheClean(snapshot),financeCacheTrust:'SERVER_ONLY_FULL_REBASE_V1'};tx.objectStore('snapshotCache').put(rec);return new Promise((res,rej)=>{tx.oncomplete=()=>{DATA_STATE.lastCacheAt=rec.savedAt;res(rec)};tx.onerror=()=>rej(tx.error)})}
 async function getSnapshotCache(){const db=await openDB();const tx=db.transaction('snapshotCache','readonly');const r=tx.objectStore('snapshotCache').get('current');return new Promise((res,rej)=>{r.onsuccess=()=>res(r.result||null);r.onerror=()=>rej(r.error)})}
 async function clearStore(name){const db=await openDB();if(!db.objectStoreNames.contains(name))return;const tx=db.transaction(name,'readwrite');tx.objectStore(name).clear();return new Promise((res,rej)=>{tx.oncomplete=res;tx.onerror=()=>rej(tx.error)})}
 async function clearServerAccess(clearDevice=false,preserveSnapshot=true){lsDel(BACKEND_KEYS.session);lsDel(BACKEND_KEYS.sessionId);if(!preserveSnapshot){lsDel(BACKEND_KEYS.offlineUntil);lsDel(BACKEND_KEYS.user);await clearStore('snapshotCache');S=emptySnapshot();window.SNAPSHOT=S;applyBackendUser({});renderCoreScreens()}if(clearDevice){lsDel(BACKEND_KEYS.device);lsDel(BACKEND_KEYS.request);lsDel(BACKEND_KEYS.secret)}}
 async function handleAuthFailure(err){const code=String(err||'');if(/^(USER_DISABLED|DEVICE_REVOKED)$/.test(code)){await clearServerAccess(false,false);return 'cleared'}if(/^SESSION_/.test(code)){await clearServerAccess(false,true);return 'preserved'}return 'ignored'}
 async function performRemoteWipe(){const db=await openDB();const names=['drafts','history','activity','checklists','snapshotCache'].filter(n=>db.objectStoreNames.contains(n));if(names.length){const tx=db.transaction(names,'readwrite');names.forEach(n=>tx.objectStore(n).clear());await new Promise((res,rej)=>{tx.oncomplete=res;tx.onerror=()=>rej(tx.error)})}await clearServerAccess(false,false);alert('Администратор отозвал локальные данные этого устройства. Для продолжения нужен новый доступ.')}
-function applySnapshot(snapshot){S=normalizeSnapshot(snapshot);window.SNAPSHOT=S;renderCoreScreens()}
+function applySnapshot(snapshot){if(typeof q029WalletInvalidate==='function')q029WalletInvalidate();S=q029FinanceCacheClean(snapshot);window.SNAPSHOT=S;renderCoreScreens()}
 function syncPermissionNav(){renderBottomNav()}
 function renderCoreScreens(){syncPermissionNav();renderHome();renderOrders();renderBuy();if(document.getElementById('wallet')?.classList.contains('active'))renderWallet();if(document.getElementById('nom')?.classList.contains('active'))renderNom();if(document.getElementById('gallery')?.classList.contains('active'))renderGallery();if(document.getElementById('analytics')?.classList.contains('active'))renderAnalytics();if(document.getElementById('appdev')?.classList.contains('active'))renderAppDev();}
-async function loadCachedSnapshot(){const rec=await getSnapshotCache();if(!rec?.snapshot)return false;const cachedNomRev=Math.floor(Number(rec.snapshot?.meta?.nomenclatureRevision||0));if(cachedNomRev>localNomRevision())setLocalNomRevision(cachedNomRev);const cachedRole=String(rec.user?.role||SESSION.role||'');const recUntil=Date.parse(rec.offlineAccessUntil||'');const leaseValid=Number.isFinite(recUntil)&&recUntil>Date.now();if(cachedRole!=='ADMIN1'&&!leaseValid)return false;if(rec.user){lsSet(BACKEND_KEYS.user,JSON.stringify(rec.user));applyBackendUser(rec.user)}applySnapshot(rec.snapshot);DATA_STATE.source='cache';DATA_STATE.lastCacheAt=rec.savedAt||'';DATA_STATE.lastError='';return true}
+async function loadCachedSnapshot(){const rec=await getSnapshotCache();if(!rec?.snapshot)return false;const cachedRole=String(rec.user?.role||SESSION.role||'');const recUntil=Date.parse(rec.offlineAccessUntil||'');const leaseValid=Number.isFinite(recUntil)&&recUntil>Date.now();if(cachedRole!=='ADMIN1'&&!leaseValid)return false;const safe=await q029RepairOldSnapshotCache(rec);const cachedNomRev=Math.floor(Number(safe.snapshot?.meta?.nomenclatureRevision||0));if(cachedNomRev>localNomRevision())setLocalNomRevision(cachedNomRev);if(safe.user){lsSet(BACKEND_KEYS.user,JSON.stringify(safe.user));applyBackendUser(safe.user)}applySnapshot(safe.snapshot);DATA_STATE.source='cache';DATA_STATE.lastCacheAt=safe.savedAt||'';DATA_STATE.lastError='';return true}
 async function pullLiveSnapshot(opts={}){
   const token=backendSession();if(!token){DATA_STATE.lastError='NO_SESSION';return {ok:false,error:'NO_SESSION'}}
   DATA_STATE.lastAttemptAt=new Date().toISOString();
@@ -4114,6 +4149,7 @@ async function q046LoadCanonicalWallet(force=false){
        backendSession()!==token||(typeof SESSION!=='undefined'&&String(SESSION.userId||'')!==userId))return;
     if(!d?.ok)throw new Error(d?.detail||d?.error||'WALLET_CANONICAL_FAILED');
     const full=q029WalletValidateFull(d.wallet);
+    if(typeof openDB==='function')await q029PersistFinanceSourceBaseline(full.finance_ledger,userId);
     S.walletCanonical=full; // replace the entire authoritative snapshot, including deletions
     Q046_WALLET_STAGE.session=token;Q046_WALLET_STAGE.userId=userId;
     Q046_WALLET_STAGE.loaded=true;Q046_WALLET_STAGE.error='';
