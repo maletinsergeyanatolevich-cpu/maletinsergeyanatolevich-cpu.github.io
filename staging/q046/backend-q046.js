@@ -3000,13 +3000,27 @@ function q029FinanceSourceParity_(domain,head){
   return {source_row_count:actual,head_row_count:head.row_count,
     head_matches_source:actual===head.row_count};
 }
+function q029FinanceMetadataPreview_(head,parity){
+ const tab=q046SafeTable_('Финансы'),ids=[],seen=Object.create(null);let duplicates=0;
+ if(tab)tab.rows.forEach(function(row){
+  const id=String(valueBy_(tab,row,'ID операции')||'').trim();
+  if(!id)return;ids.push(id);if(seen[id])duplicates++;else seen[id]=1;
+ });
+ const stable=!!tab&&ids.length===parity.source_row_count;
+ return {kind:'FINANCE_METADATA_PREVIEW',mode:'READ_ONLY',applied:false,
+  expected_rev:head.current_rev,stored_count:head.row_count,
+  observed_count:ids.length,unique_count:Object.keys(seen).length,
+  duplicate_count:duplicates,source_ids_hash:sha256Hex_(JSON.stringify(ids.slice().sort())),
+  source_read_matches:stable,reviewable:stable&&duplicates===0,
+  requires_full_client_rebase:true};
+}
 function handleDomainHead_(body,requestId){
  const domain=String(body.domain||'').trim(),x=w1AuthDomain_(body,domain,requestId),h=w1HeadObject_(domain);
  const parity=q029FinanceSourceParity_(domain,h);
  touchSessionAndDevice_(x.auth);
  return Object.assign({ok:true,request_id:requestId,serverTime:nowIso_()},h,
    parity?(parity.head_matches_source?parity:
-   {...parity,reset_required:true,reason:'FINANCE_SOURCE_HEAD_DRIFT'}):{});
+   {...parity,reset_required:true,reason:'FINANCE_SOURCE_HEAD_DRIFT',metadata_preview:q029FinanceMetadataPreview_(h,parity)}):{});
 }
 function handleDomainDelta_(body,requestId){
  const domain=String(body.domain||'').trim(),x=w1AuthDomain_(body,domain,requestId),h=w1HeadObject_(domain),since=Math.max(0,Math.floor(Number(body.since_rev||0))),offset=Math.max(0,Math.floor(Number(body.offset||0))),limit=Math.max(20,Math.min(250,Math.floor(Number(body.limit||150))));
@@ -3017,7 +3031,7 @@ function handleDomainDelta_(body,requestId){
    touchSessionAndDevice_(x.auth);
    return {ok:true,request_id:requestId,domain:domain,reset_required:true,
      reason:'FINANCE_SOURCE_HEAD_DRIFT',current_rev:h.current_rev,
-     ...parity,items:[],total_count:0,next_offset:0,has_more:false,serverTime:nowIso_()};
+     ...parity,metadata_preview:q029FinanceMetadataPreview_(h,parity),items:[],total_count:0,next_offset:0,has_more:false,serverTime:nowIso_()};
  }
  if(since>h.current_rev)return {ok:true,request_id:requestId,domain:domain,reset_required:true,reason:'CLIENT_REV_AHEAD',current_rev:h.current_rev,serverTime:nowIso_()};
  if(!x.cfg.sync){touchSessionAndDevice_(x.auth);return {ok:true,request_id:requestId,domain:domain,from_rev:since,to_rev:h.current_rev,items:[],total_count:0,next_offset:0,has_more:false,reason:'LEGACY_ACTIVITY_BASELINE',serverTime:nowIso_()};}

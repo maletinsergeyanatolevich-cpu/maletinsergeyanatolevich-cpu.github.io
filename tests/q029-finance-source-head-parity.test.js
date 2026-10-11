@@ -15,6 +15,8 @@ function sandbox(){
  w1PhysicalRowCount_:cfg=>{assert.equal(cfg.sheet,'Финансы');physicalReads++;return count;},
  touchSessionAndDevice_:()=>{touched++},nowIso_:()=> '2026-10-11T02:00:00.000Z',
  tableByHeader_:(id,sheet)=>{assert(sheet==='Финансы'||sheet==='Контрагенты');return table;},
+ q046SafeTable_:sheet=>sheet==='Финансы'?table:null,
+ sha256Hex_:input=>require('crypto').createHash('sha256').update(String(input)).digest('hex'),
  CFG:{SPREADSHEET_ID:'TEST_SPREADSHEET'},
  valueBy_:(t,r,k)=>r[t.index[k]],tableRowObject_:(t,r)=>({finance_id:r[0],_SYNC_REV:r[1]})
  };
