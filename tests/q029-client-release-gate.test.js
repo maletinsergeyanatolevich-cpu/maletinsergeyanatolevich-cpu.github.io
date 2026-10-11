@@ -18,7 +18,7 @@ assert.ok(swBuild,'SW BUILD missing');
 test('staging document title and footer match build and do not claim stale backend',()=>{
   assert.ok(html.includes('<title>Производство '+release.version+'</title>'));
   assert.ok(html.includes('ПРОИЗВОДСТВО · '+release.version+'</b>'));
-  assert.ok(html.includes('backend 0.2.32 · Q-029 STAGING'));
+  assert.ok(html.includes('backend 0.2.33 · Q-029 STAGING'));
   assert.ok(!html.includes('backend 0.2.21'));
 });
 test('staging manifest, embedded version, and SW build agree',()=>{
@@ -42,7 +42,7 @@ test('safe offline IndexedDB migration and rollback contract',()=>{
   assert.strictEqual(release.publishedAt,null);
 });
 test('declared staging source requires accepted backend version',()=>{
-  assert.strictEqual(release.minBackend,'backend-0.2.32-staging-q067');
+  assert.strictEqual(release.minBackend,'backend-0.2.33-staging-q069');
   assert.strictEqual(release.rolloutStage,'staging-only');
   assert.deepStrictEqual(release.eligibleRoles,['ADMIN1','ADMIN2','USER']);
 });
