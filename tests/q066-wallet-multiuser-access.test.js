@@ -3,6 +3,7 @@ const fs=require('fs'),vm=require('vm'),assert=require('assert');
 const source=fs.readFileSync('assets/app.js','utf8'),backend=fs.readFileSync('staging/q046/backend-q046.js','utf8');
 function section(a,b){let i=source.indexOf(a),j=source.indexOf(b,i+a.length);assert(i>=0&&j>i,'anchors '+a);return source.slice(i,j)}
 const js=[
+section('const Q029_WALLET_BACKEND_VERSION=','function q029WalletUiAllowed(){'),
 section('function q029WalletUiAllowed(){','function q046EvtPart(){'),
 section('async function q046Action(','function q046PartnerLabel('),
 section('function q046PlanRow(','function q046OrderSummaryHtml('),
