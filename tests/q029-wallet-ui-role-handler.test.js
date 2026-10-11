@@ -10,7 +10,7 @@ function extract(start,end){
   return source.slice(a,b);
 }
 const code=[
-  extract('const Q029_WALLET_BACKEND_VERSION=','function q029WalletUiAllowed(){'),
+  extract('const Q029_WALLET_BACKEND_VERSION=','const Q046_WALLET_STAGE='),
   extract('function q029LegacyRenderWalletBalance(){','function q029LegacyRenderWallet(){'),
   extract('function q029LegacyRenderWallet(){','let nomLimit=70;'),
   extract('function q029WalletUiAllowed(){','function q046WalletModel(){'),
