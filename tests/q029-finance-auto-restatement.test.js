@@ -76,6 +76,8 @@ test('post-cutover linked Finance amount edits and deletion immediately reprojec
  assert.equal(read(),26609.52);
  live.rows[0][live.index['Сумма']]=250;
  assert.equal(read(),26359.52);
+ live.rows[0][live.index['Источник денег / оплаты']]='PRODUCTION_WALLET';
+ assert.equal(read(),26109.52); // classification no longer PERSONAL funding
  live.rows=[];
  assert.equal(read(),26109.52);
  assert.equal(settled.rows[2][2],500); // immutable posted master retained
