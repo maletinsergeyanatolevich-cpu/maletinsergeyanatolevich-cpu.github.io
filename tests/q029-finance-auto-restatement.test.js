@@ -18,8 +18,8 @@ const oldSheet={getLastColumn:()=>HEAD.length,getLastRow:()=>baseline.rows.lengt
  getRange:(r,c,n)=>({getDisplayValues:()=>[HEAD],getValues:()=>baseline.rows})};
 const parties=table([]);
 const settled={
- headers:['status','partner_party_id','funding_delta','distribution_delta','amount','effective_date','entry_type','settlement_entry_id'],
- index:{status:0,partner_party_id:1,funding_delta:2,distribution_delta:3,amount:4,effective_date:5,entry_type:6,settlement_entry_id:7},
+ headers:['status','partner_party_id','funding_delta','distribution_delta','amount','effective_date','entry_type','settlement_entry_id','finance_id'],
+ index:{status:0,partner_party_id:1,funding_delta:2,distribution_delta:3,amount:4,effective_date:5,entry_type:6,settlement_entry_id:7,finance_id:8},
  rows:[['POSTED','PTY-Q029-SERGEY',26109.52,0,26109.52,'2026-10-08','RECONCILIATION_OPENING','PSET-S'],
        ['POSTED','PTY-Q029-EVGENY',0,-2000,2000,'2026-10-08','RECONCILIATION_OPENING','PSET-E']]};
 const ctx={console,Date,Math,Number,String,Array,Object,Set,Map,JSON,Error,crypto,
@@ -40,12 +40,12 @@ test('10 removed historical Finance rows never return to source',()=>{
  const p=invoke('q029HistoricPartnerCorrections_(q046SafeTable_("Финансы"),q046LatestAppliedRecon_())');
  assert.equal(p.baseline_row_count,10);assert.equal(p.source_row_count,0);
  assert.equal(p.changed_partner_ids,6);
- assert.equal(p.funding_delta_by_partner['PTY-Q029-SERGEY'],-12024.69);
+ assert.equal(p.funding_delta_by_partner['PTY-Q029-SERGEY'],-12024.69);assert.equal(p.applied_partner_adjustment,0);
 });
-test('partner funding is recomputed from read-only source change, never mutating Q044 settlement',()=>{
+test('Q044 approved opening remains 26109.52; no forbidden historical replay to rejected 14084.83',()=>{
  const p=invoke('q046PartnerCards_()');
  const ser=p.find(x=>x.party_id==='PTY-Q029-SERGEY'),ev=p.find(x=>x.party_id==='PTY-Q029-EVGENY');
- assert.equal(ser.funding_due,14084.83);assert.equal(ev.distribution_balance,-2000);
+ assert.equal(ser.funding_due,26109.52);assert.notEqual(ser.funding_due,14084.83);assert.equal(ev.distribution_balance,-2000);
  assert.equal(settled.rows[0][2],26109.52);assert.equal(writes,0);
 });
 test('physical cash epoch remains 11108 for pre-cutover personal funding corrections',()=>{
@@ -64,6 +64,29 @@ test('post-cutover Finance source affects live cash without historical partner d
  const h=invoke('q029HistoricPartnerCorrections_(q046SafeTable_("Финансы"),q046LatestAppliedRecon_())');
  assert.equal(h.funding_delta_by_partner['PTY-Q029-SERGEY'],-12024.69);
  assert.equal(invoke('q046FinanceCashDelta_(q046SafeTable_("Финансы"),q046SafeTable_("Финансы").rows[0],"E")'),500);
+ live=table([]);
+});
+test('post-cutover linked Finance amount edits and deletion immediately reproject partner funding',()=>{
+ settled.rows.push(['POSTED','PTY-Q029-SERGEY',500,0,500,'2026-10-12','FUNDING_INCREASE','PSET-NEW','FIN-POST']);
+ const src={'ID операции':'FIN-POST','Дата':'12.10.2026','Тип':'Расход','Сумма':500,
+    'Фактическая операция':'Да',cash_epoch_id:'RECON-Q029-D11FAF59C87F',
+    'Источник денег / оплаты':'PERSON',partner_party_id:'PTY-Q029-SERGEY',partner_effect:'FUNDING_INCREASE'};
+ live=table([src]);
+ const read=()=>invoke('q046PartnerCards_()').find(x=>x.party_id==='PTY-Q029-SERGEY').funding_due;
+ assert.equal(read(),26609.52);
+ live.rows[0][live.index['Сумма']]=250;
+ assert.equal(read(),26359.52);
+ live.rows=[];
+ assert.equal(read(),26109.52);
+ assert.equal(settled.rows[2][2],500); // immutable posted master retained
+ settled.rows.pop();live=table([]);
+});
+test('new classified post-cutover PERSON expense without materialized settlement is projected once',()=>{
+ live=table([{'ID операции':'FIN-MANUAL','Дата':'12.10.2026','Тип':'Расход','Сумма':400,
+    'Фактическая операция':'Да',cash_epoch_id:'RECON-Q029-D11FAF59C87F',
+    'Источник денег / оплаты':'PERSON',partner_party_id:'PTY-Q029-SERGEY',partner_effect:'FUNDING_INCREASE'}]);
+ const p=invoke('q046PartnerCards_()').find(x=>x.party_id==='PTY-Q029-SERGEY');
+ assert.equal(p.funding_due,26509.52);
  live=table([]);
 });
 test('same 106 IDs with edited amount changes Finance row generation digest',()=>{
