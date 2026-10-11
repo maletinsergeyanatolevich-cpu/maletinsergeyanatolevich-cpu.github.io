@@ -3734,6 +3734,16 @@ function network(){
     q029WalletInvalidate();renderWallet();
   }
 }
+// When Google Sheets is edited directly, the next online Wallet refresh reads
+// physical Finance rows again (including deletions). This never touches drafts.
+setInterval(()=>{
+ if(navigator.onLine===false||!backendSession()||!q029WalletUiAllowed()||
+    Q046_WALLET_STAGE.loading||document.visibilityState==='hidden'||
+    !document.getElementById('wallet')?.classList.contains('active'))return;
+ const overlay=document.querySelector?.('dialog[open], .modal.show, .modal.active');
+ if(overlay)return;
+ q046LoadCanonicalWallet(true).catch(()=>{});
+},45000);
 window.addEventListener('online',network);
 window.addEventListener('offline',network);
 let LAST_VISIBLE_REFRESH=0;
@@ -4198,16 +4208,6 @@ async function q046LoadCanonicalWallet(force=false){
     }
   }
 }
-// When Google Sheets is edited directly, the next online Wallet refresh reads
-// physical Finance rows again (including deletions). This never touches drafts.
-setInterval(()=>{
- if(navigator.onLine===false||!backendSession()||!q029WalletUiAllowed()||
-    Q046_WALLET_STAGE.loading||document.visibilityState==='hidden'||
-    !document.getElementById('wallet')?.classList.contains('active'))return;
- const overlay=document.querySelector?.('dialog[open], .modal.show, .modal.active');
- if(overlay)return;
- q046LoadCanonicalWallet(true).catch(()=>{});
-},45000);
 function q046PartnerLabel(p){return p?.display_name||p?.party_id||'Партнёр'}
 function q046PartnerCard(p){return `<button class="wallet-balance-row" onclick="q046PartnerDetail('${esc(p.party_id)}')"><span><b>${esc(q046PartnerLabel(p))}</b><small>funding_due ${rub(p.funding_due||0)} · distribution ${rub(p.distribution_balance||0)}</small></span><strong>›</strong></button>`}
 function q046ObligationCard(o){return `<button class="wallet-balance-row" onclick="q046ObligationDetail('${esc(o.obligation_id)}')"><span><b>${esc(o.title||'Обязательство')}</b><small>${esc(o.payment_frequency||'')} · оплачено ${rub(o.paid_principal||0)}</small></span><strong>${rub(o.remaining||0)}</strong></button>`}
