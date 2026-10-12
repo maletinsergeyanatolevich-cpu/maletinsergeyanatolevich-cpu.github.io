@@ -3952,6 +3952,9 @@ function q029FinanceCashEpochClass_(t,r,epochId,recon){
   const epoch=String(valueBy_(t,r,'cash_epoch_id')||'').trim();
   if(epoch===String(epochId||'')&&epoch)return 'TAGGED';
   if(epoch)return 'HISTORICAL';
+  if(q046IsDeleted_(valueBy_(t,r,'is_deleted')))return 'DELETED';
+  const actual=String(valueBy_(t,r,'Фактическая операция')||'').trim().toUpperCase();
+  if(['НЕТ','FALSE','NO','0'].includes(actual))return 'NON_FACTUAL';
   if(!recon)return 'HISTORICAL'; // Legacy callers: only live Wallet passes a verified reconciliation
   const state=q029CashCutoverPosition_(valueBy_(t,r,'Дата'),recon);
   if(state==='INVALID'||state==='AMBIGUOUS')
