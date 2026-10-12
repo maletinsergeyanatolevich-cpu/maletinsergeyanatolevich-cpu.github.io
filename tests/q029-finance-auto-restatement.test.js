@@ -27,7 +27,7 @@ const ctx={console,Date,Math,Number,String,Array,Object,Set,Map,JSON,Error,crypt
  Utilities:{formatDate:()=> '2026-10-06'},spreadsheetTz_:()=> 'Asia/Tomsk',
  sha256Hex_:x=>crypto.createHash('sha256').update(String(x)).digest('hex'),
  valueBy_:(t,r,k)=>r[t.index[k]]??'',yes_:v=>v==='Да'||v===true,
- q046Money_:v=>Number(v)||0,q046IsDeleted_:v=>v===true||String(v||'').toUpperCase()==='TRUE',
+ q046Money_:v=>Number(v)||0,numberOrNull_:v=>v===''?null:Number(v),q046IsDeleted_:v=>v===true||String(v||'').toUpperCase()==='TRUE',
  q046SafeTable_:name=>name==='Финансы'?live:name==='Контрагенты'?parties:name==='Расчёты с партнёрами'?settled:null,
  tableRowObject_:(t,r)=>Object.fromEntries(t.headers.map((h,i)=>[h,r[i]])),
  q046LatestAppliedRecon_:()=>recon,nowIso_:()=> '2026-10-12',
