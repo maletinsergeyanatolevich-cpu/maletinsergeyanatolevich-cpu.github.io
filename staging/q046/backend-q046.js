@@ -3926,7 +3926,7 @@ function q029CashCutoverPosition_(value,recon){
     dateOnly=local.slice(11)==='00:00:00';
   }else{
     const raw=String(value==null?'':value).trim();
-    const dmy=raw.match(/^(\d{2})\\.(\d{2})\\.(\d{4})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?$/);
+    const dmy=raw.match(/^(\d{2})\.(\d{2})\.(\d{4})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?$/);
     const iso=raw.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?$/);
     if(dmy||iso){
       const m=dmy||iso,day=dmy?m[3]+'-'+m[2]+'-'+m[1]:m[1]+'-'+m[2]+'-'+m[3];
