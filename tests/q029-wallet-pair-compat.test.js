@@ -9,7 +9,7 @@ const clientSource=[
  section(client,'async function q046Action(','function q046PartnerLabel(')
 ].join('\n');
 const backendGuard=section(backend,'const Q029_WALLET_PAIR_CONTRACT=','function q029SheetFinanceHistory_(financeTable){');
-const VERSION='backend-0.2.33-staging-q069',CONTRACT='Q029_FINANCE_IDSET_V1';
+const VERSION='backend-0.2.34-staging-q029',CONTRACT='Q029_FINANCE_IDSET_V1';
 function wallet(){
  return {contract_id:CONTRACT,source:'CANONICAL_RECONCILIATION_EPOCH',physical_cash:11108,
   finance_ledger:{source:'GOOGLE_SHEETS_FINANCE',source_generation:'FINANCE_ROWS_SHA256_V1',source_rows_hash:'a'.repeat(64),
@@ -44,8 +44,8 @@ async function test(name,fn){await fn();passed++;console.log('PASS '+name)}
 (async()=>{
 await test('new staging backend version differs from old deployed source and is required by PWA',()=>{
  assert.equal(release.minBackend,VERSION);
- assert.match(client,/const Q029_WALLET_BACKEND_VERSION='backend-0.2.33-staging-q069'/);
- assert.match(backend,/VERSION: 'backend-0.2.33-staging-q069'/);
+ assert.match(client,/const Q029_WALLET_BACKEND_VERSION='backend-0.2.34-staging-q029'/);
+ assert.match(backend,/VERSION: 'backend-0.2.34-staging-q029'/);
  assert.match(backend,/backend_version:CFG.VERSION/);
  assert.match(backend,/contract_id:Q029_WALLET_PAIR_CONTRACT/);
  assert.equal(release.dbSchema,5);assert.equal(release.rolloutStage,'staging-only');
