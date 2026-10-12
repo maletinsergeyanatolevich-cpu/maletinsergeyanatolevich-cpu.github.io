@@ -3,12 +3,13 @@ const assert=require('assert'),fs=require('fs'),vm=require('vm');
 const b=fs.readFileSync('staging/q046/backend-q046.js','utf8');
 const a=fs.readFileSync('assets/app.js','utf8');
 function section(s,start,end){const i=s.indexOf(start),j=s.indexOf(end,i+start.length);assert(i>=0&&j>i,'missing actual source '+start);return s.slice(i,j);}
+const realClass=section(b,'function q029CashCutoverPosition_(', 'function q046AllocationRows_(');
 const realBackend=section(b,'function q029CashSourceProvenance_(', 'function q046BuildCanonicalWallet_(');
 const realClient=section(a,'function q029FinanceHistoryRowHtml(', 'function q046AllocationRow(');
-const headers=['ID операции','cash_epoch_id','Тип','Источник денег / оплаты','cash_destination','is_deleted','Фактическая операция','Сумма'];
+const headers=['ID операции','cash_epoch_id','Тип','Источник денег / оплаты','cash_destination','is_deleted','Фактическая операция','Сумма','Дата'];
 const idx=Object.fromEntries(headers.map((h,i)=>[h,i]));
 const fake=(id,epoch='',type='Расход',src='PERSON',dest='NONE',deleted=false,actual=true,amount=3)=>
- [id,epoch,type,src,dest,deleted,actual,amount];
+ [id,epoch,type,src,dest,deleted,actual,amount,'05.10.2026'];
 const rows=Array.from({length:106},(_,i)=>fake('SYNTHETIC-'+String(i).padStart(3,'0'),'','Расход',i%3?'PERSON':'PRODUCTION_WALLET'));
 rows[5][idx['is_deleted']]=true;
 const t={headers,index:idx,rows};
@@ -17,11 +18,13 @@ const fixture={source:'GOOGLE_SHEETS_FINANCE',row_count:106,items:rows.map((r,i)
  type:r[2],amount:r[7],category:'Тестовые операции',comment:'',is_deleted:r[5],actual:r[6]})),
  head_row_count:116,head_matches_source:false};
 const c={console,Math,Date,JSON,Number,String,Array,Object,Set,Map,
+ Utilities:{formatDate:()=> '2026-10-08 20:20:30'},spreadsheetTz_:()=> 'Asia/Tomsk',
+ numberOrNull_:v=>v===''?null:Number(v),
  q046IsDeleted_:v=>v===true,yes_:v=>v===true,
  valueBy_:(tb,row,key)=>row[tb.index[key]],
  rub:n=>String(n)+' ₽',esc:s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))
 };
-vm.createContext(c);vm.runInContext(realBackend+'\n'+realClient,c,{filename:'actual-stage-provenance-source'});
+vm.createContext(c);vm.runInContext(realClass+'\n'+realBackend+'\n'+realClient,c,{filename:'actual-stage-provenance-source'});
 const provenance=(recon,table,epoch)=>{c.__args={recon,table,epoch};return vm.runInContext('q029CashSourceProvenance_(__args.recon,__args.table,__args.epoch)',c)};
 const html=(ledger,proof)=>{c.__wallet={finance_ledger:ledger,cash_provenance:proof};return vm.runInContext('q029FinanceHistoryHtml(__wallet)',c)};
 let n=0;
