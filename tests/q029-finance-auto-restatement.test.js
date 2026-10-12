@@ -4,7 +4,7 @@ const code=fs.readFileSync('staging/q046/backend-q046.js','utf8');
 function extract(start,end){const i=code.indexOf(start),j=code.indexOf(end,i+start.length);assert(i>=0&&j>i,'actual staging helper '+start);return code.slice(i,j);}
 const actual=extract('const Q029_PRE_Q050_FINANCE_BACKUP=','function q046PartnerCards_(');
 const partnerCode=extract('function q046PartnerCards_(','function q046Obligations_(');
-const cash=extract('function q046FinanceCashDelta_(','function q046AllocationRows_(');
+const cash=extract('function q029CashCutoverPosition_(','function q046AllocationRows_(');
 const HEAD=['ID операции','Дата','Тип','Категория','Подкатегория','Сумма','Фактическая операция','is_deleted','Источник денег / оплаты','partner_party_id','partner_effect','Контрагент / поставщик','cash_epoch_id','cash_destination'];
 const table=rows=>({headers:HEAD,index:Object.fromEntries(HEAD.map((x,i)=>[x,i])),rows:rows.map(x=>HEAD.map(h=>x[h]??''))});
 const past=[
