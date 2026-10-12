@@ -27,7 +27,7 @@ function create(){
   window:{scrollTo(){}},renderBottomNav(){},renderWallet(){renderCount++},
   backendSession:()=>token,backendDeviceId:()=> 'DEV',
   hasPermission:x=>role&&x==='wallet.view',isAdmin1:()=>false,
-  backendPost:async req=>{requests.push(req);return {backend_version:'backend-0.2.33-staging-q069',...await remote(req)};},
+  backendPost:async req=>{requests.push(req);return {backend_version:'backend-0.2.34-staging-q029',...await remote(req)};},
   esc:v=>String(v),rub:v=>String(v),go(){},
  };
  vm.createContext(ctx);vm.runInContext(script,ctx,{filename:'actual-wallet-client-rebase'});
