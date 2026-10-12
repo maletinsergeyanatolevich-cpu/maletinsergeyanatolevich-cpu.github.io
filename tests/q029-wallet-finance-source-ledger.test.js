@@ -41,7 +41,7 @@ test('new authoritative Finance record immediately appears after server re-read'
 });
 test('Finance/Wallet money rules stay reconciliation-epoch based and unchanged',()=>{
  assert(backend.includes("function q046FinanceCashDelta_(t,r,epochId,recon)"));
- assert(backend.includes("String(valueBy_(t,r,'cash_epoch_id')||'')!==epochId"));
+ assert(backend.includes("function q029FinanceCashEpochClass_(t,r,epochId,recon)"));
  assert(backend.includes("opening+delta"));
  assert(backend.includes("physical-reserved"));
  assert(backend.includes("finance_ledger:q029SheetFinanceHistory_(ft)"));
