@@ -82,11 +82,11 @@ test(1,'canonical Wallet ignores legacy B1/B2',()=>{
 
 test(2,'cash epoch route semantics use only production-wallet factual rows',()=>{
   const rt=runtime();
-  const t=table(['cash_epoch_id','is_deleted','Фактическая операция','Тип','Сумма','cash_destination','Источник денег / оплаты'],[
-    {cash_epoch_id:'E1',is_deleted:false,'Фактическая операция':'Да','Тип':'Приход','Сумма':100,cash_destination:'PRODUCTION_WALLET'},
-    {cash_epoch_id:'E1',is_deleted:false,'Фактическая операция':'Да','Тип':'Расход','Сумма':30,'Источник денег / оплаты':'PRODUCTION_WALLET'},
-    {cash_epoch_id:'E1',is_deleted:false,'Фактическая операция':'Да','Тип':'Расход','Сумма':50,'Источник денег / оплаты':'PERSON'},
-    {cash_epoch_id:'OLD',is_deleted:false,'Фактическая операция':'Да','Тип':'Приход','Сумма':999,cash_destination:'PRODUCTION_WALLET'}
+  const t=table(['ID операции','cash_epoch_id','is_deleted','Фактическая операция','Тип','Сумма','cash_destination','Источник денег / оплаты'],[
+    {'ID операции':'SYNTHETIC-ROUTE-1',cash_epoch_id:'E1',is_deleted:false,'Фактическая операция':'Да','Тип':'Приход','Сумма':100,cash_destination:'PRODUCTION_WALLET'},
+    {'ID операции':'SYNTHETIC-ROUTE-2',cash_epoch_id:'E1',is_deleted:false,'Фактическая операция':'Да','Тип':'Расход','Сумма':30,'Источник денег / оплаты':'PRODUCTION_WALLET'},
+    {'ID операции':'SYNTHETIC-ROUTE-3',cash_epoch_id:'E1',is_deleted:false,'Фактическая операция':'Да','Тип':'Расход','Сумма':50,'Источник денег / оплаты':'PERSON'},
+    {'ID операции':'SYNTHETIC-ROUTE-4',cash_epoch_id:'OLD',is_deleted:false,'Фактическая операция':'Да','Тип':'Приход','Сумма':999,cash_destination:'PRODUCTION_WALLET'}
   ]);
   const delta=t.rows.reduce((s,r)=>s+rt.api.q046FinanceCashDelta_(t,r,'E1'),0);
   assert.strictEqual(delta,70);
