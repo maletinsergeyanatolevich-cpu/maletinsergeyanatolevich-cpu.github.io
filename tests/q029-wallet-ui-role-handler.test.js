@@ -77,7 +77,7 @@ function runtime(role='WORKER',session='SESSION'){
     hasPermission:()=>stats.role==='ADMIN1',canMutateRecord:()=>stats.role==='ADMIN1',
     backendSession:()=>stats.session,
     backendDeviceId:()=> 'DEV-TEST',
-    backendPost:async payload=>{stats.posts.push(payload);return {ok:true,backend_version:'backend-0.2.33-staging-q069',wallet:fakeWallet()};},
+    backendPost:async payload=>{stats.posts.push(payload);return {ok:true,backend_version:'backend-0.2.34-staging-q029',wallet:fakeWallet()};},
     renderBottomNav(){stats.nav++;},
     titles:{wallet:'Кошелёк'},
     renderHome(){},renderChecklists(){},renderSync(){},renderNom(){},renderGallery(){},
@@ -204,7 +204,7 @@ await test('pending ADMIN1 read discarded after role downgrade and view becomes 
  x.ctx.backendPost=p=>{x.stats.posts.push(p);return new Promise(res=>{resolve=res;});};
  const pending=x.run('q046LoadCanonicalWallet(true)');
  x.setRole('WORKER');
- resolve({ok:true,backend_version:'backend-0.2.33-staging-q069',wallet:fakeWallet()});
+ resolve({ok:true,backend_version:'backend-0.2.34-staging-q029',wallet:fakeWallet()});
  await pending;
  assert.strictEqual(x.state.walletCanonical,null);
  assert.ok(x.wallet.innerHTML.includes('Кошелёк недоступен'));
@@ -216,7 +216,7 @@ await test('pending read discarded after session replacement even if role remain
  x.ctx.backendPost=p=>new Promise(res=>{resolve=res;});
  const pending=x.run('q046LoadCanonicalWallet(true)');
  x.setSession('OTHER_SESSION');
- resolve({ok:true,backend_version:'backend-0.2.33-staging-q069',wallet:fakeWallet()});
+ resolve({ok:true,backend_version:'backend-0.2.34-staging-q029',wallet:fakeWallet()});
  await pending;
  assert.strictEqual(x.state.walletCanonical,null);
  assert.strictEqual(x.stage.loaded,false);
@@ -236,7 +236,7 @@ await test('manual retry after initial failure loads canonical model exactly onc
  x.ctx.backendPost=async p=>{
    x.stats.posts.push(p);attempts++;
    if(attempts===1)throw Error('RETRYABLE_OFFLINE_TEST');
-   return {ok:true,backend_version:'backend-0.2.33-staging-q069',wallet:fakeWallet()};
+   return {ok:true,backend_version:'backend-0.2.34-staging-q029',wallet:fakeWallet()};
  };
  x.run("go('wallet')");
  await new Promise(resolve=>setImmediate(resolve));
