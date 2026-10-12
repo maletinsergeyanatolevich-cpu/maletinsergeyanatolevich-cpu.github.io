@@ -1,4 +1,4 @@
-﻿const APP_RELEASE=Object.freeze({version:'v0.3.28-staging-q029-rh8',buildId:'2026-10-12.q029.rh8',channel:'q029-wallet-client-release-hardening',dbSchema:5,updateStrategy:'manifest-service-worker',rolloutStage:'staging-only',previousBuildId:'2026-10-07.3d'});window.APP_RELEASE=APP_RELEASE;
+﻿const APP_RELEASE=Object.freeze({version:'v0.3.28-staging-q029-rh9',buildId:'2026-10-12.q029.rh9',channel:'q029-wallet-client-release-hardening',dbSchema:5,updateStrategy:'manifest-service-worker',rolloutStage:'staging-only',previousBuildId:'2026-10-07.3d'});window.APP_RELEASE=APP_RELEASE;
 function emptySnapshot(){return {meta:{version:APP_RELEASE.version,snapshotDate:'',snapshotTime:'',timezone:'',backendConnected:false,source:'Нет загруженных бизнес-данных',schemaVersion:1},orders:[],archivedOrders:[],plannedFinance:[],calculations:{},wallet:{balance:0,income:0,expense:0,reserve:0,freeNow:0,expense7:0,free7:0,futureExpenses:[],transactions:[],futureTotal:0,futureIncome:0,ownerDebt:0,ownerDebtSergey:0,ownerDebtEvgeny:0,ownerDebtTotal:0,ownerGrossDebtSergey:0,ownerGrossDebtEvgeny:0,ownerGrossDebtTotal:0,netPosition:0,afterObligations:0},nomenclature:[],purchaseLines:[],purchaseAggregated:[],gallery:[],appIssues:[],purchaseWarnings:[]}}
 function normalizeSnapshot(x){const b=emptySnapshot();if(!x||typeof x!=='object')return b;return {...b,...x,meta:{...b.meta,...(x.meta||{})},wallet:{...b.wallet,...(x.wallet||{})},orders:Array.isArray(x.orders)?x.orders:[],archivedOrders:Array.isArray(x.archivedOrders)?x.archivedOrders:[],plannedFinance:Array.isArray(x.plannedFinance)?x.plannedFinance:[],calculations:x.calculations&&typeof x.calculations==='object'?x.calculations:{},nomenclature:Array.isArray(x.nomenclature)?x.nomenclature:[],purchaseLines:Array.isArray(x.purchaseLines)?x.purchaseLines:[],purchaseAggregated:Array.isArray(x.purchaseAggregated)?x.purchaseAggregated:[],gallery:Array.isArray(x.gallery)?x.gallery:[],appIssues:Array.isArray(x.appIssues)?x.appIssues:[],purchaseWarnings:Array.isArray(x.purchaseWarnings)?x.purchaseWarnings:[]}}
 let S=emptySnapshot(); window.SNAPSHOT=S;
@@ -4087,7 +4087,7 @@ startApplication();
 
 
 /* Q-046 WALLET CANONICAL STAGING UI */
-const Q029_WALLET_BACKEND_VERSION='backend-0.2.33-staging-q069';
+const Q029_WALLET_BACKEND_VERSION='backend-0.2.34-staging-q029';
 const Q029_WALLET_PAIR_CONTRACT='Q029_FINANCE_IDSET_V1';
 const Q046_WALLET_STAGE={loading:false,loaded:false,error:'',generation:0,session:'',userId:'',backendVersion:''};
 function q029WalletUiAllowed(){return !!backendSession()&&hasPermission('wallet.view')}
@@ -4166,6 +4166,19 @@ async function q046Action(kind,payload){
   if(!d?.ok)throw new Error(d?.detail||d?.error||'Q046_ACTION_FAILED');
   q046ClearPending(p);await q046LoadCanonicalWallet(true);return d;
 }
+function q029WalletReadableError_(value){
+ const raw=String(value||''),m=raw.match(/^(FINANCE_MANUAL_[A-Z_]+):([^\\s]+)$/);
+ if(!m)return raw;
+ const guidance={
+  FINANCE_MANUAL_DATE_NEEDS_CLARIFICATION:'укажите точную дату и время операции. Для даты сверки нужен час и минута',
+  FINANCE_MANUAL_ACTUAL_FLAG_REQUIRED:'укажите «Да» или «Нет» в поле «Фактическая операция»',
+  FINANCE_MANUAL_TYPE_OR_AMOUNT_INVALID:'проверьте тип Приход/Расход и положительную сумму',
+  FINANCE_MANUAL_CASH_DESTINATION_REQUIRED:'для прихода укажите поле cash_destination (PRODUCTION_WALLET, PERSON или NONE)',
+  FINANCE_MANUAL_PAYMENT_SOURCE_REQUIRED:'для расхода укажите поле «Источник денег / оплаты» (PRODUCTION_WALLET, PERSON, CREDIT или SUPPLIER_DEBT)',
+  FINANCE_MANUAL_PARTNER_CLASSIFICATION_REQUIRED:'для личного расхода заполните partner_party_id и partner_effect=FUNDING_INCREASE'
+ };
+ return 'Уточните строку «Финансы» '+m[2]+': '+(guidance[m[1]]||raw)+'. Деньги не показаны, чтобы не допустить неверного остатка.';
+}
 async function q046LoadCanonicalWallet(force=false){
   if(!q029WalletUiAllowed()){q029WalletInvalidate();return}
   if(Q046_WALLET_STAGE.loading&&!force)return;
@@ -4199,7 +4212,7 @@ async function q046LoadCanonicalWallet(force=false){
   }catch(e){
     if(generation===Q046_WALLET_STAGE.generation){
       S.walletCanonical=null;Q046_WALLET_STAGE.loaded=false;
-      Q046_WALLET_STAGE.error=String(e?.message||e);
+      Q046_WALLET_STAGE.error=q029WalletReadableError_(String(e?.message||e));
     }
   }finally{
     if(generation===Q046_WALLET_STAGE.generation){
