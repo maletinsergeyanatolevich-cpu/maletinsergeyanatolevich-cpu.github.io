@@ -243,7 +243,7 @@ test(15,'actual source syntax and schema artifact are consistent',()=>{
   assert.strictEqual(schema.wallet_allocations.active_link_contract.rule,'AT_MOST_ONE_ACTIVE_PER_PLANNED_FINANCE_ID');
   assert.strictEqual(schema.obligation_payment_guard.clamp_overpayment,false);
   assert.ok(schema.non_operating_financial_meanings.includes('NON_OPERATING_LOAN_INFLOW'));
-  assert.strictEqual(rt.api.CFG.VERSION,'backend-0.2.33-staging-q069');
+  assert.strictEqual(rt.api.CFG.VERSION,'backend-0.2.34-staging-q029');
 });
 
 
