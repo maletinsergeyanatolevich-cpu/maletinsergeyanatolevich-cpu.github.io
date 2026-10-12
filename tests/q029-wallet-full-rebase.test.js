@@ -5,6 +5,7 @@ function source(start,end){const i=client.indexOf(start),j=client.indexOf(end,i+
 const script=[
  source('const Q029_WALLET_BACKEND_VERSION=','const Q046_WALLET_STAGE='),
  source('function q029WalletUiAllowed(){','function q046EvtPart(){'),
+ source('function q029WalletReadableError_(','async function q046LoadCanonicalWallet('),
  source('async function q046LoadCanonicalWallet(','function q046PartnerLabel('),
  source('function go(','function badge(')
 ].join('\n');
