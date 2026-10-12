@@ -3917,7 +3917,7 @@ function q046ActiveEpochId_(){const r=q046LatestAppliedRecon_();return r?String(
    fresh cash or mutate source _DOMAIN_HEADS, Finance, or partner postings. */
 function q029CashCutoverPosition_(value,recon){
   const effective=String(recon&&recon.effective_at||'');
-  if(!/^\\d{4}-\\d{2}-\\d{2}T/.test(effective)||!Number.isFinite(new Date(effective).getTime()))
+  if(!/^\d{4}-\d{2}-\d{2}T/.test(effective)||!Number.isFinite(new Date(effective).getTime()))
     throw new Error('FINANCE_CASH_CUTOVER_TIME_UNVERIFIED');
   const tz=spreadsheetTz_(),cutoff=Utilities.formatDate(new Date(effective),tz,'yyyy-MM-dd HH:mm:ss');
   let local='',dateOnly=false;
@@ -3926,8 +3926,8 @@ function q029CashCutoverPosition_(value,recon){
     dateOnly=local.slice(11)==='00:00:00';
   }else{
     const raw=String(value==null?'':value).trim();
-    const dmy=raw.match(/^(\\d{2})\\.(\\d{2})\\.(\\d{4})(?:[ T](\\d{2}):(\\d{2})(?::(\\d{2}))?)?$/);
-    const iso=raw.match(/^(\\d{4})-(\\d{2})-(\\d{2})(?:[ T](\\d{2}):(\\d{2})(?::(\\d{2}))?)?$/);
+    const dmy=raw.match(/^(\d{2})\\.(\d{2})\\.(\d{4})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?$/);
+    const iso=raw.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?$/);
     if(dmy||iso){
       const m=dmy||iso,day=dmy?m[3]+'-'+m[2]+'-'+m[1]:m[1]+'-'+m[2]+'-'+m[3];
       dateOnly=!m[4];
@@ -3937,7 +3937,7 @@ function q029CashCutoverPosition_(value,recon){
       const valid=new Date(Date.UTC(yr,mo-1,dd,h,mi,sec));
       if(valid.getUTCFullYear()!==yr||valid.getUTCMonth()!==mo-1||valid.getUTCDate()!==dd||
          valid.getUTCHours()!==h||valid.getUTCMinutes()!==mi||valid.getUTCSeconds()!==sec)local='';
-    }else if(/^\\d{4}-\\d{2}-\\d{2}T.*(?:Z|[+-]\\d{2}:\\d{2})$/.test(raw)&&
+    }else if(/^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:\d{2})$/.test(raw)&&
              Number.isFinite(new Date(raw).getTime())){
       local=Utilities.formatDate(new Date(raw),tz,'yyyy-MM-dd HH:mm:ss');
     }
@@ -4238,26 +4238,23 @@ function q029SheetFinanceHistory_(financeTable){
     head_matches_source:headCount===null?null:headCount===items.length};
 }
 function q029CashSourceProvenance_(recon,financeTable,epochId){
-  // Read-only explanation for the existing Q044 reconciliation math.
-  // Count rows by membership only; DO NOT recalculate physical/free/partner money.
-  let sourceRows=0,historicalRows=0,epochRows=0,eligibleRows=0;
+  // Exactly the same authoritative source membership rules as cash math.
+  let sourceRows=0,historicalRows=0,epochRows=0,manualRows=0,eligibleRows=0;
   if(financeTable)financeTable.rows.forEach(function(r){
     if(!String(valueBy_(financeTable,r,'ID операции')||'').trim())return;
     sourceRows++;
-    if(String(valueBy_(financeTable,r,'cash_epoch_id')||'')!==epochId){historicalRows++;return;}
-    epochRows++;
-    if(!q046IsDeleted_(valueBy_(financeTable,r,'is_deleted'))&&yes_(valueBy_(financeTable,r,'Фактическая операция'))){
-      const kind=String(valueBy_(financeTable,r,'Тип')||''),
-        src=String(valueBy_(financeTable,r,'Источник денег / оплаты')||'').toUpperCase(),
-        dest=String(valueBy_(financeTable,r,'cash_destination')||'').toUpperCase();
-      if((/^Приход$/i.test(kind)&&dest==='PRODUCTION_WALLET')||
-         (/^Расход$/i.test(kind)&&src==='PRODUCTION_WALLET'))eligibleRows++;
-    }
+    const kind=q029FinanceCashEpochClass_(financeTable,r,epochId,recon);
+    if(kind==='HISTORICAL'){historicalRows++;return;}
+    if(kind==='TAGGED')epochRows++;
+    if(kind==='MANUAL_POST')manualRows++;
+    if((kind==='TAGGED'||kind==='MANUAL_POST')&&
+       q029FinanceCashDelta_(financeTable,r,epochId,recon)!==0)eligibleRows++;
   });
   return {source:'APPLIED_RECONCILIATION',reconciliation_id:epochId,
     applied_date:String(recon.applied_at||recon.effective_at||'').slice(0,10),
     historical_without_epoch_count:historicalRows,epoch_linked_count:epochRows,
-    cash_movement_count:eligibleRows,source_finance_count:sourceRows};
+    manual_post_cutover_count:manualRows,cash_movement_count:eligibleRows,
+    source_finance_count:sourceRows};
 }
 function q046BuildCanonicalWallet_(body){
   const recon=q046LatestAppliedRecon_();if(!recon)throw new Error('APPLIED_RECONCILIATION_REQUIRED');const epochId=String(recon.reconciliation_id||''),opening=q046Money_(recon.production_cash_target),ft=q046SafeTable_('Финансы');let delta=0;if(ft)ft.rows.forEach(function(r){delta+=q046FinanceCashDelta_(ft,r,epochId,recon);});const physical=Math.round((opening+delta)*100)/100,reserved=Math.round(q046ReservedTotal_()*100)/100,free=Math.round((physical-reserved)*100)/100,forecastDate=q046ForecastDate_(body||{}),planned=q046PlannedFinance_(forecastDate),futureIn=planned.filter(function(x){return /^Приход$/i.test(x.type);}).reduce(function(s,x){return s+x.amount;},0),futureOut=planned.filter(function(x){return /^Расход$/i.test(x.type);}).reduce(function(s,x){return s+x.amount;},0),orders=q046OrderSummary_();let legacy={};try{const sh=sheet_('Кошелёк');legacy={wallet_b1:q046Money_(sh.getRange(1,2).getValue()),wallet_b2:q046Money_(sh.getRange(2,2).getValue())};}catch(_){}
