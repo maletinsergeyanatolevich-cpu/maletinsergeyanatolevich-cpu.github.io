@@ -115,7 +115,7 @@ check('manual date 31.02 rejected; read model is strictly read-only',()=>{
  assert(!/\b(?:setValue|setValues|appendRow|deleteRow|w1CommitHead_|reconciliation\.apply)\s*\(/.test(cashCode+provenance));
 });
 assert(src.includes('delta+=q046FinanceCashDelta_(ft,r,epochId,recon)'));
-assert(src.includes('!['+"'"+"TAGGED"+"'"+"','"+"'"+"MANUAL_POST"+"'"+"'].includes(q029FinanceCashEpochClass_"));
+assert(src.includes("!['TAGGED','MANUAL_POST'].includes(q029FinanceCashEpochClass_("));
 const manifest=JSON.parse(fs.readFileSync('version.json','utf8'));
 assert.strictEqual(manifest.rolloutStage,'staging-only');
 console.log(JSON.stringify({suite:'Q029_POST_CUTOVER_MANUAL_FINANCE_ACTUAL_SOURCE',passed:count,ok:true,scope:'staging VM; no Google Sheet writes, no client session, no deploy'}));
