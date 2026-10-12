@@ -49,6 +49,8 @@ jobs:
         run: node tests/q029-wallet-pair-compat.test.js
       - name: Test Q029 deleted 10 Finance records partner/cash source automatic restatement
         run: node tests/q029-finance-auto-restatement.test.js
+      - name: Test Q029 direct Google Sheet manual Finance cash cutover and classification
+        run: node tests/q029-direct-sheet-cash-epoch.test.js
       - name: Test Q067 Finance 116 to 106 persistent offline baseline without losing drafts
         run: node tests/q029-finance-baseline-cache-rebase.test.js
       - name: Test Q029 source-truth Finance metadata preview
