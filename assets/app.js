@@ -4167,7 +4167,7 @@ async function q046Action(kind,payload){
   q046ClearPending(p);await q046LoadCanonicalWallet(true);return d;
 }
 function q029WalletReadableError_(value){
- const raw=String(value||''),m=raw.match(/^(FINANCE_MANUAL_[A-Z_]+):([^\\s]+)$/);
+ const raw=String(value||''),m=raw.match(/^(FINANCE_MANUAL_[A-Z_]+):([^\s]+)$/);
  if(!m)return raw;
  const guidance={
   FINANCE_MANUAL_DATE_NEEDS_CLARIFICATION:'укажите точную дату и время операции. Для даты сверки нужен час и минута',
