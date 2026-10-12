@@ -29,7 +29,7 @@ const provenance=(recon,table,epoch)=>{c.__args={recon,table,epoch};return vm.ru
 const html=(ledger,proof)=>{c.__wallet={finance_ledger:ledger,cash_provenance:proof};return vm.runInContext('q029FinanceHistoryHtml(__wallet)',c)};
 let n=0;
 function test(name,fn){fn();n++;console.log('PASS '+name);}
-const recon={reconciliation_id:'SYNTHETIC-Q044',applied_at:'2026-10-08T13:20:00.000Z',production_cash_target:11108};
+const recon={reconciliation_id:'SYNTHETIC-Q044',effective_at:'2026-10-08T13:20:00.000Z',applied_at:'2026-10-08T13:20:00.000Z',production_cash_target:11108};
 test('106 existing untagged Sheet rows belong to history, not 106 new cash movements',()=>{
  const p=provenance(recon,t,recon.reconciliation_id);
  assert.equal(p.source_finance_count,106);assert.equal(p.historical_without_epoch_count,106);
