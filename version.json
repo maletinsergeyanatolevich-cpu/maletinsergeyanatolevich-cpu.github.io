@@ -1,6 +1,6 @@
 {
-  "version": "v0.3.28-staging-q029-rh8",
-  "buildId": "2026-10-12.q029.rh8",
+  "version": "v0.3.28-staging-q029-rh9",
+  "buildId": "2026-10-12.q029.rh9",
   "channel": "q029-wallet-client-release-hardening",
   "rolloutStage": "staging-only",
   "eligibleRoles": [
@@ -9,7 +9,7 @@
     "USER"
   ],
   "dbSchema": 5,
-  "minBackend": "backend-0.2.33-staging-q069",
+  "minBackend": "backend-0.2.34-staging-q029",
   "previousBuildId": "2026-10-07.3d",
   "rollback": {
     "buildId": "2026-10-07.3d",
@@ -17,5 +17,5 @@
     "safeWithoutDataReset": true
   },
   "publishedAt": null,
-  "notes": "Q-029 Wallet source-of-cash provenance audit (staging read-only). Previous Q-029 Wallet full replace-only snapshot read and safe refresh (staging only). Previous Q-029 Wallet Finance source-of-truth history from live Sheet rows (staging only); no restoration, no calculation changes. Previous Q-066 Wallet multiuser role and owner guards (staging only). Previous Q-029 Wallet UX refinement: planned income/receipt, Russian reserve labels and validation, two-row actions; staging-only; keep IndexedDB schema 5 for safe rollback; match app and service worker builds. No production client release, merge, or business writes."
+  "notes": "Q-029 rh9 critical staging-only: direct post-Q044 Finance entries without cash_epoch_id require date/route classification; valid source changes refresh cash/partner read-model, ambiguous entries fail closed. Existing Q044 reconciliation opening preserved, 106 actual Finance IDs and offline full-source cache rebase retained. No master data corrections or live deploy."
 }
