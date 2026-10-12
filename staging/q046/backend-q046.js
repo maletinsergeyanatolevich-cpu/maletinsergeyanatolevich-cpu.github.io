@@ -4247,7 +4247,7 @@ function q029CashSourceProvenance_(recon,financeTable,epochId){
     if(!String(valueBy_(financeTable,r,'ID операции')||'').trim())return;
     sourceRows++;
     const kind=q029FinanceCashEpochClass_(financeTable,r,epochId,recon);
-    if(kind==='HISTORICAL'){historicalRows++;return;}
+    if(kind==='HISTORICAL'||kind==='DELETED'||kind==='NON_FACTUAL'){historicalRows++;return;}
     if(kind==='TAGGED')epochRows++;
     if(kind==='MANUAL_POST')manualRows++;
     if((kind==='TAGGED'||kind==='MANUAL_POST')&&
