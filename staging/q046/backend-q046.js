@@ -3912,15 +3912,87 @@ function q046LatestAppliedRecon_(){
   return best?best.obj:null;
 }
 function q046ActiveEpochId_(){const r=q046LatestAppliedRecon_();return r?String(r.reconciliation_id||''):'';}
-function q046FinanceCashDelta_(t,r,epochId){
-  if(!epochId||String(valueBy_(t,r,'cash_epoch_id')||'')!==epochId)return 0;
-  if(q046IsDeleted_(valueBy_(t,r,'is_deleted'))||!yes_(valueBy_(t,r,'Фактическая операция')))return 0;
-  const type=String(valueBy_(t,r,'Тип')||''),amount=q046Money_(valueBy_(t,r,'Сумма'));
-  const dest=String(valueBy_(t,r,'cash_destination')||'').toUpperCase(),src=String(valueBy_(t,r,'Источник денег / оплаты')||'').toUpperCase();
-  if(/^ПРИХОД$/i.test(type)&&dest==='PRODUCTION_WALLET')return amount;
-  if(/^РАСХОД$/i.test(type)&&src==='PRODUCTION_WALLET')return -amount;
+/* Q029 critical delta: direct Google Sheet edits after the approved cash cutover.
+   Fail closed on ambiguous date/route; never treat all legacy untagged rows as
+   fresh cash or mutate source _DOMAIN_HEADS, Finance, or partner postings. */
+function q029CashCutoverPosition_(value,recon){
+  const effective=String(recon&&recon.effective_at||'');
+  if(!/^\\d{4}-\\d{2}-\\d{2}T/.test(effective)||!Number.isFinite(new Date(effective).getTime()))
+    throw new Error('FINANCE_CASH_CUTOVER_TIME_UNVERIFIED');
+  const tz=spreadsheetTz_(),cutoff=Utilities.formatDate(new Date(effective),tz,'yyyy-MM-dd HH:mm:ss');
+  let local='',dateOnly=false;
+  if(Object.prototype.toString.call(value)==='[object Date]'&&!isNaN(value.getTime())){
+    local=Utilities.formatDate(value,tz,'yyyy-MM-dd HH:mm:ss');
+    dateOnly=local.slice(11)==='00:00:00';
+  }else{
+    const raw=String(value==null?'':value).trim();
+    const dmy=raw.match(/^(\\d{2})\\.(\\d{2})\\.(\\d{4})(?:[ T](\\d{2}):(\\d{2})(?::(\\d{2}))?)?$/);
+    const iso=raw.match(/^(\\d{4})-(\\d{2})-(\\d{2})(?:[ T](\\d{2}):(\\d{2})(?::(\\d{2}))?)?$/);
+    if(dmy||iso){
+      const m=dmy||iso,day=dmy?m[3]+'-'+m[2]+'-'+m[1]:m[1]+'-'+m[2]+'-'+m[3];
+      dateOnly=!m[4];
+      local=day+' '+(m[4]?m[4]+':'+m[5]+':'+(m[6]||'00'):'00:00:00');
+      const yr=Number(day.slice(0,4)),mo=Number(day.slice(5,7)),dd=Number(day.slice(8,10)),
+        h=Number(m[4]||0),mi=Number(m[5]||0),sec=Number(m[6]||0);
+      const valid=new Date(Date.UTC(yr,mo-1,dd,h,mi,sec));
+      if(valid.getUTCFullYear()!==yr||valid.getUTCMonth()!==mo-1||valid.getUTCDate()!==dd||
+         valid.getUTCHours()!==h||valid.getUTCMinutes()!==mi||valid.getUTCSeconds()!==sec)local='';
+    }else if(/^\\d{4}-\\d{2}-\\d{2}T.*(?:Z|[+-]\\d{2}:\\d{2})$/.test(raw)&&
+             Number.isFinite(new Date(raw).getTime())){
+      local=Utilities.formatDate(new Date(raw),tz,'yyyy-MM-dd HH:mm:ss');
+    }
+  }
+  if(!local) return 'INVALID';
+  if(dateOnly&&local.slice(0,10)===cutoff.slice(0,10))return 'AMBIGUOUS';
+  return local<=cutoff?'HISTORICAL':'POST_CUTOVER';
+}
+function q029FinanceCashEpochClass_(t,r,epochId,recon){
+  const id=String(valueBy_(t,r,'ID операции')||'').trim();
+  if(!id)return 'BLANK';
+  const epoch=String(valueBy_(t,r,'cash_epoch_id')||'').trim();
+  if(epoch===String(epochId||'')&&epoch)return 'TAGGED';
+  if(epoch)return 'HISTORICAL';
+  if(!recon)return 'HISTORICAL'; // Legacy callers: only live Wallet passes a verified reconciliation
+  const state=q029CashCutoverPosition_(valueBy_(t,r,'Дата'),recon);
+  if(state==='INVALID'||state==='AMBIGUOUS')
+    throw new Error('FINANCE_MANUAL_DATE_NEEDS_CLARIFICATION:'+id);
+  return state==='POST_CUTOVER'?'MANUAL_POST':'HISTORICAL';
+}
+function q029FinanceCashDelta_(t,r,epochId,recon){
+  const classification=q029FinanceCashEpochClass_(t,r,epochId,recon);
+  if(classification!=='TAGGED'&&classification!=='MANUAL_POST')return 0;
+  if(q046IsDeleted_(valueBy_(t,r,'is_deleted')))return 0;
+  const actual=valueBy_(t,r,'Фактическая операция');
+  if(!yes_(actual)){
+    if(classification==='MANUAL_POST'&&String(actual==null?'':actual).trim()==='')
+      throw new Error('FINANCE_MANUAL_ACTUAL_FLAG_REQUIRED:'+String(valueBy_(t,r,'ID операции')||''));
+    return 0;
+  }
+  const id=String(valueBy_(t,r,'ID операции')||'');
+  const type=String(valueBy_(t,r,'Тип')||''),amount=numberOrNull_(valueBy_(t,r,'Сумма')),
+    dest=String(valueBy_(t,r,'cash_destination')||'').trim().toUpperCase(),
+    src=String(valueBy_(t,r,'Источник денег / оплаты')||'').trim().toUpperCase();
+  if(classification==='MANUAL_POST'&&(!(amount>0)||!Number.isFinite(amount)||
+       !/^(Приход|Расход)$/i.test(type)))
+    throw new Error('FINANCE_MANUAL_TYPE_OR_AMOUNT_INVALID:'+id);
+  if(/^Приход$/i.test(type)){
+    if(classification==='MANUAL_POST'&&!['PRODUCTION_WALLET','PERSON','NONE'].includes(dest))
+      throw new Error('FINANCE_MANUAL_CASH_DESTINATION_REQUIRED:'+id);
+    return dest==='PRODUCTION_WALLET'?amount:0;
+  }
+  if(/^Расход$/i.test(type)){
+    if(classification==='MANUAL_POST'&&!['PRODUCTION_WALLET','PERSON','CREDIT','SUPPLIER_DEBT'].includes(src))
+      throw new Error('FINANCE_MANUAL_PAYMENT_SOURCE_REQUIRED:'+id);
+    if(classification==='MANUAL_POST'&&src==='PERSON'&&
+       (!String(valueBy_(t,r,'partner_party_id')||'').trim()||
+        String(valueBy_(t,r,'partner_effect')||'').trim().toUpperCase()!=='FUNDING_INCREASE'))
+      throw new Error('FINANCE_MANUAL_PARTNER_CLASSIFICATION_REQUIRED:'+id);
+    return src==='PRODUCTION_WALLET'?-amount:0;
+  }
   return 0;
 }
+// Backwards-compatible existing handler/tests use q046FinanceCashDelta_.
+function q046FinanceCashDelta_(t,r,epochId,recon){return q029FinanceCashDelta_(t,r,epochId,recon);}
 function q046AllocationRows_(){
   const t=q046SafeTable_(Q046_WALLET.allocationSheet);if(!t)return [];
   return t.rows.filter(function(r){return String(valueBy_(t,r,'allocation_id')||'').trim()&&!q046IsDeleted_(valueBy_(t,r,'is_deleted'));}).map(function(r){return tableRowObject_(t,r);});
@@ -4056,7 +4128,7 @@ function q046PartnerCards_(financeTable,recon){
     const id=String(valueBy_(ft,fr,'ID операции')||'').trim();
     if(!id||linkedFinance[id]||q046IsDeleted_(valueBy_(ft,fr,'is_deleted'))||
        !yes_(valueBy_(ft,fr,'Фактическая операция'))||
-       String(valueBy_(ft,fr,'cash_epoch_id')||'')!==epochId)return;
+       !['TAGGED','MANUAL_POST'].includes(q029FinanceCashEpochClass_(ft,fr,epochId,activeRecon)))return;
     const effect=String(valueBy_(ft,fr,'partner_effect')||'').toUpperCase(),
       source=String(valueBy_(ft,fr,'Источник денег / оплаты')||'').toUpperCase(),
       type=String(valueBy_(ft,fr,'Тип')||''),pid=String(valueBy_(ft,fr,'partner_party_id')||''),
@@ -4188,7 +4260,7 @@ function q029CashSourceProvenance_(recon,financeTable,epochId){
     cash_movement_count:eligibleRows,source_finance_count:sourceRows};
 }
 function q046BuildCanonicalWallet_(body){
-  const recon=q046LatestAppliedRecon_();if(!recon)throw new Error('APPLIED_RECONCILIATION_REQUIRED');const epochId=String(recon.reconciliation_id||''),opening=q046Money_(recon.production_cash_target),ft=q046SafeTable_('Финансы');let delta=0;if(ft)ft.rows.forEach(function(r){delta+=q046FinanceCashDelta_(ft,r,epochId);});const physical=Math.round((opening+delta)*100)/100,reserved=Math.round(q046ReservedTotal_()*100)/100,free=Math.round((physical-reserved)*100)/100,forecastDate=q046ForecastDate_(body||{}),planned=q046PlannedFinance_(forecastDate),futureIn=planned.filter(function(x){return /^Приход$/i.test(x.type);}).reduce(function(s,x){return s+x.amount;},0),futureOut=planned.filter(function(x){return /^Расход$/i.test(x.type);}).reduce(function(s,x){return s+x.amount;},0),orders=q046OrderSummary_();let legacy={};try{const sh=sheet_('Кошелёк');legacy={wallet_b1:q046Money_(sh.getRange(1,2).getValue()),wallet_b2:q046Money_(sh.getRange(2,2).getValue())};}catch(_){}
+  const recon=q046LatestAppliedRecon_();if(!recon)throw new Error('APPLIED_RECONCILIATION_REQUIRED');const epochId=String(recon.reconciliation_id||''),opening=q046Money_(recon.production_cash_target),ft=q046SafeTable_('Финансы');let delta=0;if(ft)ft.rows.forEach(function(r){delta+=q046FinanceCashDelta_(ft,r,epochId,recon);});const physical=Math.round((opening+delta)*100)/100,reserved=Math.round(q046ReservedTotal_()*100)/100,free=Math.round((physical-reserved)*100)/100,forecastDate=q046ForecastDate_(body||{}),planned=q046PlannedFinance_(forecastDate),futureIn=planned.filter(function(x){return /^Приход$/i.test(x.type);}).reduce(function(s,x){return s+x.amount;},0),futureOut=planned.filter(function(x){return /^Расход$/i.test(x.type);}).reduce(function(s,x){return s+x.amount;},0),orders=q046OrderSummary_();let legacy={};try{const sh=sheet_('Кошелёк');legacy={wallet_b1:q046Money_(sh.getRange(1,2).getValue()),wallet_b2:q046Money_(sh.getRange(2,2).getValue())};}catch(_){}
   return {schema_version:Q046_WALLET.schemaVersion,contract_id:Q029_WALLET_PAIR_CONTRACT,source:'CANONICAL_RECONCILIATION_EPOCH',active_reconciliation_id:epochId,opening_cash:opening,post_cutover_cash_delta:Math.round(delta*100)/100,physical_cash:physical,reserved_total:reserved,free_now:free,partners:q046PartnerCards_(ft,recon),obligations:q046Obligations_(),planned_items:planned,allocations:q046AllocationRows_(),forecast:{horizon_end:Utilities.formatDate(forecastDate,spreadsheetTz_(),'yyyy-MM-dd'),expected_real_inflows:Math.round(futureIn*100)/100,planned_future_real_payments:Math.round(futureOut*100)/100,forecast_cash:Math.round((physical+futureIn-futureOut)*100)/100},orders:orders,finance_ledger:q029SheetFinanceHistory_(ft),source_provenance:q029HistoricPartnerCorrections_(ft,recon),cash_provenance:q029CashSourceProvenance_(recon,ft,epochId),legacy_compatibility_only:legacy};
 }
 function handleWalletCanonicalGetQ046_(body,requestId){const auth=authSession_(body.session_token,'wallet.view',requestId),model=q046BuildCanonicalWallet_(body);touchSessionAndDevice_(auth);return {ok:true,request_id:requestId,backend_version:CFG.VERSION,wallet:model,serverTime:nowIso_()};}
