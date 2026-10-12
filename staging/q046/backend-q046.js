@@ -5,7 +5,7 @@
 * ВАЖНО: секреты НЕ хранить в этом файле. Recovery/owner secrets — только Script Properties.
 */
 const CFG = Object.freeze({
- VERSION: 'backend-0.2.33-staging-q069',
+ VERSION: 'backend-0.2.34-staging-q029',
  SPREADSHEET_ID: '177IVzLUaNrzKScoRo0CjT5Zo7tJm5Bo0am2z9whAWdg',
  USERS_SHEET: 'Пользователи и права',
  ACCESS_REQUESTS_SHEET: '_APP_ACCESS_REQUESTS',
