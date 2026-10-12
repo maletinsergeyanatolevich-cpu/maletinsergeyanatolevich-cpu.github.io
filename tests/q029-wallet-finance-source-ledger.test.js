@@ -40,7 +40,7 @@ test('new authoritative Finance record immediately appears after server re-read'
  assert.equal(x.items[0].finance_id,'FAKE-NEW-AFTER-SAVE');assert(page.includes('Новый доход'));assert(page.includes('Все записи Google Sheets · 107'));
 });
 test('Finance/Wallet money rules stay reconciliation-epoch based and unchanged',()=>{
- assert(backend.includes("function q046FinanceCashDelta_(t,r,epochId)"));
+ assert(backend.includes("function q046FinanceCashDelta_(t,r,epochId,recon)"));
  assert(backend.includes("String(valueBy_(t,r,'cash_epoch_id')||'')!==epochId"));
  assert(backend.includes("opening+delta"));
  assert(backend.includes("physical-reserved"));
