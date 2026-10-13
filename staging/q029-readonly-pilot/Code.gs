@@ -18,6 +18,13 @@ const Q029_PILOT_SOURCE_SHA='5f569d4a1f56acf9cea3daee3dd8bcfcc7b94269';
 // Only the functions below are HTTP entry points.
 function doGet(e) {
   var action=String(e && e.parameter && e.parameter.action || 'ping');
+  if(action==='wallet-preview'){
+    // Apps Script HTML Service runs this client on the separate pilot deployment.
+    // The page itself is not the production PWA and does not validate app sessions.
+    q029PilotRequireOwner_();
+    return HtmlService.createHtmlOutputFromFile('WalletPilot')
+      .setTitle('Q029 Wallet RH9 / isolated read-only preview');
+  }
   if(action!=='ping')return json_({ok:false,error:'READ_ONLY_PILOT_GET_DENIED'});
   return json_({ok:true,service:'q029-isolated-readonly-pilot',mode:'READ_ONLY',
     version:CFG.VERSION,source_sha:Q029_PILOT_SOURCE_SHA,serverTime:nowIso_()});
@@ -673,4 +680,37 @@ function q029CashSourceProvenance_(recon,financeTable,epochId){
 function q046BuildCanonicalWallet_(body){
   const recon=q046LatestAppliedRecon_();if(!recon)throw new Error('APPLIED_RECONCILIATION_REQUIRED');const epochId=String(recon.reconciliation_id||''),opening=q046Money_(recon.production_cash_target),ft=q046SafeTable_('Финансы');let delta=0;if(ft)ft.rows.forEach(function(r){delta+=q046FinanceCashDelta_(ft,r,epochId,recon);});const physical=Math.round((opening+delta)*100)/100,reserved=Math.round(q046ReservedTotal_()*100)/100,free=Math.round((physical-reserved)*100)/100,forecastDate=q046ForecastDate_(body||{}),planned=q046PlannedFinance_(forecastDate),futureIn=planned.filter(function(x){return /^Приход$/i.test(x.type);}).reduce(function(s,x){return s+x.amount;},0),futureOut=planned.filter(function(x){return /^Расход$/i.test(x.type);}).reduce(function(s,x){return s+x.amount;},0),orders=q046OrderSummary_();let legacy={};try{const sh=sheet_('Кошелёк');legacy={wallet_b1:q046Money_(sh.getRange(1,2).getValue()),wallet_b2:q046Money_(sh.getRange(2,2).getValue())};}catch(_){}
   return {schema_version:Q046_WALLET.schemaVersion,contract_id:Q029_WALLET_PAIR_CONTRACT,source:'CANONICAL_RECONCILIATION_EPOCH',active_reconciliation_id:epochId,opening_cash:opening,post_cutover_cash_delta:Math.round(delta*100)/100,physical_cash:physical,reserved_total:reserved,free_now:free,partners:q046PartnerCards_(ft,recon),obligations:q046Obligations_(),planned_items:planned,allocations:q046AllocationRows_(),forecast:{horizon_end:Utilities.formatDate(forecastDate,spreadsheetTz_(),'yyyy-MM-dd'),expected_real_inflows:Math.round(futureIn*100)/100,planned_future_real_payments:Math.round(futureOut*100)/100,forecast_cash:Math.round((physical+futureIn-futureOut)*100)/100},orders:orders,finance_ledger:q029SheetFinanceHistory_(ft),source_provenance:q029HistoricPartnerCorrections_(ft,recon),cash_provenance:q029CashSourceProvenance_(recon,ft,epochId),legacy_compatibility_only:legacy};
+}
+
+
+// Q029 owner-only browser preview. This is a Google-account owner read path,
+// NOT a replacement for the PWA's normal session-token / wallet.view role gate.
+// The deployment MUST remain "Only me" and "Execute as me". Never broaden it.
+function q029PilotRequireOwner_(){
+  var active=String(Session.getActiveUser().getEmail()||'').trim().toLowerCase();
+  var effective=String(Session.getEffectiveUser().getEmail()||'').trim().toLowerCase();
+  if(!active||!effective||active!==effective)
+    throw new Error('Q029_PILOT_OWNER_NOT_CONFIRMED');
+}
+function q029PilotOwnerWalletRead(){
+  q029PilotRequireOwner_();
+  var w=q046BuildCanonicalWallet_({});
+  var l=w.finance_ledger||{}, p=w.cash_provenance||{};
+  return {ok:true,pilot_mode:'READ_ONLY',viewer:'OWNER_GOOGLE_ACCOUNT_ONLY',
+    backend_version:CFG.VERSION,source_sha:Q029_PILOT_SOURCE_SHA,
+    contract_id:w.contract_id,schema_version:w.schema_version,
+    opening_cash:w.opening_cash,post_cutover_cash_delta:w.post_cutover_cash_delta,
+    physical_cash:w.physical_cash,reserved_total:w.reserved_total,
+    free_now:w.free_now,active_reconciliation_id:w.active_reconciliation_id,
+    finance_row_count:l.row_count,finance_head_row_count:l.head_row_count,
+    finance_head_matches_source:l.head_matches_source,
+    source_generation:l.source_generation,source_rows_hash:l.source_rows_hash,
+    source_ids_hash:l.source_ids_hash,
+    cash_source_count:p.source_finance_count,
+    cash_historical_count:p.historical_without_epoch_count,
+    cash_manual_post_count:p.manual_post_cutover_count,
+    cash_epoch_linked_count:p.epoch_linked_count,
+    cash_movement_count:p.cash_movement_count,
+    partner_card_count:Array.isArray(w.partners)?w.partners.length:0,
+    received_at:nowIso_()};
 }
