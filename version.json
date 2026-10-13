@@ -1,8 +1,8 @@
 {
-  "version": "v0.3.28-staging-q029-rh9",
-  "buildId": "2026-10-12.q029.rh9",
-  "channel": "q029-wallet-client-release-hardening",
-  "rolloutStage": "staging-only",
+  "version": "v0.3.28-rc-q029",
+  "buildId": "2026-10-13.q029.rc1",
+  "channel": "q029-wallet-production-rc",
+  "rolloutStage": "stable",
   "eligibleRoles": [
     "ADMIN1",
     "ADMIN2",
@@ -17,5 +17,5 @@
     "safeWithoutDataReset": true
   },
   "publishedAt": null,
-  "notes": "Q-029 rh9 critical staging-only: direct post-Q044 Finance entries without cash_epoch_id require date/route classification; valid source changes refresh cash/partner read-model, ambiguous entries fail closed. Existing Q044 reconciliation opening preserved, 106 actual Finance IDs and offline full-source cache rebase retained. No master data corrections or live deploy."
+  "notes": "Q029 production release candidate (branch only). Backend 0.2.34 exact pair remains required; SW installation is locked until publishedAt is explicitly set by a separately authorized release. Preserves schema5 and previous production build cache for rollback; no live deployment."
 }
