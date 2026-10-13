@@ -1,6 +1,7 @@
 'use strict';
-const BUILD='2026-10-12.q029.rh9';
+const BUILD='2026-10-13.q029.rc1';
 const CACHE='production-pwa-'+BUILD;
+const ROLLBACK_CACHE='production-pwa-2026-10-07.3d';
 const APP_SHELL=[
   './index.html','./assets/app.css','./assets/media.css','./assets/app.js','./bootstrap.js',
   './manifest.webmanifest','./version.json','./icons/icon.svg','./icons/icon-maskable.svg','./offline.html'
@@ -48,7 +49,7 @@ async function q029ReleasePermitsInstall(){
   const manifest=await response.json();
   if(!manifest||manifest.buildId!==BUILD)throw new Error('APP_SHELL_VERSION_MISMATCH');
   const stage=String(manifest.rolloutStage||'').toLowerCase();
-  if(stage==='stable')return manifest;
+  if(stage==='stable'&&manifest.publishedAt&&['ADMIN1','ADMIN2','USER'].every(r=>manifest.eligibleRoles?.includes(r)))return manifest;
   if(stage==='admin1'&&Array.isArray(manifest.eligibleRoles)&&manifest.eligibleRoles.includes('ADMIN1')&&await cachedAdmin1())return manifest;
   throw new Error('CLIENT_RELEASE_GATE_NOT_OPEN');
 }
@@ -57,7 +58,7 @@ async function q029ReleasePermitsActivation(){
   if(!response)return false;
   const release=await response.json();
   if(release.buildId!==BUILD)return false;
-  if(release.rolloutStage==='stable')return true;
+  if(release.rolloutStage==='stable'&&release.publishedAt&&['ADMIN1','ADMIN2','USER'].every(r=>release.eligibleRoles?.includes(r)))return true;
   return release.rolloutStage==='admin1'&&Array.isArray(release.eligibleRoles)&&release.eligibleRoles.includes('ADMIN1')&&await cachedAdmin1();
 }
 self.addEventListener('install',event=>{
@@ -93,7 +94,7 @@ self.addEventListener('install',event=>{
 self.addEventListener('activate',event=>{
   event.waitUntil(
     caches.keys().then(async keys=>{
-      await Promise.all(keys.filter(k=>k.startsWith('production-pwa-')&&k!==CACHE).map(k=>caches.delete(k)));
+      await Promise.all(keys.filter(k=>k.startsWith('production-pwa-')&&k!==CACHE&&k!==ROLLBACK_CACHE).map(k=>caches.delete(k)));
       await self.clients.claim();
     })
   );
