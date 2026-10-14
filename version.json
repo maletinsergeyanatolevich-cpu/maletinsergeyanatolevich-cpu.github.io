@@ -1,21 +1,19 @@
 {
-  "version": "v0.3.28-rc-q029",
-  "buildId": "2026-10-13.q029.rc1",
-  "channel": "q029-wallet-production-rc",
-  "rolloutStage": "stable",
+  "version": "v0.3.27.2",
+  "buildId": "2026-10-07.3d",
+  "channel": "q034-diagnostic-transport",
+  "rolloutStage": "admin1",
   "eligibleRoles": [
-    "ADMIN1",
-    "ADMIN2",
-    "USER"
+    "ADMIN1"
   ],
   "dbSchema": 5,
-  "minBackend": "backend-0.2.34-staging-q029",
-  "previousBuildId": "2026-10-07.3d",
+  "minBackend": "backend-0.2.25",
+  "previousBuildId": "2026-10-07.3c",
   "rollback": {
-    "buildId": "2026-10-07.3d",
+    "buildId": "2026-10-07.3c",
     "dbSchema": 5,
     "safeWithoutDataReset": true
   },
-  "publishedAt": "2026-10-14T02:37:27.600Z",
-  "notes": "Q029 full Wallet stable existing-PWA release authorized by owner on 2026-10-14. All wallet-authorized active roles; compatible backend-0.2.34-staging-q029. Previous build 2026-10-07.3d retained for rollback; dbSchema5, phone drafts/outbox and user data must be preserved."
+  "publishedAt": "2026-10-07T04:38:00Z",
+  "notes": "Q-034 diagnostic-only fix: replace undefined CURRENT_USER reference with current backend/session role source."
 }
