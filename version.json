@@ -1,7 +1,7 @@
 {
-  "version": "v0.3.28-rc-q029",
-  "buildId": "2026-10-13.q029.rc1",
-  "channel": "q029-wallet-production-rc",
+  "version": "v0.3.28.1-rc-q029",
+  "buildId": "2026-10-15.q029.sortfix1",
+  "channel": "q029-wallet-matched-sortfix-rc",
   "rolloutStage": "stable",
   "eligibleRoles": [
     "ADMIN1",
@@ -9,7 +9,7 @@
     "USER"
   ],
   "dbSchema": 5,
-  "minBackend": "backend-0.2.34-staging-q029",
+  "minBackend": "backend-0.2.35-q029-finance-sortfix",
   "previousBuildId": "2026-10-07.3d",
   "rollback": {
     "buildId": "2026-10-07.3d",
@@ -17,5 +17,5 @@
     "safeWithoutDataReset": true
   },
   "publishedAt": null,
-  "notes": "Q029 production release candidate (branch only). Backend 0.2.34 exact pair remains required; SW installation is locked until publishedAt is explicitly set by a separately authorized release. Preserves schema5 and previous production build cache for rollback; no live deployment."
+  "notes": "Unpublished Q029 matched backend 0.2.35 source-ID sort hotfix Wallet RC; production currently rolled back to v0.3.27.2. Stable all-active-authorized roles only after distinct Sergey deploy approval. Backend-first rollback to previous Apps Script deployed 0.2.34 version, client rollback v0.3.27.2; preserve dbSchema5, IndexedDB, drafts and outbox."
 }
