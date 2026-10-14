@@ -1,4 +1,4 @@
-﻿const APP_RELEASE=Object.freeze({version:'v0.3.27.2',buildId:'2026-10-07.3d',channel:'q034-diagnostic-transport',dbSchema:5,updateStrategy:'manifest-service-worker',rolloutStage:'admin1',previousBuildId:'2026-10-07.3c'});window.APP_RELEASE=APP_RELEASE;
+﻿const APP_RELEASE=Object.freeze({version:'v0.3.28-staging-q029-rh9',buildId:'2026-10-12.q029.rh9',channel:'q029-wallet-client-release-hardening',dbSchema:5,updateStrategy:'manifest-service-worker',rolloutStage:'staging-only',previousBuildId:'2026-10-07.3d'});window.APP_RELEASE=APP_RELEASE;
 function emptySnapshot(){return {meta:{version:APP_RELEASE.version,snapshotDate:'',snapshotTime:'',timezone:'',backendConnected:false,source:'Нет загруженных бизнес-данных',schemaVersion:1},orders:[],archivedOrders:[],plannedFinance:[],calculations:{},wallet:{balance:0,income:0,expense:0,reserve:0,freeNow:0,expense7:0,free7:0,futureExpenses:[],transactions:[],futureTotal:0,futureIncome:0,ownerDebt:0,ownerDebtSergey:0,ownerDebtEvgeny:0,ownerDebtTotal:0,ownerGrossDebtSergey:0,ownerGrossDebtEvgeny:0,ownerGrossDebtTotal:0,netPosition:0,afterObligations:0},nomenclature:[],purchaseLines:[],purchaseAggregated:[],gallery:[],appIssues:[],purchaseWarnings:[]}}
 function normalizeSnapshot(x){const b=emptySnapshot();if(!x||typeof x!=='object')return b;return {...b,...x,meta:{...b.meta,...(x.meta||{})},wallet:{...b.wallet,...(x.wallet||{})},orders:Array.isArray(x.orders)?x.orders:[],archivedOrders:Array.isArray(x.archivedOrders)?x.archivedOrders:[],plannedFinance:Array.isArray(x.plannedFinance)?x.plannedFinance:[],calculations:x.calculations&&typeof x.calculations==='object'?x.calculations:{},nomenclature:Array.isArray(x.nomenclature)?x.nomenclature:[],purchaseLines:Array.isArray(x.purchaseLines)?x.purchaseLines:[],purchaseAggregated:Array.isArray(x.purchaseAggregated)?x.purchaseAggregated:[],gallery:Array.isArray(x.gallery)?x.gallery:[],appIssues:Array.isArray(x.appIssues)?x.appIssues:[],purchaseWarnings:Array.isArray(x.purchaseWarnings)?x.purchaseWarnings:[]}}
 let S=emptySnapshot(); window.SNAPSHOT=S;
@@ -880,7 +880,7 @@ function go(id){
  document.querySelectorAll('.screen').forEach(x=>x.classList.remove('active'));target.classList.add('active');
  document.getElementById('pageTitle').textContent=titles[id]||'Производство';
  renderBottomNav();window.scrollTo({top:0,behavior:'smooth'});
- if(id==='home')renderHome();if(id==='checklists')renderChecklists();if(id==='sync')renderSync();if(id==='wallet')renderWallet();if(id==='nom')renderNom();if(id==='avito')renderAvito();if(id==='gallery')renderGallery();if(id==='admin')renderAdmin();if(id==='activityLog')renderActivityLog();if(id==='analytics')renderAnalytics();if(id==='calculator')renderCalculator();if(id==='salesAnalytics')renderSalesAnalytics();if(id==='appdev')renderAppDev();
+ if(id==='home')renderHome();if(id==='checklists')renderChecklists();if(id==='sync')renderSync();if(id==='wallet'){q029WalletInvalidate();renderWallet()}if(id==='nom')renderNom();if(id==='avito')renderAvito();if(id==='gallery')renderGallery();if(id==='admin')renderAdmin();if(id==='activityLog')renderActivityLog();if(id==='analytics')renderAnalytics();if(id==='calculator')renderCalculator();if(id==='salesAnalytics')renderSalesAnalytics();if(id==='appdev')renderAppDev();
  if((id==='gallery'||id==='appdev')&&backendSession()&&navigator.onLine!==false){runCoreSync('screen-'+id,{force:false,manual:false,cooldownMs:12000}).then(d=>{if(!d?.ok&&!d?.skipped)return;if(document.querySelector('.screen.active')?.id!==id)return;if(id==='gallery')renderGallery();else renderAppDev()}).catch(()=>{})}
 }
 function badge(text,kind=''){return `<span class="badge ${kind}">${esc(text)}</span>`}
@@ -2452,11 +2452,11 @@ async function saveOwnerAction(owner,action){
  closeModal();await refreshPending();renderWallet();showAppToast('Операция сохранена офлайн.','ok',3200)
 }
 function walletBalanceRow(label,value,onclick,sub=''){return `<button class="wallet-balance-row" onclick="${onclick}"><span><b>${esc(label)}</b>${sub?`<small>${esc(sub)}</small>`:''}</span><strong>${rub(value)}</strong><i>›</i></button>`}
-function renderWalletBalance(){
+function q029LegacyRenderWalletBalance(){
  const w=S.wallet,inc=walletFutureIncomeItems(),exp=walletFutureExpenseItems(),futureIncome=inc.reduce((a,x)=>a+Number(x.amount||0),0),futureExpense=exp.reduce((a,x)=>a+Number(x.amount||0),0),periodIncome=Number(w.periodIncome??w.income??0),periodExpense=Number(w.periodExpense??w.expense??0),currentDebt=Number(w.ownerDebtTotal??((w.ownerDebtSergey||w.ownerDebt||0)+(w.ownerDebtEvgeny||0))),grossDebt=Number(w.ownerGrossDebtTotal??0),net=Number(w.netPosition??(Number(w.balance||0)-grossDebt));
  document.getElementById('wallet').innerHTML=`<button class="back" onclick="setWalletView('main')">← Кошелёк</button><div class="section-title"><h2>Остаток</h2><span class="badge">чистая позиция</span></div><div class="wallet-position-grid"><div class="${net<0?'negative':''}"><span>Остаток · чистая позиция</span><b>${rub(net)}</b></div><div><span>Деньги производства</span><b>${rub(w.balance)}</b></div><div><span>Текущий долг владельцам</span><b>${rub(currentDebt)}</b></div></div><div class="wallet-net-explain">Чистая позиция показывает реальное состояние производства после учёта личных денег владельцев. Личная оплата расхода увеличивает минус и долг соответствующему владельцу.</div><div class="wallet-balance-list">${walletBalanceRow('Остаток',net,"walletLedgerModal('all')",'чистая позиция производства')}${walletBalanceRow('Долг Сергею',Number(w.ownerDebtSergey||w.ownerDebt||0),"walletOwnerDetail('sergey','debt')",'текущий непокрытый долг')}${walletBalanceRow('Долг Евгению',Number(w.ownerDebtEvgeny||0),"walletOwnerDetail('evgeny','debt')",'текущий непокрытый долг')}${walletBalanceRow('Вывод денег Сергею',Number(w.withdrawSergey||0),"walletOwnerDetail('sergey','withdraw')")}${walletBalanceRow('Вывод денег Евгению',Number(w.withdrawEvgeny||0),"walletOwnerDetail('evgeny','withdraw')")}${walletBalanceRow('Предстоящие затраты',futureExpense,"walletFutureModal('expense')",exp.length+' поз.')}${walletBalanceRow('Предстоящие доходы',futureIncome,"walletFutureModal('income')",inc.length+' поз.')}${walletBalanceRow('Доходы периода',periodIncome,"walletLedgerModal('income')")}${walletBalanceRow('Расходы периода',periodExpense,"walletLedgerModal('expense')")}</div>`
 }
-function renderWallet(){
+function q029LegacyRenderWallet(){
  if(WALLET_VIEW==='balance'){renderWalletBalance();return}
  const w=S.wallet,tx=Array.isArray(w.transactions)?w.transactions:[],grossDebt=Number(w.ownerGrossDebtTotal??0),net=Number(w.netPosition??(Number(w.balance||0)-grossDebt));
  document.getElementById('wallet').innerHTML=`<button class="back" onclick="go('home')">← Главная</button><button class="wallet-balance-main wallet-balance-main-button ${net<0?'negative':''}" onclick="setWalletView('balance')"><div class="label">Остаток · чистая позиция</div><div class="value">${rub(net)}</div><small>Деньги производства: ${rub(w.balance)} · нажмите для долгов, выводов, планов и итогов периода</small></button><button class="doc-action wallet-add-structured quick-action-wide" onclick="walletModal()"><span class="action-label">Доход / расход</span>${actionIcon('money')}</button><div class="section-title"><h2>Быстро добавить информацию</h2><span class="badge">офлайн</span></div>${standardActions('wallet','WALLET','Заметка к Кошельку')}<div class="section-title"><h2>Движение денег</h2><span class="badge">${tx.length}</span></div>${tx.length?tx.map(walletMovementRow).join(''):'<div class="muted">Движений за текущий период пока нет.</div>'}<div class="section-title"><h2>Черновики с телефона</h2><span id="walletDraftBadge" class="badge">0</span></div><div id="walletDrafts" class="drafts"></div>`;renderWalletDrafts()
@@ -2761,17 +2761,53 @@ const DB_MIGRATIONS={
 function runDbMigrations(db,oldVersion,newVersion){for(let v=Math.max(1,oldVersion+1);v<=newVersion;v++){const migrate=DB_MIGRATIONS[v];if(migrate)migrate(db)}}
 function openDB(){return new Promise((resolve,reject)=>{const r=indexedDB.open(DB_NAME,DB_SCHEMA);r.onupgradeneeded=e=>runDbMigrations(r.result,e.oldVersion,e.newVersion||DB_SCHEMA);r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);r.onblocked=()=>console.warn('IndexedDB upgrade blocked by another open app window')})}
 function offlineAccessValid(){const until=lsGet(BACKEND_KEYS.offlineUntil);const t=Date.parse(until||'');return Number.isFinite(t)&&t>Date.now()}
+/* Q029 / Q067: Finance is server-authoritative. Do not persist or hydrate pre-cutover
+   Wallet cash/history from the generic offline snapshot. Offline drafts/outbox are
+   separate stores and MUST NOT be cleared by source generation changes. */
+function q029FinanceCacheClean(snapshot){
+ const v=normalizeSnapshot(snapshot);
+ return {...v,wallet:{...emptySnapshot().wallet},plannedFinance:[],walletCanonical:null,
+   meta:{...v.meta,financeCacheTrust:'SERVER_ONLY_FULL_REBASE_V1'}};
+}
+async function q029RepairOldSnapshotCache(rec){
+ const safe={...rec,snapshot:q029FinanceCacheClean(rec.snapshot),
+   financeCacheTrust:'SERVER_ONLY_FULL_REBASE_V1'};
+ if(rec.financeCacheTrust==='SERVER_ONLY_FULL_REBASE_V1')return safe;
+ const db=await openDB(),tx=db.transaction('snapshotCache','readwrite');
+ tx.objectStore('snapshotCache').put(safe);
+ await new Promise((resolve,reject)=>{tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error||new Error('FINANCE_CACHE_REBASE_FAILED'));tx.onabort=()=>reject(tx.error||new Error('FINANCE_CACHE_REBASE_ABORTED'))});
+ return safe;
+}
+async function q029PersistFinanceSourceBaseline(ledger,userId){
+ const hash=String(ledger?.source_ids_hash||''),ids=(ledger?.items||[]).map(x=>String(x.finance_id||'').trim());
+ if(!userId||ledger?.source!=='GOOGLE_SHEETS_FINANCE'||!Number.isSafeInteger(ledger?.row_count)||
+    ledger.row_count!==ids.length||!/^[0-9a-f]{64}$/.test(hash))
+   throw new Error('FINANCE_BASELINE_PROOF_MISSING');
+ if(typeof crypto==='undefined'||!crypto.subtle||typeof TextEncoder==='undefined')
+   throw new Error('FINANCE_BASELINE_CRYPTO_UNAVAILABLE');
+ const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(ids.slice().sort())));
+ const actual=Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,'0')).join('');
+ if(actual!==hash)throw new Error('FINANCE_BASELINE_SOURCE_HASH_MISMATCH');
+ const db=await openDB(),tx=db.transaction('snapshotCache','readwrite');
+ tx.objectStore('snapshotCache').put({id:'finance-source-baseline:'+String(userId),
+   userId:String(userId),source:'GOOGLE_SHEETS_FINANCE',source_ids_hash:hash,
+   row_count:ids.length,source_rows_hash:String(ledger.source_rows_hash||''),
+   head_current_rev:ledger.head_current_rev??null,
+   verifiedAt:new Date().toISOString(),mode:'AUTHORITATIVE_FULL_READ_V1'});
+ await new Promise((resolve,reject)=>{tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error||new Error('FINANCE_BASELINE_SAVE_FAILED'));tx.onabort=()=>reject(tx.error||new Error('FINANCE_BASELINE_SAVE_ABORTED'))});
+ return true;
+}
 async function purgeExpiredSnapshotCache(){return false}
-async function putSnapshotCache(snapshot){const db=await openDB();const tx=db.transaction('snapshotCache','readwrite');const rec={id:'current',savedAt:new Date().toISOString(),offlineAccessUntil:lsGet(BACKEND_KEYS.offlineUntil),user:backendUserPublic(),snapshot:normalizeSnapshot(snapshot)};tx.objectStore('snapshotCache').put(rec);return new Promise((res,rej)=>{tx.oncomplete=()=>{DATA_STATE.lastCacheAt=rec.savedAt;res(rec)};tx.onerror=()=>rej(tx.error)})}
+async function putSnapshotCache(snapshot){const db=await openDB();const tx=db.transaction('snapshotCache','readwrite');const rec={id:'current',savedAt:new Date().toISOString(),offlineAccessUntil:lsGet(BACKEND_KEYS.offlineUntil),user:backendUserPublic(),snapshot:q029FinanceCacheClean(snapshot),financeCacheTrust:'SERVER_ONLY_FULL_REBASE_V1'};tx.objectStore('snapshotCache').put(rec);return new Promise((res,rej)=>{tx.oncomplete=()=>{DATA_STATE.lastCacheAt=rec.savedAt;res(rec)};tx.onerror=()=>rej(tx.error)})}
 async function getSnapshotCache(){const db=await openDB();const tx=db.transaction('snapshotCache','readonly');const r=tx.objectStore('snapshotCache').get('current');return new Promise((res,rej)=>{r.onsuccess=()=>res(r.result||null);r.onerror=()=>rej(r.error)})}
 async function clearStore(name){const db=await openDB();if(!db.objectStoreNames.contains(name))return;const tx=db.transaction(name,'readwrite');tx.objectStore(name).clear();return new Promise((res,rej)=>{tx.oncomplete=res;tx.onerror=()=>rej(tx.error)})}
 async function clearServerAccess(clearDevice=false,preserveSnapshot=true){lsDel(BACKEND_KEYS.session);lsDel(BACKEND_KEYS.sessionId);if(!preserveSnapshot){lsDel(BACKEND_KEYS.offlineUntil);lsDel(BACKEND_KEYS.user);await clearStore('snapshotCache');S=emptySnapshot();window.SNAPSHOT=S;applyBackendUser({});renderCoreScreens()}if(clearDevice){lsDel(BACKEND_KEYS.device);lsDel(BACKEND_KEYS.request);lsDel(BACKEND_KEYS.secret)}}
 async function handleAuthFailure(err){const code=String(err||'');if(/^(USER_DISABLED|DEVICE_REVOKED)$/.test(code)){await clearServerAccess(false,false);return 'cleared'}if(/^SESSION_/.test(code)){await clearServerAccess(false,true);return 'preserved'}return 'ignored'}
 async function performRemoteWipe(){const db=await openDB();const names=['drafts','history','activity','checklists','snapshotCache'].filter(n=>db.objectStoreNames.contains(n));if(names.length){const tx=db.transaction(names,'readwrite');names.forEach(n=>tx.objectStore(n).clear());await new Promise((res,rej)=>{tx.oncomplete=res;tx.onerror=()=>rej(tx.error)})}await clearServerAccess(false,false);alert('Администратор отозвал локальные данные этого устройства. Для продолжения нужен новый доступ.')}
-function applySnapshot(snapshot){S=normalizeSnapshot(snapshot);window.SNAPSHOT=S;renderCoreScreens()}
+function applySnapshot(snapshot){if(typeof q029WalletInvalidate==='function')q029WalletInvalidate();S=q029FinanceCacheClean(snapshot);window.SNAPSHOT=S;renderCoreScreens()}
 function syncPermissionNav(){renderBottomNav()}
 function renderCoreScreens(){syncPermissionNav();renderHome();renderOrders();renderBuy();if(document.getElementById('wallet')?.classList.contains('active'))renderWallet();if(document.getElementById('nom')?.classList.contains('active'))renderNom();if(document.getElementById('gallery')?.classList.contains('active'))renderGallery();if(document.getElementById('analytics')?.classList.contains('active'))renderAnalytics();if(document.getElementById('appdev')?.classList.contains('active'))renderAppDev();}
-async function loadCachedSnapshot(){const rec=await getSnapshotCache();if(!rec?.snapshot)return false;const cachedNomRev=Math.floor(Number(rec.snapshot?.meta?.nomenclatureRevision||0));if(cachedNomRev>localNomRevision())setLocalNomRevision(cachedNomRev);const cachedRole=String(rec.user?.role||SESSION.role||'');const recUntil=Date.parse(rec.offlineAccessUntil||'');const leaseValid=Number.isFinite(recUntil)&&recUntil>Date.now();if(cachedRole!=='ADMIN1'&&!leaseValid)return false;if(rec.user){lsSet(BACKEND_KEYS.user,JSON.stringify(rec.user));applyBackendUser(rec.user)}applySnapshot(rec.snapshot);DATA_STATE.source='cache';DATA_STATE.lastCacheAt=rec.savedAt||'';DATA_STATE.lastError='';return true}
+async function loadCachedSnapshot(){const rec=await getSnapshotCache();if(!rec?.snapshot)return false;const cachedRole=String(rec.user?.role||SESSION.role||'');const recUntil=Date.parse(rec.offlineAccessUntil||'');const leaseValid=Number.isFinite(recUntil)&&recUntil>Date.now();if(cachedRole!=='ADMIN1'&&!leaseValid)return false;const safe=await q029RepairOldSnapshotCache(rec);const cachedNomRev=Math.floor(Number(safe.snapshot?.meta?.nomenclatureRevision||0));if(cachedNomRev>localNomRevision())setLocalNomRevision(cachedNomRev);if(safe.user){lsSet(BACKEND_KEYS.user,JSON.stringify(safe.user));applyBackendUser(safe.user)}applySnapshot(safe.snapshot);DATA_STATE.source='cache';DATA_STATE.lastCacheAt=safe.savedAt||'';DATA_STATE.lastError='';return true}
 async function pullLiveSnapshot(opts={}){
   const token=backendSession();if(!token){DATA_STATE.lastError='NO_SESSION';return {ok:false,error:'NO_SESSION'}}
   DATA_STATE.lastAttemptAt=new Date().toISOString();
@@ -3694,17 +3730,33 @@ function network(){
     setTimeout(()=>runResumeSync('online'),250);
     setTimeout(()=>ensureNomenclatureDeltaSetup().catch(()=>{}),1200);
   }
+  if(document.getElementById('wallet')?.classList.contains('active')){
+    q029WalletInvalidate();renderWallet();
+  }
 }
+// When Google Sheets is edited directly, the next online Wallet refresh reads
+// physical Finance rows again (including deletions). This never touches drafts.
+setInterval(()=>{
+ if(navigator.onLine===false||!backendSession()||!q029WalletUiAllowed()||
+    Q046_WALLET_STAGE.loading||document.visibilityState==='hidden'||
+    !document.getElementById('wallet')?.classList.contains('active'))return;
+ const overlay=document.querySelector?.('dialog[open], .modal.show, .modal.active');
+ if(overlay)return;
+ q046LoadCanonicalWallet(true).catch(()=>{});
+},45000);
 window.addEventListener('online',network);
 window.addEventListener('offline',network);
 let LAST_VISIBLE_REFRESH=0;
 document.addEventListener('visibilitychange',()=>{
   if(document.visibilityState!=='visible'||!backendSession())return;
+  if(document.getElementById('wallet')?.classList.contains('active')){
+    q029WalletInvalidate();renderWallet();
+  }
   const now=Date.now();if(now-LAST_VISIBLE_REFRESH>30000){LAST_VISIBLE_REFRESH=now;runResumeSync('visibility')}
 });
 window.addEventListener('pageshow',()=>runResumeSync('pageshow'));
 setInterval(()=>{if(backendSession()&&navigator.onLine!==false)syncReadyDrafts({auto:true,lightOnly:true,reason:'foreground-timer'}).then(r=>{if(r?.waitingHeavy)scheduleBackgroundMedia('foreground-timer')}).catch(()=>{})},15000);
-function updateEligible(v={}){const stage=String(v.rolloutStage||v.releaseStage||'stable').toLowerCase();if(stage==='paused')return false;if(stage==='admin1')return isAdmin1();return true}
+function updateEligible(v={}){if(!v||!v.buildId)return false;const stage=String(v.rolloutStage||v.releaseStage||'').toLowerCase();if(stage==='admin1')return isAdmin1()&&Array.isArray(v.eligibleRoles)&&v.eligibleRoles.includes('ADMIN1');if(stage==='stable')return true;return false}
 function showUpdateBanner(v={}){if(!updateEligible(v))return;updateState.manifest=v||{};window.__PROD_UPDATE_READY=true;const box=document.getElementById('updateBanner');const text=document.getElementById('updateText');if(text)text.textContent=`Доступно обновление${v?.buildId?' · '+v.buildId:''}`;if(box)box.classList.remove('hidden')}
 document.addEventListener('production:update-ready',e=>showUpdateBanner(e.detail||{}));
 
@@ -4009,7 +4061,7 @@ async function initPwaUpdateLayer(){
 }
 window.applyAvailableUpdate=async function(){
   const manifest=updateState.manifest||{};
-  if(manifest.buildId&&!updateEligible(manifest)){alert('Это обновление пока доступно только ADMIN1.');return false}
+  if(!manifest.buildId||!updateEligible(manifest)){alert('Обновление недоступно для текущего этапа или роли.');return false}
   setTransferProgress('update',{active:true,stage:'Проверяю версию',done:0,total:0,bytesLoaded:0});
   const reg=window.__PROD_SW_REG||await navigator.serviceWorker.getRegistration('./');
   if(!reg){finishTransferProgress('update',{stage:'Service Worker не найден'});return false}
@@ -4032,3 +4084,187 @@ window.applyAvailableUpdate=async function(){
 
 async function startApplication(){const started=performance.now();initTheme();purgeLegacyDemoAdminState();hydrateBackendUser();await openDB();initGallerySwipe();let loaded=await loadCachedSnapshot();if(!loaded){S=emptySnapshot();window.SNAPSHOT=S;DATA_STATE.source='empty';renderCoreScreens()}renderBottomNav();network();initPwaUpdateLayer();setTransferProgress('sync',{active:!!backendSession(),stage:loaded?'Локальные данные готовы':'Локальных данных пока нет',items:Array.isArray(S.nomenclature)?S.nomenclature.length:0});window.__PROD_CACHED_READY_MS=Math.round(performance.now()-started);if(backendSession()){setTimeout(()=>runResumeSync('startup'),350);setTimeout(()=>ensureNomenclatureDeltaSetup().catch(()=>{}),2500)}else backendPing({timeoutMs:2500})}
 startApplication();
+
+
+/* Q-046 WALLET CANONICAL STAGING UI */
+const Q029_WALLET_BACKEND_VERSION='backend-0.2.34-staging-q029';
+const Q029_WALLET_PAIR_CONTRACT='Q029_FINANCE_IDSET_V1';
+const Q046_WALLET_STAGE={loading:false,loaded:false,error:'',generation:0,session:'',userId:'',backendVersion:''};
+function q029WalletUiAllowed(){return !!backendSession()&&hasPermission('wallet.view')}
+function q046WalletCanAdd(){return q029WalletUiAllowed()&&hasPermission('wallet.add')}
+function q046WalletCanEdit(record){return q029WalletUiAllowed()&&!!record&&canMutateRecord('wallet','update',String(record.created_by_user_id||''))}
+function q046WalletActionAllowed(payload){
+ const action=String(payload?.action||''),w=q046WalletModel();
+ if(!q029WalletUiAllowed())return false;
+ if(['wallet.finance.create','wallet.plan.create','wallet.allocation.create'].includes(action))return q046WalletCanAdd();
+ if(['wallet.plan.edit','wallet.plan.spend','wallet.plan.cancel'].includes(action))
+  return q046WalletCanEdit((w?.planned_items||[]).find(x=>x.finance_id===payload.planned_finance_id));
+ if(action==='wallet.allocation.cancel')
+  return q046WalletCanEdit((w?.allocations||[]).find(x=>x.allocation_id===payload.allocation_id));
+ return action==='wallet.sensitive.execute'&&isAdmin1();
+}
+function q046WalletNoAccess(){
+ const el=document.getElementById('wallet');if(!el)return;
+ el.innerHTML='<button class="back" onclick="go(\'home\')">← Главная</button><div class="card"><b>Кошелёк недоступен</b><p>Требуются активная сессия и разрешение «Кошелёк: видеть».</p></div>';
+}
+
+function q029WalletInvalidate(){
+  // Wallet is a replace-only live view. Never carry Finance ledger across opens,
+  // role changes or offline transitions, and never re-use a delayed old response.
+  Q046_WALLET_STAGE.generation=(Number(Q046_WALLET_STAGE.generation)||0)+1;
+  Q046_WALLET_STAGE.loaded=false;Q046_WALLET_STAGE.loading=false;
+  Q046_WALLET_STAGE.session='';Q046_WALLET_STAGE.userId='';Q046_WALLET_STAGE.backendVersion='';
+  Q046_WALLET_STAGE.error='';S.walletCanonical=null;
+}
+function q029WalletValidatePairResponse(d){
+  if(d?.backend_version!==Q029_WALLET_BACKEND_VERSION||d?.wallet?.contract_id!==Q029_WALLET_PAIR_CONTRACT||
+     d?.wallet?.finance_ledger?.source_generation!=='FINANCE_ROWS_SHA256_V1'||
+     !/^[0-9a-f]{64}$/.test(String(d?.wallet?.finance_ledger?.source_rows_hash||'')))
+    throw new Error('WALLET_BACKEND_PAIR_INCOMPATIBLE');
+}
+function q029WalletValidateFull(wallet){
+  const ledger=wallet?.finance_ledger,items=ledger?.items;
+  if(ledger?.source!=='GOOGLE_SHEETS_FINANCE'||!Array.isArray(items)||
+     !Number.isSafeInteger(ledger.row_count)||ledger.row_count!==items.length)
+    throw new Error('FINANCE_REBASE_INCOMPLETE');
+  const ids=new Set();
+  for(const item of items){
+    const id=typeof item?.finance_id==='string'?item.finance_id.trim():'';
+    if(!id||ids.has(id))throw new Error('FINANCE_REBASE_DUPLICATE_OR_MISSING_ID');
+    ids.add(id);
+  }
+  return wallet; // never append/merge with an older Finance collection
+}
+function q046WalletModel(){
+  if(!q029WalletUiAllowed()||!Q046_WALLET_STAGE.loaded)return null;
+  if((Q046_WALLET_STAGE.session&&Q046_WALLET_STAGE.session!==backendSession())||
+     (Q046_WALLET_STAGE.userId&&typeof SESSION!=='undefined'&&Q046_WALLET_STAGE.userId!==SESSION.userId)){
+    q029WalletInvalidate();return null;
+  }
+  return S.walletCanonical||null;
+}
+function q046EvtPart(){try{return crypto.randomUUID()}catch(_){return Date.now()+'-'+Math.random().toString(16).slice(2)}}
+function q046PendingEvent(kind,payload){const target=payload.planned_finance_id||payload.allocation_id||payload.obligation_id||payload.partner_party_id||'new',key='q046_pending_'+kind+'_'+target,canon=JSON.stringify({...payload,session_token:undefined,request_id:undefined,event_id:undefined});try{const old=JSON.parse(localStorage.getItem(key)||'null');if(old&&old.payload===canon&&old.event_id)return {key,event_id:old.event_id}}catch(_){}const event_id='Q046-'+kind.toUpperCase()+'-'+q046EvtPart();localStorage.setItem(key,JSON.stringify({event_id,payload:canon,at:Date.now()}));return {key,event_id}}
+function q046ClearPending(x){try{localStorage.removeItem(x.key)}catch(_){}}
+async function q046Action(kind,payload){
+  if(!q046WalletActionAllowed(payload))throw new Error('WALLET_PERMISSION_DENIED');
+  const token=backendSession(),userId=String(SESSION.userId||''),model=q046WalletModel();
+  if(!token||!model||Q046_WALLET_STAGE.backendVersion!==Q029_WALLET_BACKEND_VERSION||
+     model.contract_id!==Q029_WALLET_PAIR_CONTRACT||navigator.onLine===false)
+    throw new Error('WALLET_BACKEND_PAIR_NOT_VERIFIED');
+  // Read-only version pin before mutation; event ID is not made until server is verified.
+  const ping=await backendPing({timeoutMs:6000});
+  if(!ping?.ok||ping.version!==Q029_WALLET_BACKEND_VERSION)
+    throw new Error('WALLET_BACKEND_VERSION_CHANGED');
+  if(backendSession()!==token||String(SESSION.userId||'')!==userId||
+     !q046WalletActionAllowed(payload)||q046WalletModel()!==model)
+    throw new Error('WALLET_SESSION_CHANGED_BEFORE_WRITE');
+  const p=q046PendingEvent(kind,payload),req={...payload,wallet_contract_id:Q029_WALLET_PAIR_CONTRACT,
+    event_id:p.event_id,session_token:token,device_id:backendDeviceId(),
+    request_id:'Q046-'+kind+'-'+Date.now()};
+  const d=await backendPost(req,{timeoutMs:60000});
+  if(!d?.ok)throw new Error(d?.detail||d?.error||'Q046_ACTION_FAILED');
+  q046ClearPending(p);await q046LoadCanonicalWallet(true);return d;
+}
+function q029WalletReadableError_(value){
+ const raw=String(value||''),m=raw.match(/^(FINANCE_MANUAL_[A-Z_]+):([^\s]+)$/);
+ if(!m)return raw;
+ const guidance={
+  FINANCE_MANUAL_DATE_NEEDS_CLARIFICATION:'укажите точную дату и время операции. Для даты сверки нужен час и минута',
+  FINANCE_MANUAL_ACTUAL_FLAG_REQUIRED:'укажите «Да» или «Нет» в поле «Фактическая операция»',
+  FINANCE_MANUAL_TYPE_OR_AMOUNT_INVALID:'проверьте тип Приход/Расход и положительную сумму',
+  FINANCE_MANUAL_CASH_DESTINATION_REQUIRED:'для прихода укажите поле cash_destination (PRODUCTION_WALLET, PERSON или NONE)',
+  FINANCE_MANUAL_PAYMENT_SOURCE_REQUIRED:'для расхода укажите поле «Источник денег / оплаты» (PRODUCTION_WALLET, PERSON, CREDIT или SUPPLIER_DEBT)',
+  FINANCE_MANUAL_PARTNER_CLASSIFICATION_REQUIRED:'для личного расхода заполните partner_party_id и partner_effect=FUNDING_INCREASE'
+ };
+ return 'Уточните строку «Финансы» '+m[2]+': '+(guidance[m[1]]||raw)+'. Деньги не показаны, чтобы не допустить неверного остатка.';
+}
+async function q046LoadCanonicalWallet(force=false){
+  if(!q029WalletUiAllowed()){q029WalletInvalidate();return}
+  if(Q046_WALLET_STAGE.loading&&!force)return;
+  if(Q046_WALLET_STAGE.loaded&&!force)return;
+  if(force)q029WalletInvalidate();
+  const token=backendSession(),userId=typeof SESSION==='undefined'?'':String(SESSION.userId||'');
+  if(!token||navigator.onLine===false){
+    q029WalletInvalidate();
+    Q046_WALLET_STAGE.error=!token?'Нет backend-сессии':'Офлайн: данные Кошелька необходимо обновить';
+    if(document.getElementById('wallet')?.classList.contains('active'))renderWallet();
+    return;
+  }
+  const generation=(Number(Q046_WALLET_STAGE.generation)||0)+1;
+  Q046_WALLET_STAGE.generation=generation;Q046_WALLET_STAGE.loading=true;
+  try{
+    const d=await backendPost({action:'wallet.canonical.get',session_token:token,
+      device_id:backendDeviceId(),request_id:'Q046-WALLET-'+Date.now(),horizon:'month'},{timeoutMs:30000});
+    if(generation!==Q046_WALLET_STAGE.generation||!q029WalletUiAllowed()||
+       backendSession()!==token||(typeof SESSION!=='undefined'&&String(SESSION.userId||'')!==userId))return;
+    if(!d?.ok)throw new Error(d?.detail||d?.error||'WALLET_CANONICAL_FAILED');
+    q029WalletValidatePairResponse(d);
+    const full=q029WalletValidateFull(d.wallet);
+    if(typeof openDB==='function')await q029PersistFinanceSourceBaseline(full.finance_ledger,userId);
+    // SHA256 and IndexedDB persist are async: stale session responses must not publish.
+    if(generation!==Q046_WALLET_STAGE.generation||!q029WalletUiAllowed()||
+       backendSession()!==token||(typeof SESSION!=='undefined'&&String(SESSION.userId||'')!==userId))return;
+    S.walletCanonical=full; // replace the entire authoritative snapshot, including deletions
+    Q046_WALLET_STAGE.session=token;Q046_WALLET_STAGE.userId=userId;
+    Q046_WALLET_STAGE.backendVersion=d.backend_version;
+    Q046_WALLET_STAGE.loaded=true;Q046_WALLET_STAGE.error='';
+  }catch(e){
+    if(generation===Q046_WALLET_STAGE.generation){
+      S.walletCanonical=null;Q046_WALLET_STAGE.loaded=false;
+      Q046_WALLET_STAGE.error=q029WalletReadableError_(String(e?.message||e));
+    }
+  }finally{
+    if(generation===Q046_WALLET_STAGE.generation){
+      Q046_WALLET_STAGE.loading=false;
+      if(document.getElementById('wallet')?.classList.contains('active'))renderWallet();
+    }
+  }
+}
+function q046PartnerLabel(p){return p?.display_name||p?.party_id||'Партнёр'}
+function q046PartnerCard(p){return `<button class="wallet-balance-row" onclick="q046PartnerDetail('${esc(p.party_id)}')"><span><b>${esc(q046PartnerLabel(p))}</b><small>funding_due ${rub(p.funding_due||0)} · distribution ${rub(p.distribution_balance||0)}</small></span><strong>›</strong></button>`}
+function q046ObligationCard(o){return `<button class="wallet-balance-row" onclick="q046ObligationDetail('${esc(o.obligation_id)}')"><span><b>${esc(o.title||'Обязательство')}</b><small>${esc(o.payment_frequency||'')} · оплачено ${rub(o.paid_principal||0)}</small></span><strong>${rub(o.remaining||0)}</strong></button>`}
+function q046PlanRow(x){const income=String(x.type||'').toLowerCase()==='приход';return `<article class="card"><b>${income?'Плановый доход':'Плановый расход'} · ${esc(x.category||'Без категории')}</b><div>${rub(x.amount||0)} · ${esc(x.due_date||'без даты')} · ${esc(x.state||'')}</div><small>${esc(x.comment||'')}</small>${q046WalletCanEdit(x)?`<div class="row-actions"><button onclick="q046EditPlan('${esc(x.finance_id)}')">Изменить</button><button onclick="q046SpendPlan('${esc(x.finance_id)}')">${income?'Получено':'Потрачено'}</button><button onclick="q046CancelPlan('${esc(x.finance_id)}')">Отменить</button></div>`:''}</article>`}
+function q029FinanceHistoryRowHtml(x){
+  const status=x.is_deleted?' · Архивная отметка':'',kind=x.actual?'':' · План';
+  return `<div class="q029-finance-ledger-item"><b>${esc(x.finance_date||'Без даты')} · ${esc(x.type||'Операция')} · ${rub(x.amount||0)}</b><small>${esc(x.category||'Без категории')}${kind}${status}${x.order_no?' · заказ '+esc(x.order_no):''}</small>${x.comment?`<small>${esc(x.comment)}</small>`:''}</div>`;
+}
+function q029FinanceHistoryHtml(w){
+  const source=w?.finance_ledger;
+  if(!source)return '<div class="card"><small>История операций ожидает загрузки с Google Sheets.</small></div>';
+  const all=Array.isArray(source.items)?source.items:[],may5=all.filter(x=>x.finance_date==='05.10.2026'),
+    preview=all.slice(0,12),total=Number(source.row_count??all.length);
+  const diverged=source.head_matches_source===false,proof=w?.cash_provenance;
+  return `<div class="section-title"><h2>Финансовые операции</h2><span class="badge">${total}</span></div>
+    <div class="card q029-finance-ledger"><small>Источник: Google Sheets → «Финансы». Данные читаются из существующих строк; обновление после сохранения операции.</small>
+    ${diverged?`<div class="notice bad">Счётчик синхронизации: ${Number(source.head_row_count)}; фактически в таблице: ${total}. Показаны реальные строки Google Sheets. Проверка синхронизации перед выпуском обязательна.</div>`:''}
+    ${proof?.source==='APPLIED_RECONCILIATION'?`<div class="notice">Деньги производства рассчитаны от сверки ${esc(proof.applied_date||'дата не указана')} (Q-044). Исторических операций вне кассовой эпохи: ${Number(proof.historical_without_epoch_count||0)}. Операций с кассовым движением после сверки: ${Number(proof.cash_movement_count||0)}. Исторические строки отображаются, но не прибавляются к кассе повторно.</div>`:''}
+    <details open><summary>Операции за 05.10.2026 · ${may5.length}</summary>${may5.map(q029FinanceHistoryRowHtml).join('')||'<small>Нет операций за дату.</small>'}</details>
+    <details><summary>Последние операции · ${preview.length}</summary>${preview.map(q029FinanceHistoryRowHtml).join('')||'<small>Пока нет операций.</small>'}</details>
+    <details><summary>Все записи Google Sheets · ${all.length}</summary>${all.map(q029FinanceHistoryRowHtml).join('')||'<small>Пока нет операций.</small>'}</details>
+    <small>Суммы строк не равны автоматически наличности: касса, резервы, личные деньги и долги учитываются отдельно по действующим правилам.</small>
+    </div>`;
+}
+function q046AllocationRow(a){return `<article class="card"><b>${esc(a.purpose_label||a.purpose_type||'Резерв')}</b><div>${rub(a.amount||0)} · ${esc(a.state||'')}</div>${String(a.state||'')==='RESERVED'&&q046WalletCanEdit(a)?`<button onclick="q046CancelAllocation('${esc(a.allocation_id)}')">Снять резерв</button>`:''}</article>`}
+function q046OrderSummaryHtml(o){
+ const known=o?.known_orders||[],unknown=o?.unknown_price_orders||[],needKnown=Number(o?.known_future_completion_cash_need_total||0),needUnknown=o?.unknown_future_completion_cost_orders||[];
+ return `<div class="card"><b>К получению по активным заказам</b><div class="big">${rub(o?.known_receivable_total||0)}</div><small>Только заказы с известной ценой</small></div>
+ <div class="card"><b>Известная потребность до завершения заказов</b><div class="big">${rub(needKnown)}</div><small>Только подтверждённые планы/резервы, связанные с заказами</small></div>
+ ${needUnknown.length?`<div class="card"><b>Потребность не рассчитана · ${needUnknown.length}</b>${needUnknown.map(x=>`<div>${esc(x.order_no||x.order_id)} · ${esc(x.title||'')} · <b>не рассчитано</b></div>`).join('')}</div>`:''}
+ ${unknown.length?`<div class="card"><b>Цена уточняется · ${unknown.length}</b>${unknown.map(x=>`<div>${esc(x.order_no||x.order_id)} · получено ${rub(x.received||0)}</div>`).join('')}</div>`:''}`;
+}
+function renderWalletBalance(){if(!q029WalletUiAllowed())return q046WalletNoAccess();const w=q046WalletModel();if(!w){const notice=Q046_WALLET_STAGE.error?`<div class="notice bad">${esc(Q046_WALLET_STAGE.error)}</div>`:'';document.getElementById('wallet').innerHTML=`<button class="back" onclick="setWalletView('main')">← Кошелёк</button>${notice}<div class="card">Канонический Wallet ещё не загружен.</div><button onclick="q046LoadCanonicalWallet(true)">Повторить</button>`;if(!Q046_WALLET_STAGE.loading&&!Q046_WALLET_STAGE.error)q046LoadCanonicalWallet();return}const partners=w.partners||[],ob=w.obligations||[],plans=w.planned_items||[],alloc=w.allocations||[];document.getElementById('wallet').innerHTML=`<button class="back" onclick="setWalletView('main')">← Кошелёк</button><div class="section-title"><h2>Текущее состояние</h2><span class="badge">Q-046 staging</span></div><div class="wallet-position-grid"><div><span>Деньги производства</span><b>${rub(w.physical_cash||0)}</b></div><div><span>Свободно сейчас</span><b>${rub(w.free_now||0)}</b></div><div><span>Резервы</span><b>${rub(w.reserved_total||0)}</b></div></div><div class="section-title"><h2>Партнёры</h2></div>${partners.map(q046PartnerCard).join('')||'<div class="muted">Нет данных</div>'}<div class="section-title"><h2>Обязательства</h2></div>${ob.map(q046ObligationCard).join('')||'<div class="muted">Нет активных обязательств</div>'}<div class="section-title"><h2>Плановые доходы и расходы</h2></div>${plans.map(q046PlanRow).join('')||'<div class="muted">Нет активных планов</div>'}<div class="section-title"><h2>Резервы и распределения</h2></div>${alloc.map(q046AllocationRow).join('')||'<div class="muted">Нет активных резервов</div>'}<div class="section-title"><h2>Заказы</h2></div>${q046OrderSummaryHtml(w.orders)}${q029FinanceHistoryHtml(w)}`}
+function renderWallet(){if(!q029WalletUiAllowed())return q046WalletNoAccess();const w=q046WalletModel();if(WALLET_VIEW==='balance'){renderWalletBalance();return}if(!w&&!Q046_WALLET_STAGE.loading&&!Q046_WALLET_STAGE.error)q046LoadCanonicalWallet();const banner=Q046_WALLET_STAGE.error?`<div class="notice bad">${esc(Q046_WALLET_STAGE.error)}</div>`:'';if(!w){document.getElementById('wallet').innerHTML=`<button class="back" onclick="go('home')">← Главная</button>${banner}<div class="card"><b>Канонический Кошелёк</b><div>Загрузка staging read-model…</div></div><button onclick="q046LoadCanonicalWallet(true)">Повторить</button>`;return}const forecast=w.forecast||{},plans=w.planned_items||[];document.getElementById('wallet').innerHTML=`<button class="back" onclick="go('home')">← Главная</button>${banner}<button class="wallet-balance-main wallet-balance-main-button" onclick="setWalletView('balance')"><div class="label">Деньги производства</div><div class="value">${rub(w.physical_cash||0)}</div><small>Свободно сейчас: ${rub(w.free_now||0)} · резерв: ${rub(w.reserved_total||0)}</small></button><div class="wallet-position-grid q029-wallet-forecast"><div><span>Плановые доходы</span><b>${rub(forecast.expected_real_inflows||0)}</b></div><div><span>Плановые расходы</span><b>${rub(forecast.planned_future_real_payments||0)}</b></div><div><span>Прогноз</span><b>${rub(forecast.forecast_cash||0)}</b><small>до ${esc(forecast.horizon_end||'')}</small></div></div>${q046WalletCanAdd()?`<div class="queue-actions"><button class="primary" onclick="q046FinanceModal('income')">Добавить доход</button><button class="primary" onclick="q046FinanceModal('expense')">Добавить расход</button></div>`:''}<div class="q029-wallet-secondary-actions">${q046WalletCanAdd()?`<button onclick="q046PlanModal('expense')">Запланировать расход</button><button onclick="q046PlanModal('income')">Запланировать доход</button><button onclick="q046ReserveModal()">Резерв</button>`:''}<button onclick="q046LoadCanonicalWallet(true)">Обновить</button></div><div class="section-title"><h2>Плановые доходы и расходы</h2><span class="badge">${plans.length}</span></div>${plans.slice(0,8).map(q046PlanRow).join('')||'<div class="muted">Нет активных планов.</div>'}<div class="section-title"><h2>Текущие расчёты</h2></div>${(w.partners||[]).map(q046PartnerCard).join('')}${q029FinanceHistoryHtml(w)}`;}
+function q046FinanceModal(kind){if(!q029WalletUiAllowed())return;if(!q046WalletCanAdd())return;const expense=kind==='expense',partners=(q046WalletModel()?.partners||[]);modal(expense?'Новый расход':'Новый доход',`<div class="field"><label>Сумма, ₽</label><input id="q046Amt" inputmode="decimal"></div><div class="field"><label>Категория</label><input id="q046Cat" value="${expense?'Прочие расходы':'Прочие доходы'}"></div><div class="field"><label>Заказ</label><input id="q046Order"></div>${expense?`<div class="field"><label>Источник оплаты</label><select id="q046Route"><option value="PRODUCTION_WALLET">Деньги производства</option><option value="PERSON">Личные деньги партнёра</option><option value="SUPPLIER_DEBT">Долг поставщику</option><option value="CREDIT">Кредит</option></select></div><div class="field"><label>Партнёр при личной оплате</label><select id="q046Partner"><option value="">—</option>${partners.map(p=>`<option value="${esc(p.party_id)}">${esc(q046PartnerLabel(p))}</option>`).join('')}</select></div>`:`<div class="field"><label>Куда поступили деньги</label><select id="q046Route"><option value="PRODUCTION_WALLET">Деньги производства</option><option value="PERSON">Лично человеку</option></select></div>`}<div class="field"><label>Комментарий</label><textarea id="q046Comment"></textarea></div><button class="primary" onclick="q046SaveFinance('${kind}')">Сохранить</button>`)}
+async function q046SaveFinance(kind){if(!q029WalletUiAllowed())return;if(!q046WalletCanAdd())return;try{const amount=Number(String(document.getElementById('q046Amt')?.value||'').replace(',','.'));if(!(amount>0))throw new Error('Укажите сумму');const expense=kind==='expense',route=document.getElementById('q046Route')?.value||'',payload={action:'wallet.finance.create',type:expense?'Расход':'Приход',amount,category:document.getElementById('q046Cat')?.value||'',order_id:document.getElementById('q046Order')?.value||'',comment:document.getElementById('q046Comment')?.value||''};if(expense){payload.payment_source=route;payload.partner_party_id=document.getElementById('q046Partner')?.value||''}else payload.cash_destination=route;await q046Action('finance_create',payload);closeModal();showAppToast('Сохранено в канонический Wallet.','ok')}catch(e){showAppToast(String(e?.message||e),'bad',5000)}}
+function q046PlanModal(kind='expense'){if(!q029WalletUiAllowed())return;if(!q046WalletCanAdd())return;const income=kind==='income';modal(income?'Запланировать доход':'Запланировать расход',`<div class="field"><label>Сумма, ₽</label><input id="q046PlanAmt" inputmode="decimal"></div><div class="field"><label>Дата</label><input id="q046PlanDue" type="date"></div><div class="field"><label>Категория</label><input id="q046PlanCat" value="${income?'Ожидаемая оплата':'Предстоящие расходы'}"></div><div class="field"><label>Комментарий</label><textarea id="q046PlanComment"></textarea></div><button class="primary" onclick="q046CreatePlan('${income?'income':'expense'}')">${income?'Запланировать доход':'Запланировать расход'}</button>`)}
+async function q046CreatePlan(kind='expense'){if(!q029WalletUiAllowed())return;if(!q046WalletCanAdd())return;try{const amount=Number(String(document.getElementById('q046PlanAmt')?.value||'').replace(',','.'));if(!(amount>0))throw new Error('Укажите сумму');await q046Action('plan_create',{action:'wallet.plan.create',type:kind==='income'?'Приход':'Расход',amount,due_date:document.getElementById('q046PlanDue')?.value||'',category:document.getElementById('q046PlanCat')?.value||'',comment:document.getElementById('q046PlanComment')?.value||''});closeModal();showAppToast(kind==='income'?'Плановый доход создан.':'Плановый расход создан.','ok')}catch(e){showAppToast(String(e?.message||e),'bad',5000)}}
+async function q046EditPlan(id){if(!q029WalletUiAllowed())return;if(!q046WalletCanEdit((q046WalletModel()?.planned_items||[]).find(x=>x.finance_id===id)))return;try{const w=q046WalletModel(),x=(w?.planned_items||[]).find(a=>a.finance_id===id);if(!x)return;const amount=prompt('Новая сумма',String(x.amount||''));if(amount===null)return;const due=prompt('Дата YYYY-MM-DD',String(x.due_date||''));if(due===null)return;await q046Action('plan_edit',{action:'wallet.plan.edit',planned_finance_id:id,patch:{amount:Number(String(amount).replace(',','.')),due_date:due}});showAppToast('План обновлён.','ok')}catch(e){showAppToast(String(e?.message||e),'bad',5000)}}
+async function q046CancelPlan(id){if(!q029WalletUiAllowed())return;if(!q046WalletCanEdit((q046WalletModel()?.planned_items||[]).find(x=>x.finance_id===id)))return;if(!confirm('Отменить план? История сохранится.'))return;try{await q046Action('plan_cancel',{action:'wallet.plan.cancel',planned_finance_id:id});showAppToast('План отменён.','ok')}catch(e){showAppToast(String(e?.message||e),'bad',5000)}}
+async function q046SpendPlan(id){if(!q029WalletUiAllowed())return;if(!q046WalletCanEdit((q046WalletModel()?.planned_items||[]).find(x=>x.finance_id===id)))return;const plan=(q046WalletModel()?.planned_items||[]).find(x=>x.finance_id===id);if(!plan)return;try{if(String(plan.type||'').toLowerCase()==='приход'){if(!confirm('Отметить плановый доход как полученный?'))return;await q046Action('plan_spend',{action:'wallet.plan.spend',planned_finance_id:id,cash_destination:'PRODUCTION_WALLET'});showAppToast('Плановый доход получен.','ok');return;}const src=prompt('Источник оплаты: PRODUCTION_WALLET или PERSON','PRODUCTION_WALLET');if(!src)return;const payload={action:'wallet.plan.spend',planned_finance_id:id,payment_source:String(src).trim().toUpperCase()};if(payload.payment_source==='PERSON'){const pid=prompt('party_id партнёра');if(!pid)return;payload.partner_party_id=pid}await q046Action('plan_spend',payload);showAppToast('План отмечен как потраченный.','ok')}catch(e){showAppToast(String(e?.message||e),'bad',5000)}}
+function q046ReserveModal(){if(!q029WalletUiAllowed())return;if(!q046WalletCanAdd())return;modal('Создать резерв',`<div class="field"><label>Сумма, ₽</label><input id="q046ResAmt" inputmode="decimal"></div><div class="field"><label>Назначение</label><select id="q046ResType"><option value="RENT">Аренда</option><option value="MATERIALS">Материалы</option><option value="ORDER_RESERVE">Резерв на заказ</option><option value="OBLIGATION_PAYMENT">Оплата обязательства</option><option value="OTHER">Другое</option></select></div><div class="field"><label>Название</label><input id="q046ResLabel"></div><div class="q029-wallet-reserve-hint">Свободно для резерва: ${rub(q046WalletModel()?.free_now||0)}. Резерв не может превышать свободную сумму.</div><button class="primary" onclick="q046CreateReserve()">Зарезервировать</button>`)}
+async function q046CreateReserve(){if(!q029WalletUiAllowed())return;if(!q046WalletCanAdd())return;try{const amount=Number(String(document.getElementById('q046ResAmt')?.value||'').replace(',','.'));if(!(amount>0))throw new Error('Укажите сумму больше нуля');const available=Number(q046WalletModel()?.free_now||0);if(amount>available+0.009)throw new Error('Недостаточно свободных денег. Доступно '+rub(available)+', запрошено '+rub(amount)+'.');await q046Action('allocation_create',{action:'wallet.allocation.create',state:'RESERVED',amount,purpose_type:document.getElementById('q046ResType')?.value||'OTHER',purpose_label:document.getElementById('q046ResLabel')?.value||''});closeModal();showAppToast('Резерв создан.','ok')}catch(e){showAppToast(String(e?.message||e),'bad',5000)}}
+async function q046CancelAllocation(id){if(!q029WalletUiAllowed())return;if(!q046WalletCanEdit((q046WalletModel()?.allocations||[]).find(x=>x.allocation_id===id)))return;if(!confirm('Снять резерв?'))return;try{await q046Action('allocation_cancel',{action:'wallet.allocation.cancel',allocation_id:id});showAppToast('Резерв снят.','ok')}catch(e){showAppToast(String(e?.message||e),'bad',5000)}}
+function q046PartnerDetail(id){if(!q029WalletUiAllowed())return;const p=(q046WalletModel()?.partners||[]).find(x=>x.party_id===id);if(!p)return;modal(q046PartnerLabel(p),`<div class="wallet-position-grid"><div><span>funding_due</span><b>${rub(p.funding_due||0)}</b></div><div><span>distribution</span><b>${rub(p.distribution_balance||0)}</b></div></div><div class="section-title"><h3>Текущий месяц</h3></div>${(p.current_month_rows||[]).map(x=>`<div class="card">${esc(x.effective_date||'')} · ${esc(x.entry_type||'')} · funding ${rub(x.funding_delta||0)} · distribution ${rub(x.distribution_delta||0)}<br><small>${esc(x.comment||'')}</small></div>`).join('')||'<div class="muted">Нет строк</div>'}${isAdmin1()?`<div class="queue-actions"><button onclick="q046SensitivePrompt('OWNER_REIMBURSEMENT','${esc(id)}')">Возврат финансирования</button><button onclick="q046SensitivePrompt('PARTNER_DISTRIBUTION','${esc(id)}')">Выплата партнёру</button></div>`:''}`)}
+function q046ObligationDetail(id){if(!q029WalletUiAllowed())return;const o=(q046WalletModel()?.obligations||[]).find(x=>x.obligation_id===id);if(!o)return;modal(o.title||'Обязательство',`<div class="card">Первоначально: <b>${rub(o.original_amount||0)}</b><br>Оплачено: <b>${rub(o.paid_principal||0)}</b><br>Осталось: <b>${rub(o.remaining||0)}</b><br>Периодичность: ${esc(o.payment_frequency||'')}<br>Регулярный платёж: ${rub(o.regular_payment_amount||0)}<br>Следующий платёж по остатку: ${rub(o.next_payment_amount||0)}<br>Следующая дата: ${esc(o.next_due_date||'не задана')}</div>${isAdmin1()?`<button class="primary" onclick="q046SensitivePrompt('OBLIGATION_PAYMENT','${esc(id)}')">Провести платёж</button>`:''}`)}
+async function q046SensitivePrompt(kind,id){if(!q029WalletUiAllowed()||!isAdmin1())return;try{const amount=Number(String(prompt('Сумма, ₽')||'').replace(',','.'));if(!(amount>0))return;const payload={action:'wallet.sensitive.execute',action_type:kind,amount};if(kind==='OBLIGATION_PAYMENT')payload.obligation_id=id;else payload.partner_party_id=id;await q046Action('sensitive_'+kind.toLowerCase(),payload);closeModal();showAppToast('Операция подтверждена backend.','ok')}catch(e){showAppToast(String(e?.message||e),'bad',5000)}}

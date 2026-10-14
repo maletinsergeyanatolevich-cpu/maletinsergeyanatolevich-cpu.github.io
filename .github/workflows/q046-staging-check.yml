@@ -1,0 +1,67 @@
+name: Q046 staging checks
+
+on:
+  push:
+    branches: [ q046-wallet-staging ]
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'assets/app.js'
+      - 'version.json'
+      - 'sw.js'
+      - 'tests/q029-client-release-gate.test.js'
+      - 'tests/q029-wallet-ui-role-handler.test.js'
+      - 'index.html'
+      - 'tests/q029-sw-offline.test.js'
+      - 'staging/q046/**'
+      - 'tests/q046-wallet-contract.test.js'
+      - 'docs/q046-wallet-schema.json'
+
+jobs:
+  q046:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Test Q029 client release version, rollback and SW gates
+        run: node tests/q029-client-release-gate.test.js
+      - name: Test Q029 Wallet UI role isolation, navigation and network recovery
+        run: node tests/q029-wallet-ui-role-handler.test.js
+      - name: Test Q066 Wallet multiuser permissions
+        run: node tests/q066-wallet-multiuser-access.test.js
+      - name: Test Q029 Wallet planned income, reserve validation and layout
+        run: node tests/q029-wallet-ux-v4-integration.test.js
+      - name: Test Q029 offline PWA service worker fetch behavior
+        run: node tests/q029-sw-offline.test.js
+      - name: Check PWA syntax
+        run: node --check assets/app.js
+      - name: Check backend staging syntax
+        run: node --check staging/q046/backend-q046.js
+      - name: Run Wallet model contract tests
+        run: node tests/q046-wallet-contract.test.js
+      - name: Test Q029 cash source provenance from authoritative Finance rows
+        run: node tests/q029-cash-source-provenance.test.js
+      - name: Test Q029 full Wallet source rebase and stale response denial
+        run: node tests/q029-wallet-full-rebase.test.js
+      - name: Test Q029 paired backend-client and rollback mutation gates
+        run: node tests/q029-wallet-pair-compat.test.js
+      - name: Test Q029 deleted 10 Finance records partner/cash source automatic restatement
+        run: node tests/q029-finance-auto-restatement.test.js
+      - name: Test Q029 direct Google Sheet manual Finance cash cutover and classification
+        run: node tests/q029-direct-sheet-cash-epoch.test.js
+      - name: Test Q067 Finance 116 to 106 persistent offline baseline without losing drafts
+        run: node tests/q029-finance-baseline-cache-rebase.test.js
+      - name: Test Q029 source-truth Finance metadata preview
+        run: node tests/q029-finance-metadata-preview.test.js
+      - name: Test Q029 Finance HEAD drift and safe full-resync signal
+        run: node tests/q029-finance-source-head-parity.test.js
+      - name: Test Q029 Google Sheets Finance source-of-truth Wallet history
+        run: node tests/q029-wallet-finance-source-ledger.test.js
+      - name: Test Q029 Option B cutoff synthetic design-only invariants
+        run: node tests/q029-wallet-cutoff-design.test.js
+      - name: Test Q066 Dima order price-state, receivable and idempotency
+        run: node tests/q066-dima-price-contract.test.js
+      - name: Run Q047 actual-source handler fixture tests
+        run: node tests/q047-wallet-handler.test.js
