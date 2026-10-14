@@ -1,5 +1,5 @@
 'use strict';
-const BUILD='2026-10-13.q029.rc1';
+const BUILD='2026-10-15.q029.sortfix1';
 const CACHE='production-pwa-'+BUILD;
 const ROLLBACK_CACHE='production-pwa-2026-10-07.3d';
 const APP_SHELL=[
