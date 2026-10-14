@@ -5,7 +5,7 @@
 * ВАЖНО: секреты НЕ хранить в этом файле. Recovery/owner secrets — только Script Properties.
 */
 const CFG = Object.freeze({
- VERSION: 'backend-0.2.34-staging-q029',
+ VERSION: 'backend-0.2.35-q029-finance-sortfix',
  SPREADSHEET_ID: '177IVzLUaNrzKScoRo0CjT5Zo7tJm5Bo0am2z9whAWdg',
  USERS_SHEET: 'Пользователи и права',
  ACCESS_REQUESTS_SHEET: '_APP_ACCESS_REQUESTS',
@@ -4017,7 +4017,7 @@ function q029FinanceSourceStamp_(t){
     });
     rows.push({id:id,values:values});
   });
-  rows.sort(function(a,b){return a.id.localeCompare(b.id);});
+  rows.sort(function(a,b){return a.id<b.id?-1:a.id>b.id?1:0;});
   return {row_count:rows.length,source_ids_hash:sha256Hex_(JSON.stringify(rows.map(function(x){return x.id;}))),
     source_rows_hash:sha256Hex_(JSON.stringify(rows)),source_generation:'FINANCE_ROWS_SHA256_V1'};
 }
