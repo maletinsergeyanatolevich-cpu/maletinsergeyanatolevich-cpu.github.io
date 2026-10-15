@@ -4228,42 +4228,61 @@ function q029WalletReadableError_(value){
  return 'Уточните строку «Финансы» '+m[2]+': '+(guidance[m[1]]||raw)+'. Деньги не показаны, чтобы не допустить неверного остатка.';
 }
 async function q046LoadCanonicalWallet(force=false){
-  if(!q029WalletUiAllowed()){q029WalletInvalidate();return}
-  if(Q046_WALLET_STAGE.loading&&!force)return;
-  if(Q046_WALLET_STAGE.loaded&&!force)return;
-  if(force)q029WalletInvalidate();
-  const token=backendSession(),userId=typeof SESSION==='undefined'?'':String(SESSION.userId||'');
-  if(!token||navigator.onLine===false){
-    q029WalletInvalidate();
-    Q046_WALLET_STAGE.error=!token?'Нет backend-сессии':'Офлайн: данные Кошелька необходимо обновить';
-    if(document.getElementById('wallet')?.classList.contains('active'))renderWallet();
-    return;
-  }
-  const generation=(Number(Q046_WALLET_STAGE.generation)||0)+1;
-  Q046_WALLET_STAGE.generation=generation;Q046_WALLET_STAGE.loading=true;
+  if(!q029WalletUiAllowed()){q029WalletInvalidate(true);return}
+  if(Q046_WALLET_STAGE.loading)return;
+  const token=backendSession(),userId=String(SESSION.userId||'');
+  if(!token||!userId){q029WalletInvalidate(true);return}
+  const age=()=>Date.now()-Q046_WALLET_STAGE.lastCheckedAt;
+  if(Q046_WALLET_STAGE.loaded&&!force&&(navigator.onLine===false||age()<Q029_WALLET_CHECK_INTERVAL_MS))return;
+  const gen=Q046_WALLET_STAGE.generation+1;Q046_WALLET_STAGE.generation=gen;Q046_WALLET_STAGE.loading=true;
+  const valid=()=>gen===Q046_WALLET_STAGE.generation&&q029WalletUiAllowed()&&
+    backendSession()===token&&String(SESSION.userId||'')===userId;
   try{
+    if(!Q046_WALLET_STAGE.loaded&&q029WalletCacheAllowed()){
+      try{
+        const cached=await q029WalletReadCache(userId);
+        if(cached&&valid()){
+          S.walletCanonical=cached.wallet;Q046_WALLET_STAGE.loaded=true;
+          Q046_WALLET_STAGE.userId=userId;Q046_WALLET_STAGE.session=token;
+          Q046_WALLET_STAGE.backendVersion=cached.backendVersion;
+          Q046_WALLET_STAGE.source='cache';Q046_WALLET_STAGE.savedAt=cached.savedAt;
+          Q046_WALLET_STAGE.lastCheckedAt=Date.parse(cached.savedAt)||0;
+          Q046_WALLET_STAGE.error='';
+          if(document.getElementById('wallet')?.classList.contains('active'))renderWallet();
+        }
+      }catch(_){/* Never display a corrupt or unauthorized offline snapshot. */}
+    }
+    if(!valid()||navigator.onLine===false)return;
+    if(!force&&Q046_WALLET_STAGE.loaded&&age()<Q029_WALLET_CHECK_INTERVAL_MS)return;
     const d=await backendPost({action:'wallet.canonical.get',session_token:token,
-      device_id:backendDeviceId(),request_id:'Q046-WALLET-'+Date.now(),horizon:'month'},{timeoutMs:30000});
-    if(generation!==Q046_WALLET_STAGE.generation||!q029WalletUiAllowed()||
-       backendSession()!==token||(typeof SESSION!=='undefined'&&String(SESSION.userId||'')!==userId))return;
+      device_id:backendDeviceId(),request_id:'Q029-WALLET-'+Date.now(),horizon:'month'},{timeoutMs:30000});
+    if(!valid())return;
     if(!d?.ok)throw new Error(d?.detail||d?.error||'WALLET_CANONICAL_FAILED');
     q029WalletValidatePairResponse(d);
     const full=q029WalletValidateFull(d.wallet);
-    if(typeof openDB==='function')await q029PersistFinanceSourceBaseline(full.finance_ledger,userId);
-    // SHA256 and IndexedDB persist are async: stale session responses must not publish.
-    if(generation!==Q046_WALLET_STAGE.generation||!q029WalletUiAllowed()||
-       backendSession()!==token||(typeof SESSION!=='undefined'&&String(SESSION.userId||'')!==userId))return;
-    S.walletCanonical=full; // replace the entire authoritative snapshot, including deletions
+    await q029WalletCheckIds(full.finance_ledger);
+    if(!valid())return;
+    let savedAt='',persisted=false;
+    try{
+      await q029PersistFinanceSourceBaseline(full.finance_ledger,userId);
+      if(!valid())return;
+      savedAt=await q029WalletSaveCache(full,userId);persisted=true;
+    }catch(_){/* Show verified live data while disclosing an offline-save failure. */}
+    if(!valid())return;
+    S.walletCanonical=full;
     Q046_WALLET_STAGE.session=token;Q046_WALLET_STAGE.userId=userId;
-    Q046_WALLET_STAGE.backendVersion=d.backend_version;
-    Q046_WALLET_STAGE.loaded=true;Q046_WALLET_STAGE.error='';
+    Q046_WALLET_STAGE.backendVersion=d.backend_version;Q046_WALLET_STAGE.loaded=true;
+    Q046_WALLET_STAGE.source='live';Q046_WALLET_STAGE.savedAt=savedAt;
+    Q046_WALLET_STAGE.lastCheckedAt=Date.now();
+    Q046_WALLET_STAGE.error=persisted?'':'Кошелёк загружен, но не сохранён офлайн на телефоне';
   }catch(e){
-    if(generation===Q046_WALLET_STAGE.generation){
-      S.walletCanonical=null;Q046_WALLET_STAGE.loaded=false;
+    if(valid()){
+      // Keep the last VERIFIED copy visible across network and source failures.
       Q046_WALLET_STAGE.error=q029WalletReadableError_(String(e?.message||e));
+      Q046_WALLET_STAGE.lastCheckedAt=Date.now();
     }
   }finally{
-    if(generation===Q046_WALLET_STAGE.generation){
+    if(gen===Q046_WALLET_STAGE.generation){
       Q046_WALLET_STAGE.loading=false;
       if(document.getElementById('wallet')?.classList.contains('active'))renderWallet();
     }
