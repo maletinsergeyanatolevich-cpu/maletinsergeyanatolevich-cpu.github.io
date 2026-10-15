@@ -57,6 +57,7 @@ function doPost(e) {
     const q046Action = String(body.action || '');
     if (['wallet.finance.create','wallet.plan.create','wallet.plan.edit','wallet.plan.cancel','wallet.plan.spend','wallet.allocation.create','wallet.allocation.cancel','wallet.sensitive.execute'].indexOf(q046Action)>=0) q029RequireWalletPair_(body);
     if (q046Action === 'wallet.canonical.get') return json_(handleWalletCanonicalGetQ046_(body, requestId));
+    if (q046Action === 'wallet.canonical.delta') return json_(handleWalletCanonicalDeltaQ029_(body, requestId));
     if (q046Action === 'wallet.schema.spec') return json_(handleWalletSchemaSpecQ046_(body, requestId));
     if (q046Action === 'wallet.schema.migration.preview') return json_(handleWalletSchemaMigrationPreviewQ049_(body, requestId));
     if (q046Action === 'wallet.schema.migration.apply') return json_(handleWalletSchemaMigrationApplyQ049_(body, requestId));
@@ -4263,6 +4264,45 @@ function q046BuildCanonicalWallet_(body){
   const recon=q046LatestAppliedRecon_();if(!recon)throw new Error('APPLIED_RECONCILIATION_REQUIRED');const epochId=String(recon.reconciliation_id||''),opening=q046Money_(recon.production_cash_target),ft=q046SafeTable_('Финансы');let delta=0;if(ft)ft.rows.forEach(function(r){delta+=q046FinanceCashDelta_(ft,r,epochId,recon);});const physical=Math.round((opening+delta)*100)/100,reserved=Math.round(q046ReservedTotal_()*100)/100,free=Math.round((physical-reserved)*100)/100,forecastDate=q046ForecastDate_(body||{}),planned=q046PlannedFinance_(forecastDate),futureIn=planned.filter(function(x){return /^Приход$/i.test(x.type);}).reduce(function(s,x){return s+x.amount;},0),futureOut=planned.filter(function(x){return /^Расход$/i.test(x.type);}).reduce(function(s,x){return s+x.amount;},0),orders=q046OrderSummary_();let legacy={};try{const sh=sheet_('Кошелёк');legacy={wallet_b1:q046Money_(sh.getRange(1,2).getValue()),wallet_b2:q046Money_(sh.getRange(2,2).getValue())};}catch(_){}
   return {schema_version:Q046_WALLET.schemaVersion,contract_id:Q029_WALLET_PAIR_CONTRACT,source:'CANONICAL_RECONCILIATION_EPOCH',active_reconciliation_id:epochId,opening_cash:opening,post_cutover_cash_delta:Math.round(delta*100)/100,physical_cash:physical,reserved_total:reserved,free_now:free,partners:q046PartnerCards_(ft,recon),obligations:q046Obligations_(),planned_items:planned,allocations:q046AllocationRows_(),forecast:{horizon_end:Utilities.formatDate(forecastDate,spreadsheetTz_(),'yyyy-MM-dd'),expected_real_inflows:Math.round(futureIn*100)/100,planned_future_real_payments:Math.round(futureOut*100)/100,forecast_cash:Math.round((physical+futureIn-futureOut)*100)/100},orders:orders,finance_ledger:q029SheetFinanceHistory_(ft),source_provenance:q029HistoricPartnerCorrections_(ft,recon),cash_provenance:q029CashSourceProvenance_(recon,ft,epochId),legacy_compatibility_only:legacy};
 }
+/* Q029 additive READ-ONLY delta protocol. Maintain CFG.VERSION 0.2.35 so older
+   already installed PWA clients stay compatible. Client verifies total rows,
+   SHA256 of ordered returned ledger and authoritative source ID membership. */
+const Q029_WALLET_DELTA_PROTOCOL='q029-wallet-delta-v1';
+function handleWalletCanonicalDeltaQ029_(body,requestId){
+  const auth=authSession_(body.session_token,'wallet.view',requestId);
+  q029RequireWalletPair_(body);
+  const hashes=body.known_finance_item_hashes;
+  if(!hashes||typeof hashes!=='object'||Array.isArray(hashes))throw new Error('WALLET_DELTA_CLIENT_BASE_INVALID');
+  const known=Object.keys(hashes);
+  if(known.length>1500)throw new Error('WALLET_DELTA_CLIENT_BASE_TOO_LARGE');
+  if(!/^[a-f0-9]{64}$/.test(String(body.known_source_rows_hash||'')))throw new Error('WALLET_DELTA_CLIENT_HASH_INVALID');
+  for(let i=0;i<known.length;i++){
+    if(!known[i]||!/^[a-f0-9]{64}$/.test(String(hashes[known[i]]||'')))
+      throw new Error('WALLET_DELTA_ITEM_HASH_INVALID');
+  }
+  const current=q046BuildCanonicalWallet_(body);
+  const ledger=current.finance_ledger,items=ledger.items||[],orderedIds=items.map(function(x){return String(x.finance_id||'');});
+  const same=String(body.known_source_rows_hash)===String(ledger.source_rows_hash);
+  const active=Object.create(null),upserts=[],removed=[];
+  orderedIds.forEach(function(id){if(active[id])throw new Error('FINANCE_DUPLICATE_SOURCE_ID');active[id]=true;});
+  if(!same){
+    items.forEach(function(item){
+      const id=String(item.finance_id||'');
+      const digest=sha256Hex_(JSON.stringify(item));
+      if(!Object.prototype.hasOwnProperty.call(hashes,id)||hashes[id]!==digest)upserts.push(item);
+    });
+    known.forEach(function(id){if(!active[id])removed.push(id);});
+  }
+  // Other Wallet summaries remain fully current, but Finance rows transfer
+  // only as new/changed/deleted data after the first complete verified load.
+  const lean={...current,finance_ledger:{...ledger,items:[]}};
+  touchSessionAndDevice_(auth);
+  return {ok:true,request_id:requestId,backend_version:CFG.VERSION,wallet:lean,
+    delta:{protocol:Q029_WALLET_DELTA_PROTOCOL,mode:same?'UNCHANGED':'CHANGED',
+      ordered_ids:orderedIds,upserts:upserts,removed_ids:removed,
+      ledger_items_hash:sha256Hex_(JSON.stringify(items))},serverTime:nowIso_()};
+}
+
 function handleWalletCanonicalGetQ046_(body,requestId){const auth=authSession_(body.session_token,'wallet.view',requestId),model=q046BuildCanonicalWallet_(body);touchSessionAndDevice_(auth);return {ok:true,request_id:requestId,backend_version:CFG.VERSION,wallet:model,serverTime:nowIso_()};}
 function handleWalletSchemaSpecQ046_(body,requestId){const auth=authSession_(body.session_token,'wallet.view',requestId);touchSessionAndDevice_(auth);return {ok:true,request_id:requestId,spec:q046SchemaSpec_(),migration_executed:false,serverTime:nowIso_()};}
 
