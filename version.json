@@ -16,6 +16,6 @@
     "dbSchema": 5,
     "safeWithoutDataReset": true
   },
-  "publishedAt": null,
-  "notes": "Unpublished source candidate: verified per-user integrity-checked IndexedDB offline Wallet read cache; keep drafts/outbox and dbSchema5; remote canonical changes checked no more frequently than 5 minutes per open app session, full Wallet network read still used when checking; true changed-row delta is separate server protocol, not yet deployed. Backend version 0.2.35 unchanged."
+  "publishedAt": "2026-10-15T03:58:58.372Z",
+  "notes": "Q029 owner-requested Wallet offline-first hotfix: per-user SHA256-verified IndexedDB Wallet copy, instant offline read, no blanking on screen/navigation/network failure, no financial writes while offline, five-minute refresh throttle; optional Wallet changed-row delta with full-source fallback until additive GAS route installed. Backend0.2.35, dbSchema5, user drafts and rollback cache preserved."
 }
