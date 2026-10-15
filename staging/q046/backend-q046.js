@@ -41,6 +41,7 @@ function doGet(e) {
    ok: true,
    service: 'production-pwa-backend',
    version: CFG.VERSION,
+   walletDeltaProtocol: Q029_WALLET_DELTA_PROTOCOL,
    serverTime: nowIso_(),
    spreadsheetId: CFG.SPREADSHEET_ID
  });
