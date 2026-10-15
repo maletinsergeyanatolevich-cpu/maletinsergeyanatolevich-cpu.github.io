@@ -4089,7 +4089,7 @@ startApplication();
 /* Q-046 WALLET CANONICAL STAGING UI */
 const Q029_WALLET_BACKEND_VERSION='backend-0.2.35-q029-finance-sortfix';
 const Q029_WALLET_PAIR_CONTRACT='Q029_FINANCE_IDSET_V1';
-const Q046_WALLET_STAGE={loading:false,loaded:false,error:'',generation:0,session:'',userId:'',backendVersion:''};
+const Q046_WALLET_STAGE={loading:false,loaded:false,error:'',generation:0,session:'',userId:'',backendVersion:'',source:'',savedAt:'',lastCheckedAt:0};
 function q029WalletUiAllowed(){return !!backendSession()&&hasPermission('wallet.view')}
 function q046WalletCanAdd(){return q029WalletUiAllowed()&&hasPermission('wallet.add')}
 function q046WalletCanEdit(record){return q029WalletUiAllowed()&&!!record&&canMutateRecord('wallet','update',String(record.created_by_user_id||''))}
@@ -4108,13 +4108,61 @@ function q046WalletNoAccess(){
  el.innerHTML='<button class="back" onclick="go(\'home\')">← Главная</button><div class="card"><b>Кошелёк недоступен</b><p>Требуются активная сессия и разрешение «Кошелёк: видеть».</p></div>';
 }
 
-function q029WalletInvalidate(){
-  // Wallet is a replace-only live view. Never carry Finance ledger across opens,
-  // role changes or offline transitions, and never re-use a delayed old response.
+
+/* Q029 user-scoped, integrity-checked offline Wallet cache.
+   Never merge Finance from the generic snapshot, never store credentials. */
+const Q029_WALLET_CACHE_PREFIX='q029-wallet-canonical:';
+const Q029_WALLET_CHECK_INTERVAL_MS=300000;
+function q029WalletCacheAllowed(){
+  return q029WalletUiAllowed()&&!!String(SESSION.userId||'')&&(isAdmin1()||offlineAccessValid());
+}
+async function q029WalletCheckIds(ledger){
+  const ids=Array.isArray(ledger?.items)?ledger.items.map(x=>String(x.finance_id||'').trim()):[];
+  if(ledger?.source!=='GOOGLE_SHEETS_FINANCE'||ledger?.row_count!==ids.length||
+     !/^[a-f0-9]{64}$/.test(String(ledger.source_ids_hash||'')))throw new Error('FINANCE_CACHE_SOURCE_INVALID');
+  const hash=await sha256HexBrowser(JSON.stringify(ids.slice().sort()));
+  if(hash!==ledger.source_ids_hash)throw new Error('FINANCE_CACHE_HASH_INVALID');
+}
+async function q029WalletReadCache(userId){
+  if(!q029WalletCacheAllowed())return null;
+  const db=await openDB(),tx=db.transaction('snapshotCache','readonly'),req=tx.objectStore('snapshotCache').get(Q029_WALLET_CACHE_PREFIX+userId);
+  const rec=await new Promise((res,rej)=>{req.onsuccess=()=>res(req.result||null);req.onerror=()=>rej(req.error)});
+  if(!rec||rec.userId!==userId||rec.role!==SESSION.role||
+     rec.backendVersion!==Q029_WALLET_BACKEND_VERSION||
+     rec.wallet?.contract_id!==Q029_WALLET_PAIR_CONTRACT)return null;
+  q029WalletValidateFull(rec.wallet);await q029WalletCheckIds(rec.wallet.finance_ledger);
+  return rec;
+}
+async function q029WalletSaveCache(wallet,userId){
+  if(!q029WalletCacheAllowed()||String(SESSION.userId||'')!==userId)
+    throw new Error('WALLET_CACHE_ACCOUNT_CHANGED');
+  q029WalletValidateFull(wallet);await q029WalletCheckIds(wallet.finance_ledger);
+  const savedAt=new Date().toISOString(),db=await openDB(),tx=db.transaction('snapshotCache','readwrite');
+  tx.objectStore('snapshotCache').put({id:Q029_WALLET_CACHE_PREFIX+userId,userId,role:SESSION.role,
+    backendVersion:Q029_WALLET_BACKEND_VERSION,savedAt,wallet});
+  await new Promise((res,rej)=>{tx.oncomplete=res;tx.onerror=()=>rej(tx.error||new Error('WALLET_CACHE_SAVE_FAILED'));tx.onabort=()=>rej(tx.error||new Error('WALLET_CACHE_ABORTED'))});
+  return savedAt;
+}
+function q029WalletMaybeRefresh(){
+  if(Q046_WALLET_STAGE.loaded&&!Q046_WALLET_STAGE.loading&&q029WalletUiAllowed()&&navigator.onLine!==false&&
+     Date.now()-Q046_WALLET_STAGE.lastCheckedAt>Q029_WALLET_CHECK_INTERVAL_MS)
+    q046LoadCanonicalWallet().catch(()=>{});
+}
+function q029WalletCacheBanner(){
+  if(!Q046_WALLET_STAGE.loaded)return '';
+  const when=Q046_WALLET_STAGE.savedAt?new Date(Q046_WALLET_STAGE.savedAt).toLocaleString('ru-RU'):'';
+  if(navigator.onLine===false)return '<div class="notice">Офлайн · сохранённые на телефоне данные'+(when?' от '+esc(when):'')+'. Операции в офлайне не выполняются.</div>';
+  if(Q046_WALLET_STAGE.source==='cache')return '<div class="notice">Сохранённая копия'+(when?' от '+esc(when):'')+'. Новые записи проверяются при соединении.</div>';
+  return '';
+}
+function q029WalletInvalidate(hard=false){
   Q046_WALLET_STAGE.generation=(Number(Q046_WALLET_STAGE.generation)||0)+1;
-  Q046_WALLET_STAGE.loaded=false;Q046_WALLET_STAGE.loading=false;
-  Q046_WALLET_STAGE.session='';Q046_WALLET_STAGE.userId='';Q046_WALLET_STAGE.backendVersion='';
-  Q046_WALLET_STAGE.error='';S.walletCanonical=null;
+  Q046_WALLET_STAGE.loading=false;
+  if(hard||!q029WalletUiAllowed()){
+    S.walletCanonical=null;Q046_WALLET_STAGE.loaded=false;Q046_WALLET_STAGE.source='';
+    Q046_WALLET_STAGE.session='';Q046_WALLET_STAGE.userId='';Q046_WALLET_STAGE.backendVersion='';
+    Q046_WALLET_STAGE.savedAt='';Q046_WALLET_STAGE.lastCheckedAt=0;Q046_WALLET_STAGE.error='';
+  }
 }
 function q029WalletValidatePairResponse(d){
   if(d?.backend_version!==Q029_WALLET_BACKEND_VERSION||d?.wallet?.contract_id!==Q029_WALLET_PAIR_CONTRACT||
@@ -4139,7 +4187,7 @@ function q046WalletModel(){
   if(!q029WalletUiAllowed()||!Q046_WALLET_STAGE.loaded)return null;
   if((Q046_WALLET_STAGE.session&&Q046_WALLET_STAGE.session!==backendSession())||
      (Q046_WALLET_STAGE.userId&&typeof SESSION!=='undefined'&&Q046_WALLET_STAGE.userId!==SESSION.userId)){
-    q029WalletInvalidate();return null;
+    q029WalletInvalidate(true);return null;
   }
   return S.walletCanonical||null;
 }
