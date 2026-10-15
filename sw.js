@@ -1,5 +1,5 @@
 'use strict';
-const BUILD='2026-10-15.q029.sortfix1';
+const BUILD='2026-10-15.q029.sortfix2';
 const CACHE='production-pwa-'+BUILD;
 const ROLLBACK_CACHE='production-pwa-2026-10-07.3d';
 const APP_SHELL=[
@@ -85,8 +85,12 @@ self.addEventListener('install',event=>{
     await postUpdateProgress({stage:'ready',label:'Файлы обновления готовы',done:total,total,bytesLoaded});
     const release=await (await cache.match('./version.json')).json();
     if(release.buildId!==BUILD)throw new Error('APP_SHELL_VERSION_MISMATCH');
-    if(release.rolloutStage==='admin1'&&await q029ReleasePermitsActivation()){
-      await postUpdateProgress({stage:'activating',label:'Активирую обновление ADMIN1',done:total,total,bytesLoaded});
+    // Activate an authorized stable release only after ALL shell assets are cached
+    // and the same cached version manifest passes the role and publish gates.
+    // The old code activated automatically only for 'admin1', leaving stable
+    // all-role builds waiting behind an old controlling worker.
+    if((release.rolloutStage==='stable'||release.rolloutStage==='admin1')&&await q029ReleasePermitsActivation()){
+      await postUpdateProgress({stage:'activating',label:'Активирую готовую версию приложения',done:total,total,bytesLoaded});
       await self.skipWaiting();
     }
   })());
