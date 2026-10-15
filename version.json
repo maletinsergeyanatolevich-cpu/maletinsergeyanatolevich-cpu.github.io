@@ -1,7 +1,7 @@
 {
-  "version": "v0.3.28.2-rc-q029",
-  "buildId": "2026-10-15.q029.sortfix2",
-  "channel": "q029-wallet-matched-sortfix-rc",
+  "version": "v0.3.28.3-rc-q029",
+  "buildId": "2026-10-15.q029.offline1",
+  "channel": "q029-wallet-offline-first-rc",
   "rolloutStage": "stable",
   "eligibleRoles": [
     "ADMIN1",
@@ -16,6 +16,6 @@
     "dbSchema": 5,
     "safeWithoutDataReset": true
   },
-  "publishedAt": "2026-10-15T03:20:56.043Z",
-  "notes": "Q029 stable PWA auto-activation fix after real phone observed stale v0.3.28 backend0.2.34 bundle. Tested service-worker install complete 10 shell assets before skipWaiting for stable roles. Backend0.2.35 exact pair, dbSchema5, keep user drafts/outbox and production-v0.3.27.2 rollback cache. User approved immediate bounded Q029 fix releases."
+  "publishedAt": null,
+  "notes": "Unpublished source candidate: verified per-user integrity-checked IndexedDB offline Wallet read cache; keep drafts/outbox and dbSchema5; remote canonical changes checked no more frequently than 5 minutes per open app session, full Wallet network read still used when checking; true changed-row delta is separate server protocol, not yet deployed. Backend version 0.2.35 unchanged."
 }
