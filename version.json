@@ -1,6 +1,6 @@
 {
-  "version": "v0.3.28.1-rc-q029",
-  "buildId": "2026-10-15.q029.sortfix1",
+  "version": "v0.3.28.2-rc-q029",
+  "buildId": "2026-10-15.q029.sortfix2",
   "channel": "q029-wallet-matched-sortfix-rc",
   "rolloutStage": "stable",
   "eligibleRoles": [
@@ -16,6 +16,6 @@
     "dbSchema": 5,
     "safeWithoutDataReset": true
   },
-  "publishedAt": "2026-10-15T01:11:33.753Z",
-  "notes": "Q029 Wallet existing-PWA stable rollout authorized by Sergey on 2026-10-15; matched backend-0.2.35-q029-finance-sortfix with canonical Finance source-ID sort fix. Replaces only five approved client runtime files. Keep dbSchema5, active authorized users, phone drafts/outbox, previous build 2026-10-07.3d rollback without local reset."
+  "publishedAt": null,
+  "notes": "Q029 source-only SW stable activation hotfix release candidate following owner real-phone old controller evidence. Stable install activates automatically only after 10 shell assets and manifest gate pass. Backend0.2.35 exact pair, dbSchema5, previous old production cache kept for rollback; staged branch NOT PUBLISHED while publishedAt null."
 }
