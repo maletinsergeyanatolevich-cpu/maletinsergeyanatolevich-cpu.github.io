@@ -1,6 +1,7 @@
 'use strict';
-const BUILD='2026-10-07.3d';
+const BUILD='2026-10-15.q029.sortfix1';
 const CACHE='production-pwa-'+BUILD;
+const ROLLBACK_CACHE='production-pwa-2026-10-07.3d';
 const APP_SHELL=[
   './index.html','./assets/app.css','./assets/media.css','./assets/app.js','./bootstrap.js',
   './manifest.webmanifest','./version.json','./icons/icon.svg','./icons/icon-maskable.svg','./offline.html'
@@ -40,8 +41,29 @@ async function fetchShellAsset(cache,path){
   await cache.put(path,new Response(bytes,{status:response.status,statusText:response.statusText,headers:response.headers}));
   return bytes.byteLength;
 }
+async function q029ReleasePermitsInstall(){
+  // A waiting worker activates when all old clients close. A UI button gate alone
+  // cannot prevent staging-only from taking over an already installed PWA.
+  const response=await fetch(new Request('./version.json',{cache:'reload'}));
+  if(!response.ok)throw new Error('RELEASE_MANIFEST_FETCH_FAILED');
+  const manifest=await response.json();
+  if(!manifest||manifest.buildId!==BUILD)throw new Error('APP_SHELL_VERSION_MISMATCH');
+  const stage=String(manifest.rolloutStage||'').toLowerCase();
+  if(stage==='stable'&&manifest.publishedAt&&['ADMIN1','ADMIN2','USER'].every(r=>manifest.eligibleRoles?.includes(r)))return manifest;
+  if(stage==='admin1'&&Array.isArray(manifest.eligibleRoles)&&manifest.eligibleRoles.includes('ADMIN1')&&await cachedAdmin1())return manifest;
+  throw new Error('CLIENT_RELEASE_GATE_NOT_OPEN');
+}
+async function q029ReleasePermitsActivation(){
+  const cache=await caches.open(CACHE),response=await cache.match('./version.json');
+  if(!response)return false;
+  const release=await response.json();
+  if(release.buildId!==BUILD)return false;
+  if(release.rolloutStage==='stable'&&release.publishedAt&&['ADMIN1','ADMIN2','USER'].every(r=>release.eligibleRoles?.includes(r)))return true;
+  return release.rolloutStage==='admin1'&&Array.isArray(release.eligibleRoles)&&release.eligibleRoles.includes('ADMIN1')&&await cachedAdmin1();
+}
 self.addEventListener('install',event=>{
   event.waitUntil((async()=>{
+    await q029ReleasePermitsInstall();
     const cache=await caches.open(CACHE),total=APP_SHELL.length;
     let next=0,done=0,bytesLoaded=0;
     await postUpdateProgress({stage:'downloading',label:'Скачиваю файлы приложения',done,total,bytesLoaded});
@@ -61,18 +83,28 @@ self.addEventListener('install',event=>{
     const concurrency=Math.min(4,total);
     await Promise.all(Array.from({length:concurrency},()=>worker()));
     await postUpdateProgress({stage:'ready',label:'Файлы обновления готовы',done:total,total,bytesLoaded});
-    if(await cachedAdmin1()){await postUpdateProgress({stage:'activating',label:'Активирую обновление ADMIN1',done:total,total,bytesLoaded});await self.skipWaiting()}
+    const release=await (await cache.match('./version.json')).json();
+    if(release.buildId!==BUILD)throw new Error('APP_SHELL_VERSION_MISMATCH');
+    if(release.rolloutStage==='admin1'&&await q029ReleasePermitsActivation()){
+      await postUpdateProgress({stage:'activating',label:'Активирую обновление ADMIN1',done:total,total,bytesLoaded});
+      await self.skipWaiting();
+    }
   })());
 });
 self.addEventListener('activate',event=>{
   event.waitUntil(
     caches.keys().then(async keys=>{
-      await Promise.all(keys.filter(k=>k.startsWith('production-pwa-')&&k!==CACHE).map(k=>caches.delete(k)));
+      await Promise.all(keys.filter(k=>k.startsWith('production-pwa-')&&k!==CACHE&&k!==ROLLBACK_CACHE).map(k=>caches.delete(k)));
       await self.clients.claim();
     })
   );
 });
-self.addEventListener('message',event=>{if(event.data&&event.data.type==='SKIP_WAITING')self.skipWaiting();});
+self.addEventListener('message',event=>{
+  if(!event.data||event.data.type!=='SKIP_WAITING')return;
+  event.waitUntil((async()=>{
+    if(await q029ReleasePermitsActivation())await self.skipWaiting();
+  })());
+});
 self.addEventListener('fetch',event=>{
   const req=event.request;if(req.method!=='GET')return;
   const url=new URL(req.url);
