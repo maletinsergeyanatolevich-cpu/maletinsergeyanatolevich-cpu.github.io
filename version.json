@@ -16,6 +16,6 @@
     "dbSchema": 5,
     "safeWithoutDataReset": true
   },
-  "publishedAt": null,
-  "notes": "Unpublished Q029 matched backend 0.2.35 source-ID sort hotfix Wallet RC; production currently rolled back to v0.3.27.2. Stable all-active-authorized roles only after distinct Sergey deploy approval. Backend-first rollback to previous Apps Script deployed 0.2.34 version, client rollback v0.3.27.2; preserve dbSchema5, IndexedDB, drafts and outbox."
+  "publishedAt": "2026-10-15T01:11:33.753Z",
+  "notes": "Q029 Wallet existing-PWA stable rollout authorized by Sergey on 2026-10-15; matched backend-0.2.35-q029-finance-sortfix with canonical Finance source-ID sort fix. Replaces only five approved client runtime files. Keep dbSchema5, active authorized users, phone drafts/outbox, previous build 2026-10-07.3d rollback without local reset."
 }
