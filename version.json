@@ -16,6 +16,6 @@
     "dbSchema": 5,
     "safeWithoutDataReset": true
   },
-  "publishedAt": null,
-  "notes": "Q029 source-only SW stable activation hotfix release candidate following owner real-phone old controller evidence. Stable install activates automatically only after 10 shell assets and manifest gate pass. Backend0.2.35 exact pair, dbSchema5, previous old production cache kept for rollback; staged branch NOT PUBLISHED while publishedAt null."
+  "publishedAt": "2026-10-15T03:20:56.043Z",
+  "notes": "Q029 stable PWA auto-activation fix after real phone observed stale v0.3.28 backend0.2.34 bundle. Tested service-worker install complete 10 shell assets before skipWaiting for stable roles. Backend0.2.35 exact pair, dbSchema5, keep user drafts/outbox and production-v0.3.27.2 rollback cache. User approved immediate bounded Q029 fix releases."
 }
