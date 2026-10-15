@@ -4237,6 +4237,60 @@ function q029WalletReadableError_(value){
  };
  return 'Уточните строку «Финансы» '+m[2]+': '+(guidance[m[1]]||raw)+'. Деньги не показаны, чтобы не допустить неверного остатка.';
 }
+/* Optional Q029 incremental Wallet read. Older GAS v0.2.35 does not have
+   this route yet: fall back to the complete authenticated read with no data loss. */
+const Q029_WALLET_DELTA_PROTOCOL='q029-wallet-delta-v1';
+let Q029_WALLET_DELTA_UNSUPPORTED=false;
+async function q029WalletTryDelta(token,userId,current){
+  if(Q029_WALLET_DELTA_UNSUPPORTED||!current||current.contract_id!==Q029_WALLET_PAIR_CONTRACT)return null;
+  const ledger=current.finance_ledger,items=ledger?.items;
+  if(!Array.isArray(items)||!items.length||!/^[a-f0-9]{64}$/.test(String(ledger.source_rows_hash||'')))return null;
+  await q029WalletCheckIds(ledger);
+  const hashes={};
+  for(const item of items){
+    const id=String(item.finance_id||'').trim();
+    if(!id||Object.prototype.hasOwnProperty.call(hashes,id))throw new Error('WALLET_DELTA_BASE_DUPLICATE');
+    hashes[id]=await sha256HexBrowser(JSON.stringify(item));
+  }
+  const d=await backendPost({action:'wallet.canonical.delta',session_token:token,
+    device_id:backendDeviceId(),request_id:'Q029-DELTA-'+Date.now(),
+    wallet_contract_id:Q029_WALLET_PAIR_CONTRACT,
+    known_source_rows_hash:ledger.source_rows_hash,known_finance_item_hashes:hashes,
+    horizon:'month'},{timeoutMs:30000});
+  if(!d?.ok){
+    if(d?.error==='UNKNOWN_ACTION'){Q029_WALLET_DELTA_UNSUPPORTED=true;return null}
+    throw new Error(d?.detail||d?.error||'WALLET_DELTA_REQUEST_FAILED');
+  }
+  q029WalletValidatePairResponse(d);
+  if(d.delta?.protocol!==Q029_WALLET_DELTA_PROTOCOL)throw new Error('WALLET_DELTA_PROTOCOL_MISMATCH');
+  const order=d.delta.ordered_ids;
+  if(!Array.isArray(order)||order.length!==d.wallet?.finance_ledger?.row_count||
+     !/^[a-f0-9]{64}$/.test(String(d.delta.ledger_items_hash||'')))throw new Error('WALLET_DELTA_PROOF_MISSING');
+  const map=new Map(items.map(x=>[String(x.finance_id||''),x]));
+  if(d.delta.mode==='UNCHANGED'){
+    if(d.wallet.finance_ledger.source_rows_hash!==ledger.source_rows_hash||
+       JSON.stringify(order)!==JSON.stringify(items.map(x=>String(x.finance_id||'')))||
+       d.delta.upserts?.length||d.delta.removed_ids?.length)
+      throw new Error('WALLET_DELTA_UNCHANGED_PROOF_FAILED');
+  }else if(d.delta.mode==='CHANGED'){
+    if(!Array.isArray(d.delta.upserts)||!Array.isArray(d.delta.removed_ids))throw new Error('WALLET_DELTA_PARTIAL_MISSING');
+    for(const id of d.delta.removed_ids)map.delete(String(id));
+    for(const row of d.delta.upserts){
+      const id=String(row.finance_id||'').trim();if(!id)throw new Error('WALLET_DELTA_UPSERT_MISSING_ID');
+      map.set(id,row);
+    }
+  }else throw new Error('WALLET_DELTA_UNSUPPORTED_MODE');
+  const unique=new Set(order.map(id=>String(id||'')));
+  if(unique.size!==order.length||unique.size!==map.size)throw new Error('WALLET_DELTA_IDSET_MISMATCH');
+  const merged=order.map(id=>map.get(String(id)));
+  if(merged.some(x=>!x))throw new Error('WALLET_DELTA_UNRESOLVED_ID');
+  if(await sha256HexBrowser(JSON.stringify(merged))!==d.delta.ledger_items_hash)
+    throw new Error('WALLET_DELTA_ROWS_HASH_MISMATCH');
+  const wallet=q029WalletValidateFull({...d.wallet,finance_ledger:{...d.wallet.finance_ledger,items:merged}});
+  await q029WalletCheckIds(wallet.finance_ledger);
+  return {wallet,backend_version:d.backend_version,ok:true,delta_mode:d.delta.mode};
+}
+
 async function q046LoadCanonicalWallet(force=false){
   if(!q029WalletUiAllowed()){q029WalletInvalidate(true);return}
   if(Q046_WALLET_STAGE.loading)return;
@@ -4264,7 +4318,12 @@ async function q046LoadCanonicalWallet(force=false){
     }
     if(!valid()||navigator.onLine===false)return;
     if(!force&&Q046_WALLET_STAGE.loaded&&age()<Q029_WALLET_CHECK_INTERVAL_MS)return;
-    const d=await backendPost({action:'wallet.canonical.get',session_token:token,
+    let d=null;
+    // Prefer the per-row delta only after a complete verified phone snapshot exists.
+    if(Q046_WALLET_STAGE.loaded&&S.walletCanonical){
+      try{d=await q029WalletTryDelta(token,userId,S.walletCanonical)}catch(_){d=null}
+    }
+    if(!d)d=await backendPost({action:'wallet.canonical.get',session_token:token,
       device_id:backendDeviceId(),request_id:'Q029-WALLET-'+Date.now(),horizon:'month'},{timeoutMs:30000});
     if(!valid())return;
     if(!d?.ok)throw new Error(d?.detail||d?.error||'WALLET_CANONICAL_FAILED');
