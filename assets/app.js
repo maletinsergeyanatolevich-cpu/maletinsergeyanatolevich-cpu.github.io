@@ -4091,7 +4091,7 @@ const Q029_WALLET_BACKEND_VERSION='backend-0.2.35-q029-finance-sortfix';
 const Q029_WALLET_PAIR_CONTRACT='Q029_FINANCE_IDSET_V1';
 const Q046_WALLET_STAGE={loading:false,loaded:false,error:'',generation:0,session:'',userId:'',backendVersion:'',source:'',savedAt:'',lastCheckedAt:0};
 function q029WalletUiAllowed(){return !!backendSession()&&hasPermission('wallet.view')}
-function q046WalletCanAdd(){return q029WalletUiAllowed()&&hasPermission('wallet.add')&&navigator.onLine!==false&&Q046_WALLET_STAGE.source==='live'&&Date.now()-Q046_WALLET_STAGE.lastCheckedAt<60000}
+function q046WalletCanAdd(){return q029WalletUiAllowed()&&hasPermission('wallet.add')&&navigator.onLine!==false&&Q046_WALLET_STAGE.source==='live'}
 function q046WalletCanEdit(record){return q029WalletUiAllowed()&&!!record&&canMutateRecord('wallet','update',String(record.created_by_user_id||''))}
 function q046WalletActionAllowed(payload){
  const action=String(payload?.action||''),w=q046WalletModel();
@@ -4201,8 +4201,11 @@ function q046ClearPending(x){try{localStorage.removeItem(x.key)}catch(_){}}
 async function q046Action(kind,payload){
   if(!q046WalletActionAllowed(payload))throw new Error('WALLET_PERMISSION_DENIED');
   if(navigator.onLine===false)throw new Error('WALLET_WRITES_REQUIRE_ONLINE');
-  if(Q046_WALLET_STAGE.source!=='live'||Date.now()-Q046_WALLET_STAGE.lastCheckedAt>60000)
-    throw new Error('WALLET_UPDATE_BEFORE_WRITING_REQUIRED');
+  if(Q046_WALLET_STAGE.source!=='live'||Date.now()-Q046_WALLET_STAGE.lastCheckedAt>60000){
+    await q046LoadCanonicalWallet(true);
+    if(Q046_WALLET_STAGE.source!=='live'||Date.now()-Q046_WALLET_STAGE.lastCheckedAt>60000)
+      throw new Error('WALLET_UPDATE_BEFORE_WRITING_REQUIRED');
+  }
   const token=backendSession(),userId=String(SESSION.userId||''),model=q046WalletModel();
   if(!token||!model||Q046_WALLET_STAGE.backendVersion!==Q029_WALLET_BACKEND_VERSION||
      model.contract_id!==Q029_WALLET_PAIR_CONTRACT||navigator.onLine===false)
@@ -4253,7 +4256,7 @@ async function q046LoadCanonicalWallet(force=false){
           Q046_WALLET_STAGE.userId=userId;Q046_WALLET_STAGE.session=token;
           Q046_WALLET_STAGE.backendVersion=cached.backendVersion;
           Q046_WALLET_STAGE.source='cache';Q046_WALLET_STAGE.savedAt=cached.savedAt;
-          Q046_WALLET_STAGE.lastCheckedAt=Date.parse(cached.savedAt)||0;
+          Q046_WALLET_STAGE.lastCheckedAt=0; // Show phone copy immediately, then refresh in background once online.
           Q046_WALLET_STAGE.error='';
           if(document.getElementById('wallet')?.classList.contains('active'))renderWallet();
         }
