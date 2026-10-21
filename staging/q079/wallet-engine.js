@@ -113,7 +113,7 @@ function apply(state,event){
  const s=obj(state,'STATE');if(s.contract!==CONTRACT)fail('STATE_CONTRACT_MISMATCH');
  requireEventEnvelope(s,event);
  // Idempotency check occurs before revision check: timed-out ACK / same immutable request.
- const fingerprint=stable(event);
+ const fingerprint=stable({...event,actor:{userId:event.actor.userId}}); // session permissions/role may change after ACK loss
  const byRequest=s.idempotency[event.requestId],byEvent=s.eventIdIndex[event.eventId];
  if(byRequest||byEvent){
   if(!byRequest||!byEvent||byRequest.eventId!==event.eventId||byEvent.requestId!==event.requestId||byRequest.fingerprint!==fingerprint||byEvent.fingerprint!==fingerprint)
