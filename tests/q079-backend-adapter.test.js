@@ -47,3 +47,27 @@ test('29 absent generation in outbox is also quarantined, not assumed new',()=>{
 test('30 no wholesale deletion/reset endpoint is available',()=>{let {adapter}=harness();assert.deepEqual(Object.keys(adapter).sort(),['commit','generation','masterId','read','writeEnabled']);});
 test('31 no active master writes happen when proof of permission fails',async()=>{let {store,adapter}=harness({principal:{...user,permissions:[]}});let original=JSON.stringify(store.load());await err(()=>adapter.commit(req()),'PERMISSION_DENIED');assert.equal(JSON.stringify(store.load()),original);});
 test('32 no master data created merely by reading empty state',async()=>{let {store,adapter}=harness();let before=JSON.stringify(store.load());await adapter.read(req());assert.equal(JSON.stringify(store.load()),before);});
+
+test('33 spoofed store object with memory-only label cannot trigger side effects',()=>{
+ const forged={type:'ISOLATED_MEMORY_ONLY',generation:GEN,masterId:MASTER,load:()=>({}),cas:()=>{throw Error('SHOULD_NOT_CALL');}};
+ assert.throws(()=>createAdapter({store:forged,authenticate:async()=>admin,activeGeneration:GEN,stagingMasterId:MASTER}),/B3_NON_ISOLATED_STORE_FORBIDDEN/);
+});
+test('34 non-boolean serverVerified marker is not authoritative',async()=>{
+ const {adapter}=harness({principal:{...admin,serverVerified:'true'}});
+ await err(()=>adapter.read(req()),'SESSION_NOT_SERVER_VERIFIED');
+});
+test('35 invalid non-finite or fractional session expiries are forbidden',async()=>{
+ for(const expiresAtMs of [NaN,Infinity,-Infinity,Date.now()+100000.3]){
+  const {adapter}=harness({principal:{...admin,expiresAtMs}});
+  await err(()=>adapter.read(req()),'SESSION_EXPIRED');
+ }
+});
+test('36 read request with client masterId or role spoof is rejected',async()=>{
+ const {adapter}=harness();
+ await err(()=>adapter.read({...req(),masterId:'FAKE-MASTER'}),'CLIENT_IDENTITY_OR_MASTER_SPOOF');
+ await err(()=>adapter.read({...req(),role:'ADMIN1'}),'CLIENT_IDENTITY_OR_MASTER_SPOOF');
+});
+test('37 createAdapter will not trust a copied cloned memory store',()=>{
+ const legit=createInMemoryStore({generation:GEN,masterId:MASTER});const shadow={...legit};
+ assert.throws(()=>createAdapter({store:shadow,authenticate:async()=>admin,activeGeneration:GEN,stagingMasterId:MASTER}),/B3_NON_ISOLATED_STORE_FORBIDDEN/);
+});
