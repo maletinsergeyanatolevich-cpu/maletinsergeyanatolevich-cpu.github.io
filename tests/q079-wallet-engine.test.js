@@ -109,7 +109,7 @@ test('T14 — insufficient cash never becomes zero or confirmed, impossible rese
  let s=seeded(0);s=next(s,'OPERATING_EXPENSE',{amountKop:50000,custodyLocation:'CASH-MAIN'});
  assert.equal(summarize(s).cashKop,-50000);assert.ok(summarize(s).issues.includes('NEGATIVE_CASH_SOURCE_UNVERIFIED'));
  s=next(s,'PLAN_CREATE',{planId:'PLAN-A',amountKop:10000,dueDate:'2026-10-25'});
- code(()=>next(s,'RESERVE_CREATE',{reserveId:'RES-A',planId:'PLAN-A',amountKop:10000}), 'INSUFFICIENT_FREE_CASH_FOR_RESERVE');
+ code(()=>next(s,'RESERVE_CREATE',{reserveId:'RES-A',planId:'PLAN-A',amountKop:10000}), 'CASH_UNVERIFIED_FOR_RESERVE');
 });
 test('T15 — timeout retry with same request/event returns duplicate, version conflict fails',()=>{
  const s=seeded(0),e=event(s,'CASH_RECEIPT',{amountKop:50000,custodyLocation:'CASH-MAIN',purpose:'UNCLASSIFIED_RECEIPT'});
@@ -204,7 +204,22 @@ test('Opening confirmation may occur only once on empty dataset and must cite ev
  s=next(s,'OPENING_CONFIRM',{evidenceId:'OWNER-APPROVAL'});
  code(()=>next(s,'OPENING_CONFIRM',{evidenceId:'AGAIN'}),'OPENING_ALREADY_CONFIRMED');
 });
-test('No accidental export of unimplemented network, storage or mutation integrations',()=>{
+test('Negative custody bucket with positive total cash blocks profit review and assignment',()=>{
+ let s=seeded(100000);s=next(s,'REVENUE_RECOGNIZE',{orderId:'ORDER-A',amountKop:30000,priceState:'KNOWN'});
+ s=next(s,'ORDER_COSTS_CONFIRM',{orderId:'ORDER-A'});s=next(s,'PROFIT_VERIFY',{evidenceId:'REVIEW-OK'});
+ // Money moved out of an empty custody wallet: overall cash stays positive, but source is incomplete.
+ s=next(s,'CUSTODY_TRANSFER',{fromLocation:'CUSTODY-UNKNOWN',toLocation:'CASH-MAIN',amountKop:50000});
+ assert.equal(summarize(s).cashKop,100000);
+ assert.ok(summarize(s).issues.includes('NEGATIVE_CUSTODY_SOURCE_UNVERIFIED'));
+ code(()=>next(s,'PROFIT_ASSIGN',{policyId:'POL-1',amountKop:100,shares:[{partyId:'PARTNER-S',basisPoints:10000}]}),'NEGATIVE_CASH_UNVERIFIED');
+ code(()=>next(s,'PROFIT_VERIFY',{evidenceId:'REVIEW-AGAIN'}),'NEGATIVE_CASH_UNVERIFIED');
+});
+test('Unconfirmed opening prevents reserves even if a provisional cash receipt exists',()=>{
+ let s=fresh();s=next(s,'CASH_RECEIPT',{amountKop:50000,custodyLocation:'CASH-MAIN',purpose:'UNCLASSIFIED_RECEIPT'});
+ s=next(s,'PLAN_CREATE',{planId:'PLAN-A',amountKop:20000,dueDate:'2026-10-31'});
+ code(()=>next(s,'RESERVE_CREATE',{reserveId:'RES-A',planId:'PLAN-A',amountKop:20000}),'CASH_UNVERIFIED_FOR_RESERVE');
+});
+test('No accidental export of unimplemented network, storage or mutation integrations' ,()=>{
  assert.ok(TYPES.includes('MATERIAL_PURCHASE'));assert.ok(!TYPES.includes('DELETE_ALL_FINANCE'));
  const x=fresh();assert.deepEqual(Object.keys(x.idempotency),[]);
 });
