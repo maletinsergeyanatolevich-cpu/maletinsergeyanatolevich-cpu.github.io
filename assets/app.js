@@ -1,4 +1,4 @@
-﻿const APP_RELEASE=Object.freeze({version:'v0.3.28.3-rc-q029',buildId:'2026-10-15.q029.offline1',channel:'q029-wallet-production-rc',dbSchema:5,updateStrategy:'manifest-service-worker',rolloutStage:'stable',previousBuildId:'2026-10-07.3d'});window.APP_RELEASE=APP_RELEASE;
+﻿const APP_RELEASE=Object.freeze({version:'v0.3.28.4-rc-q029',buildId:'2026-10-21.q029.lease1',channel:'q029-wallet-production-rc',dbSchema:5,updateStrategy:'manifest-service-worker',rolloutStage:'stable',previousBuildId:'2026-10-07.3d'});window.APP_RELEASE=APP_RELEASE;
 function emptySnapshot(){return {meta:{version:APP_RELEASE.version,snapshotDate:'',snapshotTime:'',timezone:'',backendConnected:false,source:'Нет загруженных бизнес-данных',schemaVersion:1},orders:[],archivedOrders:[],plannedFinance:[],calculations:{},wallet:{balance:0,income:0,expense:0,reserve:0,freeNow:0,expense7:0,free7:0,futureExpenses:[],transactions:[],futureTotal:0,futureIncome:0,ownerDebt:0,ownerDebtSergey:0,ownerDebtEvgeny:0,ownerDebtTotal:0,ownerGrossDebtSergey:0,ownerGrossDebtEvgeny:0,ownerGrossDebtTotal:0,netPosition:0,afterObligations:0},nomenclature:[],purchaseLines:[],purchaseAggregated:[],gallery:[],appIssues:[],purchaseWarnings:[]}}
 function normalizeSnapshot(x){const b=emptySnapshot();if(!x||typeof x!=='object')return b;return {...b,...x,meta:{...b.meta,...(x.meta||{})},wallet:{...b.wallet,...(x.wallet||{})},orders:Array.isArray(x.orders)?x.orders:[],archivedOrders:Array.isArray(x.archivedOrders)?x.archivedOrders:[],plannedFinance:Array.isArray(x.plannedFinance)?x.plannedFinance:[],calculations:x.calculations&&typeof x.calculations==='object'?x.calculations:{},nomenclature:Array.isArray(x.nomenclature)?x.nomenclature:[],purchaseLines:Array.isArray(x.purchaseLines)?x.purchaseLines:[],purchaseAggregated:Array.isArray(x.purchaseAggregated)?x.purchaseAggregated:[],gallery:Array.isArray(x.gallery)?x.gallery:[],appIssues:Array.isArray(x.appIssues)?x.appIssues:[],purchaseWarnings:Array.isArray(x.purchaseWarnings)?x.purchaseWarnings:[]}}
 let S=emptySnapshot(); window.SNAPSHOT=S;
@@ -4115,7 +4115,7 @@ const Q029_WALLET_CACHE_PREFIX='q029-wallet-canonical:';
 const Q029_WALLET_CHECK_INTERVAL_MS=300000;
 function q029WalletCacheAllowed(){
   return q029WalletUiAllowed()&&!!String(SESSION.userId||'')&&
-    (navigator.onLine!==false||isAdmin1()||offlineAccessValid());
+    (isAdmin1()||offlineAccessValid()); // A browser's online flag is NOT proof of a live USER session.
 }
 async function q029WalletCheckIds(ledger){
   const ids=Array.isArray(ledger?.items)?ledger.items.map(x=>String(x.finance_id||'').trim()):[];
@@ -4133,6 +4133,7 @@ async function q029WalletReadCache(userId){
      rec.wallet?.contract_id!==Q029_WALLET_PAIR_CONTRACT||!/^[a-f0-9]{64}$/.test(String(rec.wallet_sha256||'')))return null;
   q029WalletValidateFull(rec.wallet);await q029WalletCheckIds(rec.wallet.finance_ledger);
   if(await sha256HexBrowser(JSON.stringify(rec.wallet))!==rec.wallet_sha256)throw new Error('WALLET_CACHE_CONTENT_TAMPERED');
+  if(!q029WalletCacheAllowed()||String(SESSION.userId||'')!==userId)return null; // Recheck after async digest.
   return rec;
 }
 async function q029WalletSaveCache(wallet,userId){
@@ -4188,7 +4189,7 @@ function q029WalletValidateFull(wallet){
 }
 function q046WalletModel(){
   if(!q029WalletUiAllowed()||!Q046_WALLET_STAGE.loaded)return null;
-  if(navigator.onLine===false&&!q029WalletCacheAllowed())return null;
+  if(Q046_WALLET_STAGE.source==='cache'&&!q029WalletCacheAllowed())return null; // An expired USER lease blocks even while navigator.onLine is true.
   if((Q046_WALLET_STAGE.session&&Q046_WALLET_STAGE.session!==backendSession())||
      (Q046_WALLET_STAGE.userId&&typeof SESSION!=='undefined'&&Q046_WALLET_STAGE.userId!==SESSION.userId)){
     q029WalletInvalidate(true);return null;
