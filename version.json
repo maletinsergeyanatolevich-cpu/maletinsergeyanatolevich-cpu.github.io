@@ -16,6 +16,6 @@
     "dbSchema": 5,
     "safeWithoutDataReset": true
   },
-  "publishedAt": null,
-  "notes": "SYS Q078 scoped fix: cached Wallet USER access requires valid offline lease even if device reports online without a working backend. ADMIN1 rule unchanged; verified server Wallet unchanged. Preserves dbSchema5, offline financial SHA256 guard, drafts/outbox and prior PWA rollback cache. Optional read-only GAS delta remains uninstalled."
+  "publishedAt": "2026-10-21T00:14:02.277Z",
+  "notes": "Q029 SYS-Q078 exact USER offline sensitive Wallet lease security fix, owner authorized immediate bounded Q029 publication. New build2026-10-21.q029.lease1; same backend0.2.35, verified ADMIN1/USER lease and cold-cache protections; four client files only, IndexedDB dbSchema5, phone drafts/outbox preserved. Read-only GAS delta endpoint remains UNINSTALLED; source-full read fallback unchanged."
 }
