@@ -5,6 +5,8 @@
 'use strict';
 const engine = require('./wallet-engine.js');
 const PERMISSIONS = Object.freeze({view:'wallet.view',mutate:'wallet.add'});
+// Prevent a caller from spoofing the store's type label to bind this rehearsal adapter to live I/O.
+const ISOLATED_STORES = new WeakSet();
 function abort(code){const err=new Error(code);err.code=code;throw err;}
 function string(x,label){if(typeof x!=='string'||!x.trim())abort(label+'_REQUIRED');return x;}
 function object(x,label){if(!x||typeof x!=='object'||Array.isArray(x))abort(label+'_OBJECT_REQUIRED');return x;}
@@ -17,11 +19,11 @@ function assertGeneration({provided,active,stagingMasterId,expectedMasterId}){
 // No token values, role lists or retained user data are persisted here; auth is supplied by trusted backend.
 function assertPrincipal(principal,deviceId,requiredPermission,actionType){
   object(principal,'SERVER_SESSION');
-  if(!principal.serverVerified)abort('SESSION_NOT_SERVER_VERIFIED');
+  if(principal.serverVerified!==true)abort('SESSION_NOT_SERVER_VERIFIED');
   string(principal.userId,'USER_ID');
   if(principal.status!=='ACTIVE'||principal.revoked===true)abort('SESSION_DISABLED');
   if(!principal.deviceId||principal.deviceId!==deviceId)abort('DEVICE_BINDING_MISMATCH');
-  if(typeof principal.expiresAtMs!=='number'||principal.expiresAtMs<=Date.now())abort('SESSION_EXPIRED');
+  if(!Number.isSafeInteger(principal.expiresAtMs)||principal.expiresAtMs<=Date.now())abort('SESSION_EXPIRED');
   const permissions=Array.isArray(principal.permissions)?principal.permissions:[];
   if(principal.role!=='ADMIN1'&& !permissions.includes(requiredPermission))abort('PERMISSION_DENIED');
   if(actionType&&principal.role!=='ADMIN1'&&!permissions.includes(engine.REQUIRED_PERMISSION[actionType]))abort('PERMISSION_DENIED');
@@ -36,7 +38,7 @@ function denyImpersonation(payload){
 function createInMemoryStore({generation,masterId}){
   string(generation,'GENERATION');string(masterId,'MASTER_ID');
   let state=engine.opening(generation);
-  return {
+  const store = {
     type:'ISOLATED_MEMORY_ONLY',generation,masterId,
     load(){return clone(state);},
     cas(expectedRevision,candidate){
@@ -46,12 +48,14 @@ function createInMemoryStore({generation,masterId}){
     },
     snapshot(){return clone(state);}
   };
+  ISOLATED_STORES.add(store);
+  return store;
 }
 function createAdapter({store,authenticate,activeGeneration,stagingMasterId,writeEnabled=false}){
   object(store,'STORE');
   if(typeof authenticate!=='function')abort('TRUSTED_AUTH_PROVIDER_REQUIRED');
   string(activeGeneration,'ACTIVE_GENERATION');string(stagingMasterId,'STAGING_MASTER_ID');
-  if(store.type!=='ISOLATED_MEMORY_ONLY')abort('B3_NON_ISOLATED_STORE_FORBIDDEN');
+  if(store.type!=='ISOLATED_MEMORY_ONLY'||!ISOLATED_STORES.has(store))abort('B3_NON_ISOLATED_STORE_FORBIDDEN');
   if(store.generation!==activeGeneration||store.masterId!==stagingMasterId)abort('STORE_PIN_MISMATCH');
   async function context(request,permission,type){
     object(request,'REQUEST');
@@ -63,7 +67,7 @@ function createAdapter({store,authenticate,activeGeneration,stagingMasterId,writ
   }
   async function read(request){
     const principal=await context(request,PERMISSIONS.view);
-    if(own(request,'actor')||own(request,'permissions')||own(request,'role'))abort('CLIENT_IDENTITY_OR_MASTER_SPOOF');
+    denyImpersonation(request);
     const state=store.load();
     if(state.generation!==activeGeneration)abort('STORE_GENERATION_MISMATCH');
     return {ok:true,mode:'STAGING_READ_ONLY',generation:state.generation,
@@ -73,7 +77,7 @@ function createAdapter({store,authenticate,activeGeneration,stagingMasterId,writ
     if(!writeEnabled)abort('B3_WRITE_GATE_CLOSED');
     object(request,'REQUEST');object(request.event,'EVENT');
     denyImpersonation(request.event);
-    if(own(request,'actor')||own(request,'permissions')||own(request,'role'))abort('CLIENT_IDENTITY_OR_MASTER_SPOOF');
+    denyImpersonation(request);
     if(request.event.generation!==request.businessGeneration)abort('BUSINESS_GENERATION_MISMATCH');
     const principal=await context(request,PERMISSIONS.mutate,request.event.type);
     const state=store.load();
