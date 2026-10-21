@@ -71,6 +71,7 @@ function summarize(s){
  const profitUnassigned=sum(profit,-s.assignedProfitKop);
  const issues=[];
  if(cash<0)issues.push('NEGATIVE_CASH_SOURCE_UNVERIFIED');
+ if(Object.values(s.cash).some(v=>v<0))issues.push('NEGATIVE_CUSTODY_SOURCE_UNVERIFIED');
  if(s.openingStatus!=='CONFIRMED')issues.push('OPENING_NOT_CONFIRMED');
  if(Object.keys(s.orderCostComplete).some(k=>s.orderCostComplete[k]!==true))issues.push('ORDER_COST_UNKNOWN');
  if(profit<0)issues.push('OPERATING_LOSS');
@@ -231,7 +232,8 @@ function apply(state,event){
  case 'RESERVE_CREATE':{
    requireDistinctId(n.reserves,e.reserveId,'RESERVE');int(e.amountKop,'AMOUNT');
    const p=requireMapRecord(n.plans,e.planId,'PLAN');if(p.status!=='ACTIVE'||p.reserveId)fail('PLAN_RESERVE_CONFLICT');
-   const current=summarize(n);if(e.amountKop>p.remainingKop||e.amountKop>current.freeKop)fail('INSUFFICIENT_FREE_CASH_FOR_RESERVE');
+   const current=summarize(n);if(n.openingStatus!=='CONFIRMED'||current.issues.includes('NEGATIVE_CUSTODY_SOURCE_UNVERIFIED'))fail('CASH_UNVERIFIED_FOR_RESERVE');
+   if(e.amountKop>p.remainingKop||e.amountKop>current.freeKop)fail('INSUFFICIENT_FREE_CASH_FOR_RESERVE');
    n.reserves[e.reserveId]={id:e.reserveId,planId:e.planId,remainingKop:e.amountKop,status:'ACTIVE'};
    p.reserveId=e.reserveId;effect(effects,'RESERVE_REMAINING',e.reserveId,e.amountKop);break;
  }
@@ -258,13 +260,14 @@ function apply(state,event){
  case 'PROFIT_VERIFY':{
    if(n.openingStatus!=='CONFIRMED')fail('OPENING_UNCONFIRMED');
    if(Object.values(n.orderCostComplete).some(x=>x!==true))fail('ORDER_COST_UNKNOWN');
-   if(summarize(n).cashKop<0)fail('NEGATIVE_CASH_UNVERIFIED');
+   if(summarize(n).issues.some(x=>x==='NEGATIVE_CASH_SOURCE_UNVERIFIED'||x==='NEGATIVE_CUSTODY_SOURCE_UNVERIFIED'))fail('NEGATIVE_CASH_UNVERIFIED');
    if(sum(n.revenueKop,-n.costKop)<0)fail('PROFIT_NEGATIVE');
    // Audit approval is a business gate, not a calculated side-effect.
    id(e.evidenceId,'PROFIT_EVIDENCE');n.profitVerifiedRev=n.revision+1;break;
  }
  case 'PROFIT_ASSIGN':{
    if(n.profitVerifiedRev===null)fail('PROFIT_NOT_VERIFIED');
+   if(summarize(n).issues.some(x=>x==='NEGATIVE_CASH_SOURCE_UNVERIFIED'||x==='NEGATIVE_CUSTODY_SOURCE_UNVERIFIED'))fail('NEGATIVE_CASH_UNVERIFIED');
    int(e.amountKop,'AMOUNT');if(e.amountKop>sum(sum(n.revenueKop,-n.costKop),-n.assignedProfitKop))fail('INSUFFICIENT_UNASSIGNED_PROFIT');
    if(!Array.isArray(e.shares)||!e.shares.length)fail('PROFIT_SHARES_REQUIRED');
    id(e.policyId,'PROFIT_POLICY');let shareSum=0;const seen=new Set(),entries=[];
@@ -300,7 +303,8 @@ function apply(state,event){
  }
  n.revision++;
  // Negative balances are NOT overwritten with zero or silently marked healthy.
- if(summarize(n).cashKop<0&&!issues.includes('NEGATIVE_CASH_SOURCE_UNVERIFIED'))issues.push('NEGATIVE_CASH_SOURCE_UNVERIFIED');
+ for(const warning of summarize(n).issues.filter(x=>x==='NEGATIVE_CASH_SOURCE_UNVERIFIED'||x==='NEGATIVE_CUSTODY_SOURCE_UNVERIFIED'))
+   if(!issues.includes(warning))issues.push(warning);
  const audit={eventId:e.eventId,requestId:e.requestId,type:e.type,actorUserId:e.actor.userId,
   expectedRevision:e.expectedRevision,revision:n.revision,effectiveDate:e.effectiveDate,
   fingerprint,effects:copy(effects),issues:copy(issues)};
