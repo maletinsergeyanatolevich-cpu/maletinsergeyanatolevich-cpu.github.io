@@ -223,3 +223,10 @@ test('No accidental export of unimplemented network, storage or mutation integra
  assert.ok(TYPES.includes('MATERIAL_PURCHASE'));assert.ok(!TYPES.includes('DELETE_ALL_FINANCE'));
  const x=fresh();assert.deepEqual(Object.keys(x.idempotency),[]);
 });
+
+test('Retry of identical accepted event succeeds when authoritative permissions changed since original ACK',()=>{
+ let s=seeded(0),e=event(s,'CASH_RECEIPT',{amountKop:10000,custodyLocation:'CASH-MAIN',purpose:'UNCLASSIFIED_RECEIPT'});
+ const first=apply(s,e);const retry={...e,actor:{...e.actor,permissions:[...e.actor.permissions,'wallet.view']}};
+ const second=apply(first.state,retry);
+ assert.equal(second.duplicate,true);assert.equal(second.summary.cashKop,10000);assert.equal(second.state.events.length,first.state.events.length);
+});
