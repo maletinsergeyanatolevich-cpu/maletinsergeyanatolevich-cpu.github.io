@@ -1,0 +1,50 @@
+'use strict';
+const {test}=require('node:test'),assert=require('node:assert/strict');
+const UI=require('../assets/wallet2.js');
+const gen='Q079.STAGING.20261021.001';let count=0;
+const cfg=()=>({generation:gen,eventId:'EVT-TEST-'+(++count),requestId:'REQ-TEST-'+(++count),revision:0,effectiveDate:'2026-10-21'});
+function code(fn,message){assert.throws(fn,e=>e.message.includes(message));}
+function root(){return {innerHTML:'',querySelectorAll:()=>[],querySelector:()=>null};}
+function env(api=async()=>({ok:false,error:'BACKEND_NOT_READY'})){let auth={userId:'ADMIN1',token:'tok'};const node=root(),x=UI.create({rootElement:node,api,session:()=>auth,deviceId:()=> 'DEV-TEST',allow:p=>['wallet.view','wallet.add','wallet.sensitive'].includes(p),clock:()=> '2026-10-21',requestIds:()=> 'test-uuid-'+(++count)});return {x,node,setAuth:x=>auth=x};}
+const state={ok:true,contract:UI.CONTRACT,generation:gen,writeEnabled:true,revision:0,openingStatus:'UNCONFIRMED',summary:{generation:gen,revision:0,cashKop:0,reservedKop:0,freeKop:0,issues:['OPENING_NOT_CONFIRMED']},recentEvents:[]};
+test('01 exact decimal kopeks, commas, no floating point truncation',()=>{assert.equal(UI.amount('1,05'),105);assert.equal(UI.amount('90071992547409,91'),9007199254740991);});
+test('02 rejects excessive decimal precision',()=>code(()=>UI.amount('1,005'),'слишком много'));
+test('03 rejects zero or invalid financial amount',()=>{for(const a of ['','0','-1','1e3','Infinity'])code(()=>UI.amount(a),'число'===a?'invalid':'');});
+test('04 zero allowed only explicit amountZero',()=>assert.equal(UI.amount('0','Ноль',true),0));
+test('05 quantity uses exact thousandths',()=>assert.equal(UI.qty('1,250'),1250));
+test('06 old business dates blocked',()=>code(()=>UI.buildEvent('CASH_RECEIPT',{amountKop:'10',custodyLocation:'CASH-A',purpose:'UNCLASSIFIED_RECEIPT'}, {...cfg(),effectiveDate:'2026-10-20'}),'Дата до'));
+test('07 receipt is integer kopeks',()=>{const v=UI.buildEvent('CASH_RECEIPT',{amountKop:'20,50',custodyLocation:'CASH-A',purpose:'UNCLASSIFIED_RECEIPT'},cfg());assert.equal(v.amountKop,2050);assert.equal(v.generation,gen);});
+test('08 client cannot forge actor on generated event',()=>{const v=UI.buildEvent('CASH_RECEIPT',{amountKop:'20',custodyLocation:'CASH-A',purpose:'UNCLASSIFIED_RECEIPT',actor:{role:'ADMIN1'}},cfg());assert.equal('actor' in v,false);});
+test('09 advance requires order id',()=>code(()=>UI.buildEvent('CASH_RECEIPT',{amountKop:'100',custodyLocation:'CASH-A',purpose:'CUSTOMER_ADVANCE'},cfg()),'нужен ID'));
+test('10 neutral custody transfer envelope',()=>{const v=UI.buildEvent('CUSTODY_TRANSFER',{amountKop:'350',fromLocation:'CASH-A',toLocation:'CARD-B'},cfg());assert.equal(v.amountKop,35000);});
+test('11 partner returnable versus support explicit',()=>{for(const kind of ['RETURNABLE','SUPPORT'])assert.equal(UI.buildEvent('PARTNER_CONTRIBUTION',{amountKop:'1',partyId:'PARTNER-A',kind,custodyLocation:'CARD-A'},cfg()).kind,kind);});
+test('12 material mixed purchase exact leg amounts',()=>{const v=UI.buildEvent('MATERIAL_PURCHASE',{lotId:'LOT-A',nomenclatureId:'NOM-A',quantityMilli:'2',totalCostKop:'100',legs:[{kind:'BUSINESS',amount:'40',location:'CARD-A'},{kind:'PERSONAL_RETURNABLE',amount:'30',party:'PARTNER-A'},{kind:'SUPPLIER_DEBT',amount:'30',obligation:'BILL-A'}]},cfg());assert.equal(v.legs.reduce((s,x)=>s+x.amountKop,0),10000);});
+test('13 material legs cannot silently underpay',()=>code(()=>UI.buildEvent('MATERIAL_PURCHASE',{lotId:'LOT-A',nomenclatureId:'NOM-A',quantityMilli:'2',totalCostKop:'100',legs:[{kind:'BUSINESS',amount:'99',location:'CARD-A'}]},cfg()),'не равна'));
+test('14 interest and principal recorded separately',()=>{const v=UI.buildEvent('LOAN_REPAY',{loanId:'LOAN-A',principalKop:'30',interestKop:'5',custodyLocation:'CASH-A'},cfg());assert.equal(v.principalKop,3000);assert.equal(v.interestKop,500);});
+test('15 percent shares become basis points',()=>{const v=UI.buildEvent('PROFIT_ASSIGN',{amountKop:'101',policyId:'POLICY-A',shares:[{party:'PARTNER-A',percent:'60'},{party:'PARTNER-B',percent:'40'}]},cfg());assert.equal(v.shares[0].basisPoints,6000);});
+test('16 profit share not 100% forbidden',()=>code(()=>UI.buildEvent('PROFIT_ASSIGN',{amountKop:'101',policyId:'POLICY-A',shares:[{party:'PARTNER-A',percent:'60'}]},cfg()),'100%'));
+test('17 duplicated partner share forbidden',()=>code(()=>UI.buildEvent('PROFIT_ASSIGN',{amountKop:'101',policyId:'POLICY-A',shares:[{party:'PARTNER-A',percent:'50'},{party:'PARTNER-A',percent:'50'}]},cfg()),'Уникальные'));
+test('18 unknown price cannot masquerade as known',()=>{const v=UI.buildEvent('REVENUE_RECOGNIZE',{orderId:'ORDER-A',amountKop:'100',priceState:'UNKNOWN'},cfg());assert.equal(v.priceState,'UNKNOWN');});
+test('19 unknown event type forbidden',()=>code(()=>UI.buildEvent('WALLET_RESET',{},cfg()),'не поддерживается'));
+test('20 unsafe IDs rejected',()=>code(()=>UI.buildEvent('PLAN_CREATE',{planId:'__proto__',amountKop:'100',dueDate:'2026-10-25'},cfg()),'неверный ID'));
+test('21 malformed date rejected',()=>code(()=>UI.buildEvent('PLAN_CREATE',{planId:'PLAN-A',amountKop:'100',dueDate:'2026-02-31'},cfg()),'неверная дата'));
+test('22 response generation exact and nonlegacy',()=>{assert.strictEqual(UI.ensureResponse(state,gen),state);code(()=>UI.ensureResponse({...state,generation:'OLD-GEN'},gen),'Поколение');});
+test('23 missing response epoch rejected',()=>code(()=>UI.ensureResponse({...state,generation:undefined},gen),'Поколение'));
+test('24 response without matching summary epoch rejected',()=>code(()=>UI.ensureResponse({...state,summary:{generation:'OLD'}},gen),'нового'));
+test('25 malformed response revision rejected',()=>code(()=>UI.ensureResponse({...state,revision:'0'},gen),'версия'));
+test('26 no legacy wallet snapshot ever displayed without server',()=>{const {x,node}=env();x.render();assert.match(node.innerHTML,/Старые финансы/);assert.equal(x.state.hasData,false);});
+test('27 backend failure fails closed, no stale wallet model',async()=>{const {x,node}=env();await x.refresh();assert.equal(x.state.hasData,false);assert.match(node.innerHTML,/не подтверждён/);});
+test('28 first server read renders new zero ledger but opening unconfirmed',async()=>{const {x,node}=env(async()=>state);await x.refresh();assert.equal(x.state.hasData,true);assert.match(node.innerHTML,/Начальные сведения ещё не подтверждены/);});
+test('29 server should not expose historical rows into read response output',async()=>{const {x,node}=env(async()=>({...state,oldFinance:[{amount:26109.52}],recentEvents:[]}));await x.refresh();assert.ok(!node.innerHTML.includes('26109'));});
+test('30 failed auth screen does not expose previous new financial data',async()=>{const z=env(async()=>state);await z.x.refresh();z.setAuth(null);z.x.render();assert.equal(z.x.state.hasData,false);assert.match(z.node.innerHTML,/Нет активной сессии/);});
+test('31 user switch resets read state',async()=>{const z=env(async()=>state);await z.x.refresh();z.setAuth({userId:'USER-2',token:'tok2'});z.x.render();assert.equal(z.x.state.hasData,false);});
+test('32 view uses single existing wallet root and does not change nav',async()=>{const z=env(async()=>state);await z.x.refresh();assert.match(z.node.innerHTML,/w2-root/);assert.match(z.node.innerHTML,/Разделы Кошелька/);});
+test('33 all engine event classes have UI forms',()=>{const expected=require('../staging/q079/wallet-engine.js').TYPES;assert.deepEqual(expected.slice().sort(),UI.CATEGORIES.map(x=>x[1]).sort());});
+test('34 each event has at least one typed field',()=>{for(const t of UI.CATEGORIES)assert.ok(UI.FIELDS[t[1]]?.length>0);});
+test('35 no operations can be processed without server ledger',()=>{const z=env();z.x.render();assert.ok(!z.node.innerHTML.includes('data-w2="choose"'));});
+test('36 currency display never maps unknown to zero',()=>{assert.equal(UI.money(null),'неизвестно');assert.equal(UI.money(undefined),'неизвестно');assert.notEqual(UI.money(0),'неизвестно');});
+
+test('37 bootstrap must precede any new financial read, and read pins exact epoch',async()=>{const calls=[];const z=env(async r=>{calls.push(r);return r.action==='wallet2.bootstrap'?{ok:true,contract:UI.CONTRACT,generation:gen,writeEnabled:false}:state});await z.x.refresh();assert.deepEqual(calls.map(x=>x.action),['wallet2.bootstrap','wallet2.read']);assert.equal(calls[1].business_generation,gen);});
+test('38 empty or legacy bootstrap cannot load wallet',async()=>{const calls=[];const z=env(async r=>{calls.push(r);return {ok:true,contract:UI.CONTRACT,generation:'OLD-GEN'};});await z.x.refresh();assert.equal(z.x.state.hasData,false);assert.equal(calls.length,1);});
+test('39 read generation mismatch after authenticated bootstrap fails closed',async()=>{const z=env(async r=>r.action==='wallet2.bootstrap'?{ok:true,contract:UI.CONTRACT,generation:gen}:({...state,generation:'Q079.OLD'}));await z.x.refresh();assert.equal(z.x.state.hasData,false);});
+test('40 read-only server gate disables write action even when wallet.add',async()=>{const z=env(async r=>r.action==='wallet2.bootstrap'?{ok:true,contract:UI.CONTRACT,generation:gen,writeEnabled:false}:state);await z.x.refresh();assert.match(z.node.innerHTML,/data-w2="choose" disabled/);});
