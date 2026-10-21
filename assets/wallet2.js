@@ -132,12 +132,12 @@
     if(!rootElement||typeof api!=='function'||typeof session!=='function'||typeof deviceId!=='function')throw Error('Wallet2 needs existing PWA container and authenticated API');
     const date=clock||(()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Tomsk',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()));
     const newId=requestIds||(()=>{if(typeof crypto==='undefined'||typeof crypto.randomUUID!=='function')throw Error('Secure request IDs unavailable');return crypto.randomUUID();});
-    let generation=null,data=null,view='summary',loading=false,error='',sending=false,type=null,legCount=1,shareCount=2, lastUser=null;
+    let generation=null,data=null,serverWriteEnabled=false,view='summary',loading=false,error='',sending=false,type=null,legCount=1,shareCount=2, lastUser=null;
     const allowed=typeof allow==='function'?allow:()=>false;
     function safeUser(){return String(session()?.userId||'');}
     function render(){
       const active=safeUser(),has=allowed('wallet.view');
-      if(active!==lastUser){data=null;generation=null;lastUser=active;error='';}
+      if(active!==lastUser){data=null;generation=null;serverWriteEnabled=false;lastUser=active;error='';}
       if(!has||!active){rootElement.innerHTML='<div class="w2-root"><h2>Кошелёк</h2><p role="alert">Нет активной сессии или права просмотра.</p></div>';return;}
       const header=`<div class="w2-head"><button data-w2="back" class="w2-back" type="button">← Главная</button><h2>Кошелёк</h2><span class="w2-chip">Новый учёт</span></div>`;
       const status=error?`<p role="alert" class="w2-error">${esc(error)}</p>`:'';
@@ -145,7 +145,7 @@
       const info=data?`<div class="w2-bar"><span>Поколение: ${esc(data.generation)}</span><span>Версия: ${data.revision}</span></div><p class="w2-opening">${data.openingStatus==='CONFIRMED'?'Начальные сведения подтверждены':'Начальные сведения ещё не подтверждены. Пустой журнал не означает нулевую кассу.'}</p>`:'';
       const warn=data?.summary?.issues?.length?`<div class="w2-notices" role="status">${data.summary.issues.map(x=>`<span>${esc(x)}</span>`).join('')}</div>`:'';
       const tabs=data?`<nav class="w2-tabs" aria-label="Разделы Кошелька">${VIEWS.map(([k,l])=>`<button type="button" data-view="${k}" class="${k===view?'selected':''}" aria-current="${k===view?'page':'false'}">${l}</button>`).join('')}</nav>`:'';
-      const doBtn=data?`<div class="w2-actions"><button type="button" class="w2-primary" data-w2="choose" ${sending?'disabled':''}>+ Операция</button><button type="button" data-w2="refresh">Обновить</button></div>`:`<button type="button" data-w2="refresh">Проверить сервер</button>`;
+      const doBtn=data?`<div class="w2-actions"><button type="button" class="w2-primary" data-w2="choose" ${sending||!serverWriteEnabled?'disabled':''}>+ Операция</button><button type="button" data-w2="refresh">Обновить</button></div>`:`<button type="button" data-w2="refresh">Проверить сервер</button>`;
       const pick=type===null?'':`<form id="w2-form"><div class="w2-form-title"><h3>${esc(CATEGORIES.find(x=>x[1]===type)?.[2]||type)}</h3><button type="button" data-w2="close">×</button></div><p class="w2-muted">Суммы в рублях, сохраняются в целых копейках. Запись требует ответа сервера.</p>${options(type)}${type==='MATERIAL_PURCHASE'?Array.from({length:legCount},(_,i)=>legForm(i)).join('')+'<button type="button" data-w2="addLeg">+ Источник оплаты</button>':''}${type==='PROFIT_ASSIGN'?Array.from({length:shareCount},(_,i)=>shareForm(i)).join('')+'<button type="button" data-w2="addShare">+ Участник</button>':''}<button type="submit" class="w2-primary" ${sending?'disabled':''}>${sending?'Отправка…':'Проверить и сохранить'}</button></form>`;
       const menu=type===null&&data?`<div class="w2-type-picker" hidden>${CATEGORIES.map(([group,k,title])=>`<button type="button" data-type="${k}" ${needsPermission(k)==='admin'&&!allowed('wallet.sensitive')?'disabled':''}>${esc(title)}<small>${esc(group)}</small></button>`).join('')}</div>`:'';
       rootElement.innerHTML=`<div class="w2-root">${header}${status}${info}${warn}${pre}${tabs}${data?sections(data,view):''}${doBtn}${menu}${pick}</div>`;
@@ -161,18 +161,19 @@
     rootElement.querySelector?.('#w2-form')?.addEventListener('submit',evt=>{evt.preventDefault();void submit(evt.currentTarget);});}
     async function refresh(){if(loading||sending)return;loading=true;error='';render();
       try{const token=session()?.token,dev=deviceId();if(!token||!dev)throw Error('Нет активной сессии или устройства');
-        const r=await api({action:'wallet2.read',session_token:token,device_id:dev},{timeoutMs:30000});
-        if(r?.ok!==true||!r.generation)throw Error('Сервер ещё не разрешил новое поколение Кошелька');
-        ensureResponse(r,r.generation);
+        const hello=await api({action:'wallet2.bootstrap',session_token:token,device_id:dev},{timeoutMs:15000});
+        if(hello?.ok!==true||hello.contract!==CONTRACT||!/^Q079[.:-]/.test(String(hello.generation||'')))throw Error('Сервер ещё не разрешил новое поколение Кошелька');
+        const r=await api({action:'wallet2.read',session_token:token,device_id:dev,business_generation:hello.generation},{timeoutMs:30000});
+        ensureResponse(r,hello.generation);
         if(session()?.token!==token||deviceId()!==dev)throw Error('Сессия изменилась');
-        data=r;generation=r.generation;
-      }catch(e){data=null;generation=null;error=String(e?.message||e);}
+        data=r;generation=r.generation;serverWriteEnabled=hello.writeEnabled===true;
+      }catch(e){data=null;generation=null;serverWriteEnabled=false;error=String(e?.message||e);}
       finally{loading=false;render();}}
     function collect(form){const fd=new FormData(form),v=Object.fromEntries(fd.entries());
       if(type==='MATERIAL_PURCHASE')v.legs=Array.from({length:legCount},(_,i)=>({kind:v['leg'+i+'kind'],amount:v['leg'+i+'amount'],location:v['leg'+i+'ref'],party:v['leg'+i+'ref'],obligation:v['leg'+i+'ref']}));
       if(type==='PROFIT_ASSIGN')v.shares=Array.from({length:shareCount},(_,i)=>({party:v['share'+i+'party'],percent:v['share'+i+'percent']}));
       return v;}
-    async function submit(form){if(sending||!data||!generation||!allowed('wallet.add')){error='Нет подтверждённых прав или данных сервера';render();return;}
+    async function submit(form){if(sending||!data||!generation||!serverWriteEnabled||!allowed('wallet.add')){error='Нет подтверждённых прав или данных сервера';render();return;}
       if(needsPermission(type)==='admin'&&!allowed('wallet.sensitive')){error='Эта операция требует разрешения ADMIN1';render();return;}
       let event;const token=session()?.token,dev=deviceId();
       try{if(!token||!dev)throw Error('Нет сессии');event=buildEvent(type,collect(form),{generation,revision:data.revision,effectiveDate:date(),eventId:'EVT-'+newId(),requestId:'REQ-'+newId()});}
