@@ -397,7 +397,7 @@ function create({getSheet,authSession,hasPermission,lock,sha256,clock}={}){
    recentEvents:s.events.slice(-30).reverse().map(e=>({eventId:e.eventId,type:e.type,effectiveDate:e.effectiveDate})),
    legacyFinanceRowsRead:0,legacyOrdersRowsRead:0};
  }
- function bootstrap(req){auth(req,'wallet.view');const c=config();return {ok:true,contract:CONTRACT,generation:c.generation,mode:c.status,writeEnabled:c.status==='ACTIVE_V2'&&c.writeEnabled&&c.approval==='GRANTED',openingStatus:'UNCONFIRMED'};}
+ function bootstrap(req){auth(req,'wallet.view');const c=config();const ledger=state(c);return {ok:true,contract:CONTRACT,generation:c.generation,mode:c.status,writeEnabled:c.status==='ACTIVE_V2'&&c.writeEnabled&&c.approval==='GRANTED',openingStatus:ledger.openingStatus,revision:ledger.revision};}
  function read(req){auth(req,'wallet.view');const c=config();epoch(req,c);return response(state(c),c);}
  function commit(req){
   obj(req,'REQUEST');obj(req.event,'EVENT');
@@ -417,14 +417,14 @@ function create({getSheet,authSession,hasPermission,lock,sha256,clock}={}){
    const s=state(c);
    const event={...req.event,actor:{userId:String(actual.user.userId),role:String(actual.user.role),permissions:[REQUIRED_PERMISSION[requested]]}};
    const applied=apply(s,event);
-   if(applied.duplicate)return {...response(s,c),duplicate:true};
+   if(applied.duplicate)return {...response(s,c),duplicate:true,acceptedEventId:event.eventId,acceptedRequestId:event.requestId};
    const e=Object.freeze({version:1,event,hash:sha256(JSON.stringify(event)),acceptedAt:now()});
    const payload=JSON.stringify(e);if(payload.length>48000)reject('W2_EVENT_TOO_LARGE');
    const t=tab(EVENTS),row=t.getLastRow()+1;
    // One self-contained authoritative cell; no multi-tab partial projections to double-post.
    t.getRange(row,1).setValue(payload);
    if(t.getRange(row,1).getValue()!==payload)reject('W2_EVENT_READBACK_FAILED_RETRY_WITH_SAME_REQUEST');
-   return {...response(applied.state,c),duplicate:false};
+   return {...response(applied.state,c),duplicate:false,acceptedEventId:event.eventId,acceptedRequestId:event.requestId};
   }finally{lock.releaseLock();}
  }
  return Object.freeze({bootstrap,read,commit,CONTRACT,CONTROL,EVENTS});
