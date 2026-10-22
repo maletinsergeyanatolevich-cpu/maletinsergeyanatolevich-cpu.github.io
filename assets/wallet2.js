@@ -70,7 +70,8 @@
     if(!d.summary||typeof d.summary!=='object'||d.summary.generation!==expectedGeneration)throw Error('Нет нового финансового журнала');
     return d;
   }
-  function needsPermission(type){return ['OPENING_CONFIRM','PROFIT_VERIFY','PROFIT_ASSIGN','PROFIT_PAY','PARTNER_WITHDRAWAL','PARTNER_RETURN','LOAN_RECEIVE','LOAN_REPAY','PROFIT_OFFSET'].includes(type)?'admin':'wallet.add';}
+  // Mirror the conservative server grant without changing existing USER rights.
+  function needsPermission(type){return ['CASH_RECEIPT','OPERATING_EXPENSE'].includes(type)?'wallet.add':'admin';}
   function fieldsFor(type){return FIELDS[type]||[];}
   function buildEvent(type,values,config){
     if(!FIELDS[type])throw Error('Тип операции не поддерживается');
@@ -130,14 +131,14 @@
   function shareForm(i){return `<div class="w2-share"><label>Участник <input name="share${i}party" placeholder="ID участника" required></label><label>Доля, % <input name="share${i}percent" inputmode="decimal" placeholder="50,00" required></label></div>`;}
   function create({rootElement,api,session,deviceId,allow,clock,requestIds}={}){
     if(!rootElement||typeof api!=='function'||typeof session!=='function'||typeof deviceId!=='function')throw Error('Wallet2 needs existing PWA container and authenticated API');
-    const date=clock||(()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Tomsk',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()));
+    const date=clock||(()=>{const parts=new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Tomsk',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());const p=Object.fromEntries(parts.map(x=>[x.type,x.value]));return `${p.year}-${p.month}-${p.day}`;});
     const newId=requestIds||(()=>{if(typeof crypto==='undefined'||typeof crypto.randomUUID!=='function')throw Error('Secure request IDs unavailable');return crypto.randomUUID();});
-    let generation=null,data=null,serverWriteEnabled=false,view='summary',loading=false,error='',sending=false,type=null,legCount=1,shareCount=2, lastUser=null;
+    let generation=null,data=null,serverWriteEnabled=false,view='summary',loading=false,error='',sending=false,type=null,legCount=1,shareCount=2, lastUser=null,lastToken=null,lastDevice=null;
     const allowed=typeof allow==='function'?allow:()=>false;
     function safeUser(){return String(session()?.userId||'');}
     function render(){
-      const active=safeUser(),has=allowed('wallet.view');
-      if(active!==lastUser){data=null;generation=null;serverWriteEnabled=false;lastUser=active;error='';}
+      const active=safeUser(),token=String(session()?.token||''),device=String(deviceId()||''),has=allowed('wallet.view');
+      if(active!==lastUser||token!==lastToken||device!==lastDevice){data=null;generation=null;serverWriteEnabled=false;type=null;lastUser=active;lastToken=token;lastDevice=device;error='';}
       if(!has||!active){rootElement.innerHTML='<div class="w2-root"><h2>Кошелёк</h2><p role="alert">Нет активной сессии или права просмотра.</p></div>';return;}
       const header=`<div class="w2-head"><button data-w2="back" class="w2-back" type="button">← Главная</button><h2>Кошелёк</h2><span class="w2-chip">Новый учёт</span></div>`;
       const status=error?`<p role="alert" class="w2-error">${esc(error)}</p>`:'';
