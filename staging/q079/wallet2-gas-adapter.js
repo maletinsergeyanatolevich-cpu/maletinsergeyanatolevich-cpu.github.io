@@ -10,7 +10,10 @@
 const {opening,apply,summarize,REQUIRED_PERMISSION}=require('./wallet-engine.js');
 const CONTRACT='Q079-WALLET2-API-v1';
 const CONTROL='_W2_CONTROL',EVENTS='_W2_EVENTS';
-const SENSITIVE=new Set(['OPENING_CONFIRM','PARTNER_RETURN','LOAN_RECEIVE','LOAN_REPAY','PROFIT_VERIFY','PROFIT_ASSIGN','PROFIT_PAY','PARTNER_WITHDRAWAL','PROFIT_OFFSET']);
+// Existing USER wallet.add is not a grant to create loans, stock liabilities or custody movements.
+// Remain restrictive until the owner approves type-specific mapping; do not alter the users sheet.
+const USER_ALLOWED=new Set(['CASH_RECEIPT','OPERATING_EXPENSE']);
+const SENSITIVE=new Set(Object.keys(REQUIRED_PERMISSION).filter(type=>!USER_ALLOWED.has(type)));
 function reject(message){const e=new Error(message);e.code=message;throw e;}
 function str(v,label){if(typeof v!=='string'||!v.trim())reject(label+'_REQUIRED');return v;}
 function obj(v,label){if(!v||typeof v!=='object'||Array.isArray(v))reject(label+'_OBJECT_REQUIRED');return v;}
@@ -33,7 +36,7 @@ function create({getSheet,authSession,hasPermission,lock,sha256,clock}={}){
  }
  function epoch(req,c){if(req.business_generation!==c.generation)reject('BUSINESS_GENERATION_MISMATCH');}
  function rawEvents(){const t=tab(EVENTS),count=t.getLastRow()-1;
-  if(count<0)reject('W2_EVENTS_HEADER_MISSING');
+  if(count<0||t.getRange(1,1).getValue()!=='event_json')reject('W2_EVENTS_HEADER_MISSING');
   if(count===0)return [];
   const a=t.getRange(2,1,count,1).getValues();
   return a.map((r,i)=>{const s=r?.[0];if(typeof s!=='string'||!s||s.length>48000)reject('W2_EVENT_CORRUPTED_AT_ROW_'+(i+2));
@@ -90,4 +93,4 @@ function create({getSheet,authSession,hasPermission,lock,sha256,clock}={}){
  }
  return Object.freeze({bootstrap,read,commit,CONTRACT,CONTROL,EVENTS});
 }
-module.exports={create,CONTRACT,CONTROL,EVENTS,SENSITIVE};
+module.exports={create,CONTRACT,CONTROL,EVENTS,SENSITIVE,USER_ALLOWED};
