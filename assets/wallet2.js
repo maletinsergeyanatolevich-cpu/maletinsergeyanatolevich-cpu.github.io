@@ -133,12 +133,29 @@
     if(!rootElement||typeof api!=='function'||typeof session!=='function'||typeof deviceId!=='function')throw Error('Wallet2 needs existing PWA container and authenticated API');
     const date=clock||(()=>{const parts=new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Tomsk',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());const p=Object.fromEntries(parts.map(x=>[x.type,x.value]));return `${p.year}-${p.month}-${p.day}`;});
     const newId=requestIds||(()=>{if(typeof crypto==='undefined'||typeof crypto.randomUUID!=='function')throw Error('Secure request IDs unavailable');return crypto.randomUUID();});
-    let generation=null,data=null,serverWriteEnabled=false,view='summary',loading=false,error='',sending=false,type=null,legCount=1,shareCount=2, lastUser=null,lastToken=null,lastDevice=null;
+    let generation=null,data=null,serverWriteEnabled=false,view='summary',loading=false,error='',sending=false,type=null,legCount=1,shareCount=2, lastUser=null,lastToken=null,lastDevice=null,pending=null;
     const allowed=typeof allow==='function'?allow:()=>false;
     function safeUser(){return String(session()?.userId||'');}
+    // Per-tab pending event, user+generation pinned; NO token. A deliberate retry reuses the exact ID.
+    // No old-generation replay and no automatic dispatch after browser restart.
+    function pendingKey(user,gen){return 'q079-w2-unacknowledged:'+user+':'+gen;}
+    function pendingStore(){try{return typeof sessionStorage!=='undefined'?sessionStorage:null;}catch(_){return null;}}
+    function savePending(value){pending=value;const storage=pendingStore();if(!storage)return;
+      try{storage.setItem(pendingKey(value.userId,value.generation),JSON.stringify(value));}catch(_){}
+    }
+    function loadPending(user,gen){const storage=pendingStore();if(!storage)return null;
+      let raw;try{raw=storage.getItem(pendingKey(user,gen));}catch(_){return null;}
+      if(!raw)return null;
+      try{const p=JSON.parse(raw);
+        if(p&&p.userId===user&&p.generation===gen&&p.event?.generation===gen&&p.event?.eventId&&p.event?.requestId&&!p.event.actor&&!p.event.permissions&&!p.event.role)return p;
+      }catch(_){}
+      throw Error('Незавершённая операция повреждена. Нужна ручная сверка перед новым вводом.');
+    }
+    function clearPending(){const p=pending;pending=null;if(!p)return;try{pendingStore()?.removeItem(pendingKey(p.userId,p.generation));}catch(_){}}
+
     function render(){
       const active=safeUser(),token=String(session()?.token||''),device=String(deviceId()||''),has=allowed('wallet.view');
-      if(active!==lastUser||token!==lastToken||device!==lastDevice){data=null;generation=null;serverWriteEnabled=false;type=null;lastUser=active;lastToken=token;lastDevice=device;error='';}
+      if(active!==lastUser||token!==lastToken||device!==lastDevice){data=null;generation=null;serverWriteEnabled=false;type=null;pending=null;lastUser=active;lastToken=token;lastDevice=device;error='';}
       if(!has||!active){rootElement.innerHTML='<div class="w2-root"><h2>Кошелёк</h2><p role="alert">Нет активной сессии или права просмотра.</p></div>';return;}
       const header=`<div class="w2-head"><button data-w2="back" class="w2-back" type="button">← Главная</button><h2>Кошелёк</h2><span class="w2-chip">Новый учёт</span></div>`;
       const status=error?`<p role="alert" class="w2-error">${esc(error)}</p>`:'';
@@ -146,14 +163,15 @@
       const info=data?`<div class="w2-bar"><span>Поколение: ${esc(data.generation)}</span><span>Версия: ${data.revision}</span></div><p class="w2-opening">${data.openingStatus==='CONFIRMED'?'Начальные сведения подтверждены':'Начальные сведения ещё не подтверждены. Пустой журнал не означает нулевую кассу.'}</p>`:'';
       const warn=data?.summary?.issues?.length?`<div class="w2-notices" role="status">${data.summary.issues.map(x=>`<span>${esc(x)}</span>`).join('')}</div>`:'';
       const tabs=data?`<nav class="w2-tabs" aria-label="Разделы Кошелька">${VIEWS.map(([k,l])=>`<button type="button" data-view="${k}" class="${k===view?'selected':''}" aria-current="${k===view?'page':'false'}">${l}</button>`).join('')}</nav>`:'';
-      const doBtn=data?`<div class="w2-actions"><button type="button" class="w2-primary" data-w2="choose" ${sending||!serverWriteEnabled?'disabled':''}>+ Операция</button><button type="button" data-w2="refresh">Обновить</button></div>`:`<button type="button" data-w2="refresh">Проверить сервер</button>`;
+      const doBtn=data?`<div class="w2-actions"><button type="button" class="w2-primary" data-w2="choose" ${sending||!serverWriteEnabled||pending?'disabled':''}>+ Операция</button><button type="button" data-w2="refresh">Обновить</button></div>`:`<button type="button" data-w2="refresh">Проверить сервер</button>`;
+      const pendingBanner=pending?`<div class="w2-block w2-pending" role="alert"><b>Операция без подтверждённого ответа</b><p>Новая операция заблокирована до сверки. Повтор использует тот же ID запроса, без второго списания.</p><button type="button" data-w2="retry" ${sending||!serverWriteEnabled?'disabled':''}>Повторить тот же запрос</button></div>`:'';
       const pick=type===null?'':`<form id="w2-form"><div class="w2-form-title"><h3>${esc(CATEGORIES.find(x=>x[1]===type)?.[2]||type)}</h3><button type="button" data-w2="close">×</button></div><p class="w2-muted">Суммы в рублях, сохраняются в целых копейках. Запись требует ответа сервера.</p>${options(type)}${type==='MATERIAL_PURCHASE'?Array.from({length:legCount},(_,i)=>legForm(i)).join('')+'<button type="button" data-w2="addLeg">+ Источник оплаты</button>':''}${type==='PROFIT_ASSIGN'?Array.from({length:shareCount},(_,i)=>shareForm(i)).join('')+'<button type="button" data-w2="addShare">+ Участник</button>':''}<button type="submit" class="w2-primary" ${sending?'disabled':''}>${sending?'Отправка…':'Проверить и сохранить'}</button></form>`;
       const menu=type===null&&data?`<div class="w2-type-picker" hidden>${CATEGORIES.map(([group,k,title])=>`<button type="button" data-type="${k}" ${needsPermission(k)==='admin'&&!allowed('wallet.sensitive')?'disabled':''}>${esc(title)}<small>${esc(group)}</small></button>`).join('')}</div>`:'';
-      rootElement.innerHTML=`<div class="w2-root">${header}${status}${info}${warn}${pre}${tabs}${data?sections(data,view):''}${doBtn}${menu}${pick}</div>`;
+      rootElement.innerHTML=`<div class="w2-root">${header}${status}${info}${warn}${pre}${tabs}${data?sections(data,view):''}${doBtn}${pendingBanner}${menu}${pick}</div>`;
       attach();
     }
     function attach(){rootElement.querySelectorAll?.('[data-w2]').forEach(el=>el.addEventListener('click',()=>{
-      const k=el.dataset.w2;if(k==='refresh')void refresh();else if(k==='choose'){const m=rootElement.querySelector('.w2-type-picker');if(m)m.hidden=!m.hidden;}
+      const k=el.dataset.w2;if(k==='refresh')void refresh();else if(k==='retry')void retryPending();else if(k==='choose'){const m=rootElement.querySelector('.w2-type-picker');if(m)m.hidden=!m.hidden;}
       else if(k==='close'){type=null;render();}else if(k==='back'){if(typeof window!=='undefined'&&typeof window.go==='function')window.go('home');}
       else if(k==='addLeg'){if(legCount<6){const form=rootElement.querySelector('#w2-form');form?.querySelector('button[data-w2="addLeg"]')?.insertAdjacentHTML('beforebegin',legForm(legCount++));}}else if(k==='addShare'){if(shareCount<10){const form=rootElement.querySelector('#w2-form');form?.querySelector('button[data-w2="addShare"]')?.insertAdjacentHTML('beforebegin',shareForm(shareCount++));}}
     }));
@@ -168,24 +186,37 @@
         ensureResponse(r,hello.generation);
         if(session()?.token!==token||deviceId()!==dev)throw Error('Сессия изменилась');
         data=r;generation=r.generation;serverWriteEnabled=hello.writeEnabled===true;
+        if(!pending)pending=loadPending(safeUser(),generation);
       }catch(e){data=null;generation=null;serverWriteEnabled=false;error=String(e?.message||e);}
       finally{loading=false;render();}}
     function collect(form){const fd=new FormData(form),v=Object.fromEntries(fd.entries());
       if(type==='MATERIAL_PURCHASE')v.legs=Array.from({length:legCount},(_,i)=>({kind:v['leg'+i+'kind'],amount:v['leg'+i+'amount'],location:v['leg'+i+'ref'],party:v['leg'+i+'ref'],obligation:v['leg'+i+'ref']}));
       if(type==='PROFIT_ASSIGN')v.shares=Array.from({length:shareCount},(_,i)=>({party:v['share'+i+'party'],percent:v['share'+i+'percent']}));
       return v;}
-    async function submit(form){if(sending||!data||!generation||!serverWriteEnabled||!allowed('wallet.add')){error='Нет подтверждённых прав или данных сервера';render();return;}
+    async function submit(form){if(pending){error='Сначала повторите или сверьте незавершённую операцию';render();return;}if(sending||!data||!generation||!serverWriteEnabled||!allowed('wallet.add')){error='Нет подтверждённых прав или данных сервера';render();return;}
       if(needsPermission(type)==='admin'&&!allowed('wallet.sensitive')){error='Эта операция требует разрешения ADMIN1';render();return;}
       let event;const token=session()?.token,dev=deviceId();
       try{if(!token||!dev)throw Error('Нет сессии');event=buildEvent(type,collect(form),{generation,revision:data.revision,effectiveDate:date(),eventId:'EVT-'+newId(),requestId:'REQ-'+newId()});}
       catch(e){error=String(e?.message||e);render();return;}
+      savePending({userId:safeUser(),generation,event});type=null;sending=true;error='';render();
+      await dispatchPending(token,dev);
+    }
+    async function dispatchPending(token,dev){
+      const p=pending;if(!p||!data||p.generation!==generation||p.userId!==safeUser()){error='Операция не соответствует пользователю или поколению';render();return;}
       sending=true;error='';render();
-      try{if(session()?.token!==token||deviceId()!==dev)throw Error('Сессия изменилась до отправки');
-        const r=await api({action:'wallet2.commit',session_token:token,device_id:dev,business_generation:generation,event},{timeoutMs:60000});
-        ensureResponse(r,generation);
-        // Never count locally: server replay/read is the only confirmed displayed state.
-        sending=false;type=null;await refresh();
-      }catch(e){sending=false;error=String(e?.message||e)+' · Если подтверждение не пришло, повторно не вводите операцию до сверки сервера.';render();}}
+      try{
+        if(session()?.token!==token||deviceId()!==dev)throw Error('Сессия изменилась до отправки');
+        const r=await api({action:'wallet2.commit',session_token:token,device_id:dev,business_generation:p.generation,event:p.event},{timeoutMs:60000});
+        ensureResponse(r,p.generation);
+        if(r.acceptedEventId!==p.event.eventId||r.acceptedRequestId!==p.event.requestId)throw Error('Ответ сервера не подтверждает конкретную операцию');
+        if(session()?.token!==token||deviceId()!==dev||safeUser()!==p.userId)throw Error('Сессия изменилась до подтверждения');
+        clearPending();sending=false;type=null;await refresh();
+      }catch(e){sending=false;error=String(e?.message||e)+' · Запрос сохранён. При необходимости повторите ТОТ ЖЕ запрос.';render();}
+    }
+    async function retryPending(){if(!pending||sending||!serverWriteEnabled||!allowed('wallet.add'))return;
+      const token=session()?.token,dev=deviceId();if(!token||!dev)return;
+      await dispatchPending(token,dev);
+    }
     return Object.freeze({render,refresh,buildEvent,ensureResponse,get state(){return {generation,revision:data?.revision||null,hasData:!!data,error,view,loading,sending};}});
   }
   return Object.freeze({create,buildEvent,ensureResponse,amount,qty,money,CATEGORIES,FIELDS,CONTRACT});
