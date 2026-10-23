@@ -1,9 +1,10 @@
 'use strict';
-const BUILD='2026-10-21.q029.lease1';
+const BUILD='2026-10-23.q079.wallet2.1';
 const CACHE='production-pwa-'+BUILD;
-const ROLLBACK_CACHE='production-pwa-2026-10-07.3d';
+const ROLLBACK_CACHE='production-pwa-2026-10-21.q029.lease1';
 const APP_SHELL=[
   './index.html','./assets/app.css','./assets/media.css','./assets/app.js','./bootstrap.js',
+  './assets/wallet2.js','./assets/wallet2-bridge.js','./assets/wallet2.css',
   './manifest.webmanifest','./version.json','./icons/icon.svg','./icons/icon-maskable.svg','./offline.html'
 ];
 async function cachedAdmin1(){
