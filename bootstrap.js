@@ -1,5 +1,8 @@
 'use strict';
 (function(){
+  // Q079 wallet-only release: replace just the #wallet module of existing 16-screen PWA.
+  // The shared production backend URL, user/device/session state, NOM and other tabs remain unchanged.
+  window.__Q079_WALLET2_ENABLED_BY_RELEASE=true;
   const s=document.createElement('script');
   s.src='./assets/app.js';
   s.async=false;
