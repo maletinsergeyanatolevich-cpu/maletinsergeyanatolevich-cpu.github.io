@@ -37,7 +37,37 @@ function obj(v, label){if(!v||typeof v!=='object'||Array.isArray(v))fail(label+'
 function id(v,label){if(typeof v!=='string'||['__proto__','prototype','constructor'].includes(v)||!/^[-_A-Za-z0-9.:]{3,110}$/.test(v))fail(label+'_INVALID');return v;}
 function int(v,label,allowZero=false){if(!Number.isSafeInteger(v)||v<0||(!allowZero&&v===0))fail(label+'_POSITIVE_SAFE_INTEGER_REQUIRED');return v;}
 function signed(v,label){if(!Number.isSafeInteger(v))fail(label+'_SAFE_INTEGER_REQUIRED');return v;}
-function sum(a,b){let r=BigInt(a)+BigInt(b);if(r>BigInt(Number.MAX_SAFE_INTEGER)||r<BigInt(Number.MIN_SAFE_INTEGER))fail('AMOUNT_OVERFLOW');return Number(r);}
+function sum(a,b){
+ if(!Number.isSafeInteger(a)||!Number.isSafeInteger(b))fail('AMOUNT_OVERFLOW');
+ const r=a+b;
+ if(!Number.isSafeInteger(r))fail('AMOUNT_OVERFLOW');
+ return r;
+}
+/** Exact floor(amount * part / total), and exact division remainder.
+ * Does not use BigInt or unsafe floating-point multiplication. Each intermediate
+ * is a safe integer; repeated modular doubling needs at most 53 iterations.
+ * 0 <= part <= total, 0 <= amount <= Number.MAX_SAFE_INTEGER.
+ */
+function ratioWithRemainder_(amount,part,total){
+ int(amount,'RATIO_AMOUNT',true);
+ int(part,'RATIO_PART',true);
+ int(total,'RATIO_TOTAL');
+ if(part>total)fail('RATIO_PART_EXCEEDS_TOTAL');
+ const whole=Math.floor(amount/total),fraction=amount%total;
+ let quotient=0,remainder=0;
+ const bits=[];let cursor=part;
+ while(cursor>0){bits.push(cursor%2);cursor=Math.floor(cursor/2);}
+ for(let i=bits.length-1;i>=0;i--){
+  quotient=sum(quotient,quotient);
+  if(remainder>=total-remainder){remainder=remainder-(total-remainder);quotient=sum(quotient,1);}
+  else remainder+=remainder;
+  if(bits[i]){
+   if(remainder>=total-fraction){remainder=remainder-(total-fraction);quotient=sum(quotient,1);}
+   else remainder+=fraction;
+  }
+ }
+ return {amount:sum(whole*part,quotient),remainder};
+}
 function sumValues(vals){return vals.reduce((acc,val)=>sum(acc,val),0);}
 function checkedDate(s,label='DATE') {
  if(typeof s!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(s))fail(label+'_INVALID');
@@ -177,7 +207,7 @@ function apply(state,event){
    const lot=requireMapRecord(n.stockLots,e.lotId,'LOT');id(e.orderId,'ORDER_ID');
    int(e.quantityMilli,'QUANTITY');assertLimited(e.quantityMilli,lot.remainingQuantityMilli,'LOT_QUANTITY');
    const alloc=e.quantityMilli===lot.remainingQuantityMilli?lot.remainingCostKop:
-     Number(BigInt(lot.remainingCostKop)*BigInt(e.quantityMilli)/BigInt(lot.remainingQuantityMilli));
+     ratioWithRemainder_(lot.remainingCostKop,e.quantityMilli,lot.remainingQuantityMilli).amount;
    if(alloc<=0)fail('ALLOCATION_COST_ROUNDS_TO_ZERO');
    lot.remainingQuantityMilli-=e.quantityMilli;lot.remainingCostKop-=alloc;
    effect(effects,'STOCK_COST',e.lotId,-alloc);cost(n,effects,alloc,e.orderId);break;
@@ -273,8 +303,9 @@ function apply(state,event){
    id(e.policyId,'PROFIT_POLICY');let shareSum=0;const seen=new Set(),entries=[];
    for(const x of e.shares){id(x.partyId,'PARTNER');int(x.basisPoints,'SHARE');shareSum+=x.basisPoints;
      if(seen.has(x.partyId))fail('PROFIT_SHARE_DUPLICATE');seen.add(x.partyId);
-     const base=BigInt(e.amountKop)*BigInt(x.basisPoints);entries.push({partyId:x.partyId,
-       amount:Number(base/10000n),remainder:Number(base%10000n)});
+     if(x.basisPoints>10000)fail('PROFIT_SHARE_INVALID');
+     const share=ratioWithRemainder_(e.amountKop,x.basisPoints,10000);
+     entries.push({partyId:x.partyId,amount:share.amount,remainder:share.remainder});
    }
    if(shareSum!==10000)fail('PROFIT_SHARES_NOT_100_PERCENT');
    let rest=e.amountKop-sumValues(entries.map(x=>x.amount));
