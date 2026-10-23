@@ -1,21 +1,17 @@
 {
-  "version": "v0.3.28.4-rc-q029",
-  "buildId": "2026-10-21.q029.lease1",
-  "channel": "q029-wallet-offline-lease-guard",
-  "rolloutStage": "stable",
-  "eligibleRoles": [
-    "ADMIN1",
-    "ADMIN2",
-    "USER"
-  ],
+  "version": "v0.3.29.0-wallet2-rc",
+  "buildId": "2026-10-23.q079.wallet2.1",
+  "channel": "wallet2-stage-release-candidate",
+  "rolloutStage": "hold",
+  "eligibleRoles": [],
   "dbSchema": 5,
   "minBackend": "backend-0.2.35-q029-finance-sortfix",
-  "previousBuildId": "2026-10-07.3d",
+  "previousBuildId": "2026-10-21.q029.lease1",
   "rollback": {
-    "buildId": "2026-10-07.3d",
+    "buildId": "2026-10-21.q029.lease1",
     "dbSchema": 5,
-    "safeWithoutDataReset": true
+    "safeWithoutDataReset": false
   },
-  "publishedAt": "2026-10-21T00:14:02.277Z",
-  "notes": "Q029 SYS-Q078 exact USER offline sensitive Wallet lease security fix, owner authorized immediate bounded Q029 publication. New build2026-10-21.q029.lease1; same backend0.2.35, verified ADMIN1/USER lease and cold-cache protections; four client files only, IndexedDB dbSchema5, phone drafts/outbox preserved. Read-only GAS delta endpoint remains UNINSTALLED; source-full read fallback unchanged."
+  "publishedAt": null,
+  "notes": "RELEASE CANDIDATE ONLY: wallet-only update. No rollout before GAS endpoint activation and exact final archive/clean cutover."
 }
