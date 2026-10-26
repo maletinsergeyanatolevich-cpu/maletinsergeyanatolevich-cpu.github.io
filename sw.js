@@ -1,7 +1,7 @@
 'use strict';
-const BUILD='2026-10-23.q079.wallet2.1';
+const BUILD='2026-10-26.q079.wallet2.cachefix1';
 const CACHE='production-pwa-'+BUILD;
-const ROLLBACK_CACHE='production-pwa-2026-10-21.q029.lease1';
+const ROLLBACK_CACHE='production-pwa-2026-10-23.q079.wallet2.1';
 const APP_SHELL=[
   './index.html','./assets/app.css','./assets/media.css','./assets/app.js','./bootstrap.js',
   './assets/wallet2.js','./assets/wallet2-bridge.js','./assets/wallet2.css',
@@ -110,26 +110,62 @@ self.addEventListener('message',event=>{
     if(await q029ReleasePermitsActivation())await self.skipWaiting();
   })());
 });
+// Wallet2 cache recovery: prefer fresh core files while online, preserve offline cache.
+const Q079_NETWORK_FIRST_CORE = new Set([
+  '/bootstrap.js','/assets/app.js','/assets/wallet2.js',
+  '/assets/wallet2-bridge.js','/assets/wallet2.css'
+]);
 self.addEventListener('fetch',event=>{
-  const req=event.request;if(req.method!=='GET')return;
+  const req=event.request;
+  if(req.method!=='GET')return;
   const url=new URL(req.url);
   if(url.hostname.includes('script.google.com')||url.hostname.includes('googleusercontent.com'))return;
   if(url.origin!==self.location.origin)return;
-  if(url.pathname.endsWith('/version.json')){event.respondWith(fetch(req,{cache:'no-store'}).catch(()=>caches.match(req)));return;}
+  if(url.pathname.endsWith('/version.json')){
+    event.respondWith(fetch(req,{cache:'no-store'}).catch(()=>caches.match(req,{ignoreSearch:true})));
+    return;
+  }
+  // Previously the old cached index won even during online reloads.
+  // Network-first prevents stale UI; cache still supports offline startup.
   if(req.mode==='navigate'){
     event.respondWith((async()=>{
-      const c=await caches.open(CACHE),cached=await c.match('./index.html');
-      if(cached)return cached;
+      const c=await caches.open(CACHE);
       try{
-        const fresh=await fetch(req,{cache:'reload'});
-        if(fresh.ok)await c.put('./index.html',fresh.clone());
-        return fresh
-      }catch(_){
-        return c.match('./offline.html')
-      }
-    })());return;
+        const fresh=await fetch(req,{cache:'no-store'});
+        if(fresh.ok){
+          if(url.pathname==='/'||url.pathname.endsWith('/index.html'))
+            await c.put('./index.html',fresh.clone());
+          return fresh;
+        }
+      }catch(_){}
+      return (await c.match('./index.html'))||
+        (await caches.match('./offline.html'))||Response.error();
+    })());
+    return;
   }
-  event.respondWith((async()=>{const c=await caches.open(CACHE),cached=await c.match(req);if(cached)return cached;const fresh=await fetch(req,{cache:'no-store'});if(fresh.ok)await c.put(req,fresh.clone());return fresh})());
+  if(Q079_NETWORK_FIRST_CORE.has(url.pathname)){
+    event.respondWith((async()=>{
+      const c=await caches.open(CACHE);
+      try{
+        const fresh=await fetch(req,{cache:'no-store'});
+        if(fresh.ok){
+          await c.put(req,fresh.clone());
+          return fresh;
+        }
+      }catch(_){}
+      return (await c.match(req,{ignoreSearch:true}))||
+        (await caches.match(req,{ignoreSearch:true}))||Response.error();
+    })());
+    return;
+  }
+  event.respondWith((async()=>{
+    const c=await caches.open(CACHE);
+    const cached=await c.match(req);
+    if(cached)return cached;
+    const fresh=await fetch(req,{cache:'no-store'});
+    if(fresh.ok)await c.put(req,fresh.clone());
+    return fresh;
+  })());
 });
 async function notifyDraftSyncClients(reason){
   const list=await self.clients.matchAll({type:'window',includeUncontrolled:true});
