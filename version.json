@@ -1,6 +1,6 @@
 {
-  "version": "v0.3.29.0-wallet2-rc",
-  "buildId": "2026-10-23.q079.wallet2.1",
+  "version": "v0.3.29.1-wallet2",
+  "buildId": "2026-10-26.q079.wallet2.cachefix1",
   "channel": "q079-wallet2",
   "rolloutStage": "stable",
   "eligibleRoles": [
@@ -10,12 +10,13 @@
   ],
   "dbSchema": 5,
   "minBackend": "backend-0.2.35-q029-finance-sortfix",
-  "previousBuildId": "2026-10-21.q029.lease1",
+  "previousBuildId": "2026-10-23.q079.wallet2.1",
   "rollback": {
-    "buildId": "2026-10-21.q029.lease1",
+    "buildId": "2026-10-23.q079.wallet2.1",
     "dbSchema": 5,
-    "safeWithoutDataReset": false
+    "safeWithoutDataReset": false,
+    "requiresWalletLedgerReconciliation": true
   },
-  "publishedAt": "2026-10-25T00:33:00.655Z",
-  "notes": "Q079 Wallet2 production: only existing #wallet screen replaced, new _W2_EVENTS authoritative with opening UNCONFIRMED; 15 other screens/auth/rights/NOM/settings preserved. Legacy finance outbox never replayed. Rollback requires new finance ledger reconciliation."
+  "publishedAt": "2026-10-26T00:00:00.000Z",
+  "notes": "Q079 Wallet2 already live, fix stale Chrome PWA core cache only. Network-first for app shell, offline fallback retained; no auth/local storage/IndexedDB mutation."
 }
