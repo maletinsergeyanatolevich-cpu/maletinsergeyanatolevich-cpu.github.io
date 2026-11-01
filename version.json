@@ -1,6 +1,6 @@
 {
-  "version": "v0.3.30-wallet2-ux",
-  "buildId": "2026-11-01.q079.wallet2.mobile1",
+  "version": "v0.3.30.1-wallet2-ux",
+  "buildId": "2026-11-01.q079.wallet2.mobile2",
   "channel": "q079-wallet2-ux",
   "rolloutStage": "admin1",
   "eligibleRoles": [
@@ -16,5 +16,5 @@
     "requiresWalletLedgerReconciliation": true
   },
   "publishedAt": "2026-11-01T00:00:00.000Z",
-  "notes": "Q079 Wallet2 mobile UX ADMIN1 candidate; new income/expense menu, auto server read on wallet resume, diagnostics moved below; no financial schema/data/backend changes."
+  "notes": "Q079 Wallet2 ADMIN1 source candidate: mobile UX + read-only last verified device cache + foreground revision polling. No persistent financial SW tokens, no legacy Finance restore, no backend/data changes."
 }
