@@ -1,5 +1,5 @@
 'use strict';
-const BUILD='2026-11-01.q079.wallet2.mobile1';
+const BUILD='2026-11-01.q079.wallet2.mobile2';
 const CACHE='production-pwa-'+BUILD;
 const ROLLBACK_CACHE='production-pwa-2026-10-26.q079.wallet2.cachefix1';
 const APP_SHELL=[
