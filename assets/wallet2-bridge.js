@@ -15,7 +15,8 @@
  function placeTransferPanel(){
    if(!transferPanel||!transferAnchor||!walletScreen)return;
    if(walletScreen.classList.contains('active')){
-     if(transferPanel.parentNode!==walletScreen)walletScreen.appendChild(transferPanel);
+     const slot=walletScreen.querySelector('.w2-technical')||walletScreen;
+     if(transferPanel.parentNode!==slot)slot.appendChild(transferPanel);
    }else if(transferAnchor.parentNode&&transferPanel.previousSibling!==transferAnchor){
      transferAnchor.parentNode.insertBefore(transferPanel,transferAnchor.nextSibling);
    }
