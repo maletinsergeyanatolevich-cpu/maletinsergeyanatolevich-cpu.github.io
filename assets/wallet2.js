@@ -138,11 +138,39 @@
   }).join('');}
   function legForm(i){return `<div class="w2-leg"><span>Часть оплаты ${i+1}</span><select name="leg${i}kind"><option value="BUSINESS">Деньги производства</option><option value="PERSONAL_RETURNABLE">Личные, вернуть участнику</option><option value="PERSONAL_SUPPORT">Безвозвратная помощь</option><option value="SUPPLIER_DEBT">Долг поставщику</option></select><input name="leg${i}amount" inputmode="decimal" placeholder="Сумма, ₽" required><input name="leg${i}ref" placeholder="ID кошелька / участника / долга" required></div>`;}
   function shareForm(i){return `<div class="w2-share"><label>Участник <input name="share${i}party" placeholder="ID участника" required></label><label>Доля, % <input name="share${i}percent" inputmode="decimal" placeholder="50,00" required></label></div>`;}
+
+  // This is a device-local, read-only cache of the NEW Q079 generation.
+  // Neither credentials nor old S.wallet / Finance / Orders are ever stored here.
+  const CACHE_DB='production-wallet2-readonly-v1';
+  function cacheDb(){
+    return new Promise((resolve,reject)=>{
+      if(typeof indexedDB==='undefined')return reject(Error('CACHE_UNAVAILABLE'));
+      const req=indexedDB.open(CACHE_DB,1);
+      req.onupgradeneeded=()=>{if(!req.result.objectStoreNames.contains('snapshots'))req.result.createObjectStore('snapshots');};
+      req.onsuccess=()=>resolve(req.result);
+      req.onerror=()=>reject(req.error||Error('CACHE_OPEN_FAILED'));
+    });
+  }
+  async function cacheIo(key,writeValue){
+    const db=await cacheDb();
+    try{return await new Promise((resolve,reject)=>{
+      const tx=db.transaction('snapshots',writeValue===undefined?'readonly':'readwrite');
+      const rq=writeValue===undefined?tx.objectStore('snapshots').get(key):tx.objectStore('snapshots').put(writeValue,key);
+      rq.onsuccess=()=>resolve(rq.result);rq.onerror=()=>reject(rq.error||Error('CACHE_IO_FAILED'));
+      tx.onerror=()=>reject(tx.error||Error('CACHE_TX_FAILED'));
+    });}finally{db.close();}
+  }
+  function compactCacheResponse(r){
+    // Bound durable size, retain all overview/ledger summaries and only recent history.
+    return {ok:true,contract:CONTRACT,generation:r.generation,revision:r.revision,
+      openingStatus:r.openingStatus,mode:r.mode,summary:r.summary,ledgers:r.ledgers,
+      recentEvents:Array.isArray(r.recentEvents)?r.recentEvents.slice(0,40):[]};
+  }
   function create({rootElement,api,session,deviceId,allow,clock,requestIds}={}){
     if(!rootElement||typeof api!=='function'||typeof session!=='function'||typeof deviceId!=='function')throw Error('Wallet2 needs existing PWA container and authenticated API');
     const date=clock||(()=>{const parts=new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Tomsk',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());const p=Object.fromEntries(parts.map(x=>[x.type,x.value]));return `${p.year}-${p.month}-${p.day}`;});
     const newId=requestIds||(()=>{if(typeof crypto==='undefined'||typeof crypto.randomUUID!=='function')throw Error('Secure request IDs unavailable');return crypto.randomUUID();});
-    let generation=null,data=null,serverWriteEnabled=false,view='summary',loading=false,error='',sending=false,type=null,entryMode=null,lastReadAt=0,legCount=1,shareCount=2, lastUser=null,lastToken=null,lastDevice=null,pending=null;
+    let generation=null,data=null,serverWriteEnabled=false,view='summary',loading=false,error='',sending=false,type=null,entryMode=null,lastReadAt=0,legCount=1,shareCount=2, lastUser=null,lastToken=null,lastDevice=null,pending=null,offlineCopy=false,cacheChecked=false,cacheSavedAt=0;
     const allowed=typeof allow==='function'?allow:()=>false;
     function safeUser(){return String(session()?.userId||'');}
     // Per-tab pending event, user+generation pinned; NO token. A deliberate retry reuses the exact ID.
@@ -162,17 +190,51 @@
     }
     function clearPending(){const p=pending;pending=null;if(!p)return;try{pendingStore()?.removeItem(pendingKey(p.userId,p.generation));}catch(_){}}
 
+
+    function cacheKey(user,device){return 'q079-v2:'+user+':'+device;}
+    function offlineAuthorizationValid(){
+      const u=safeUser(),s=session()||{};
+      const until=Date.parse(String(s.offlineUntil||''));
+      return !!u&&!!String(s.token||'')&&allowed('wallet.view')&&Number.isFinite(until)&&until>Date.now();
+    }
+    async function restoreCache(){
+      if(cacheChecked)return false;
+      cacheChecked=true;
+      const user=safeUser(),device=String(deviceId()||'');
+      if(!offlineAuthorizationValid()||!device)return false;
+      try{
+        const saved=await cacheIo(cacheKey(user,device));
+        if(!saved||saved.userId!==user||saved.deviceId!==device||!Number.isFinite(saved.savedAt)||
+           saved.savedAt>Date.now()||saved.savedAt<Date.now()-30*86400000)return false;
+        const cached=ensureResponse(saved.data,saved.generation);
+        if(!/^Q079[.:-]/.test(cached.generation)||cached.mode!=='ACTIVE_V2')return false;
+        // Do not overwrite a newer network response or cross a user/device change.
+        if(data||safeUser()!==user||String(deviceId()||'')!==device||!offlineAuthorizationValid())return false;
+        data=cached;generation=cached.generation;offlineCopy=true;serverWriteEnabled=false;
+        cacheSavedAt=saved.savedAt;lastReadAt=0;
+        if(!pending)pending=loadPending(user,generation);
+        render();return true;
+      }catch(_){return false;}
+    }
+    async function saveReadCache(r,user,device){
+      try{
+        const compact=compactCacheResponse(r),encoded=JSON.stringify(compact);
+        if(encoded.length>500000||!offlineAuthorizationValid()||safeUser()!==user||String(deviceId()||'')!==device)return;
+        await cacheIo(cacheKey(user,device),{userId:user,deviceId:device,generation:r.generation,
+          savedAt:Date.now(),data:compact});
+      }catch(_){/* No cache must never break the live wallet */ }
+    }
     function render(){
       const active=safeUser(),token=String(session()?.token||''),device=String(deviceId()||''),has=allowed('wallet.view');
-      if(active!==lastUser||token!==lastToken||device!==lastDevice){data=null;generation=null;serverWriteEnabled=false;type=null;entryMode=null;lastReadAt=0;pending=null;lastUser=active;lastToken=token;lastDevice=device;error='';}
+      if(active!==lastUser||token!==lastToken||device!==lastDevice){data=null;generation=null;serverWriteEnabled=false;type=null;entryMode=null;lastReadAt=0;pending=null;offlineCopy=false;cacheChecked=false;cacheSavedAt=0;lastUser=active;lastToken=token;lastDevice=device;error='';}
       if(!has||!active){rootElement.innerHTML='<div class="w2-root"><h2>Кошелёк</h2><p role="alert">Нет активной сессии или права просмотра.</p></div>';return;}
       const header=`<div class="w2-head"><button data-w2="back" class="w2-back" type="button">← Главная</button><h2>Кошелёк</h2><span class="w2-chip">Новый учёт</span></div>`;
-      const status=error?`<p role="alert" class="w2-error">${esc(error)}</p>`:'';
+      const status=(offlineCopy&&data?`<p role="status" class="w2-balance-caution">Офлайн-копия Кошелька от ${esc(new Date(cacheSavedAt||lastReadAt).toLocaleString('ru-RU'))}. Только просмотр. Остатки могут быть устаревшими.</p>`:'')+(error?`<p role="alert" class="w2-error">${esc(error)}</p>`:'');
       const pre=!data?`<div class="w2-block"><p>${loading?'Подключаюсь к серверу…':'Данные Кошелька ещё не получены с сервера.'}</p><p class="w2-muted">Новый журнал загружается автоматически. Старые финансы не подставляются.</p><button type="button" data-w2="refresh">Проверить сервер</button></div>`:'';
       const summary=data?sections(data,'summary'):'';
       const openingNote=data?.openingStatus!=='CONFIRMED'&&data?
         '<p class="w2-balance-caution">Остатки предварительные: начальные сведения не подтверждены.</p>':'';
-      const blocked=sending||!serverWriteEnabled||!!pending||!allowed('wallet.add');
+      const blocked=sending||offlineCopy||!serverWriteEnabled||!!pending||!allowed('wallet.add');
       const actions=data?`<div class="w2-actions"><button type="button" class="w2-income" data-w2="income" aria-pressed="${entryMode==='income'}" ${blocked?'disabled':''}>+ Доход</button><button type="button" class="w2-expense" data-w2="expense" aria-pressed="${entryMode==='expense'}" ${blocked?'disabled':''}>− Расход</button></div>`:'';
       const typeButton=([group,k,title])=>`<button type="button" data-type="${k}" ${needsPermission(k)==='admin'&&!allowed('wallet.sensitive')?'disabled':''}>${esc(title)}<small>${esc(group)}</small></button>`;
       const visible=entryMode?CATEGORIES.filter(x=>inEntryMenu(x[1],entryMode)):[];
@@ -196,22 +258,45 @@
     rootElement.querySelectorAll?.('[data-view]').forEach(el=>el.addEventListener('click',()=>{view=el.dataset.view;render();}));
     rootElement.querySelectorAll?.('[data-type]').forEach(el=>el.addEventListener('click',()=>{if(el.disabled||!entryMode||!inEntryMenu(el.dataset.type,entryMode))return;type=el.dataset.type;legCount=1;shareCount=2;render();}));
     rootElement.querySelector?.('#w2-form')?.addEventListener('submit',evt=>{evt.preventDefault();void submit(evt.currentTarget);});}
-    async function refresh(){if(loading||sending)return;loading=true;error='';render();
-      try{const token=session()?.token,dev=deviceId();if(!token||!dev)throw Error('Нет активной сессии или устройства');
-        const hello=await api({action:'wallet2.bootstrap',session_token:token,device_id:dev},{timeoutMs:15000});
-        if(hello?.ok!==true||hello.contract!==CONTRACT||!/^Q079[.:-]/.test(String(hello.generation||'')))throw Error('Сервер ещё не разрешил новое поколение Кошелька');
-        const r=await api({action:'wallet2.read',session_token:token,device_id:dev,business_generation:hello.generation},{timeoutMs:30000});
-        ensureResponse(r,hello.generation);
-        if(session()?.token!==token||deviceId()!==dev)throw Error('Сессия изменилась');
-        data=r;generation=r.generation;serverWriteEnabled=hello.writeEnabled===true;lastReadAt=Date.now();
-        if(!pending)pending=loadPending(safeUser(),generation);
-      }catch(e){data=null;generation=null;serverWriteEnabled=false;lastReadAt=0;error=String(e?.message||e);}
-      finally{loading=false;render();}}
+    async function refresh(opts={}){if(loading||sending||opts.background&&(type!==null||entryMode!==null))return;
+      const background=opts.background===true;
+      loading=true;error='';if(!background)render();
+      const user=safeUser(),token=session()?.token,dev=deviceId();
+      try{
+        if(!token||!dev)throw Error('Нет активной сессии или устройства');
+        const hello=await api({action:'wallet2.bootstrap',session_token:token,device_id:dev},{timeoutMs:background?10000:15000});
+        if(hello?.ok!==true||hello.contract!==CONTRACT||!/^Q079[.:-]/.test(String(hello.generation||''))||hello.mode!=='ACTIVE_V2'||!Number.isSafeInteger(hello.revision))throw Error('Сервер ещё не подтвердил новое поколение Кошелька');
+        if(session()?.token!==token||deviceId()!==dev||safeUser()!==user)throw Error('Сессия изменилась');
+        // The EXISTING bootstrap includes the authoritative revision. If unchanged,
+        // do not re-download even one byte of the full Wallet2 read response.
+        if(!data||generation!==hello.generation||data.revision!==hello.revision){
+          const r=await api({action:'wallet2.read',session_token:token,device_id:dev,business_generation:hello.generation},{timeoutMs:background?22000:30000});
+          ensureResponse(r,hello.generation);
+          if(r.revision!==hello.revision)throw Error('Журнал изменился во время чтения — повторите обновление');
+          if(session()?.token!==token||deviceId()!==dev||safeUser()!==user)throw Error('Сессия изменилась');
+          data=r;generation=r.generation;
+          void saveReadCache(r,user,dev);
+        }
+        // Confirming the revision restores online mode even when data came from cache.
+        if(data){offlineCopy=false;serverWriteEnabled=hello.writeEnabled===true;lastReadAt=Date.now();cacheSavedAt=lastReadAt;}
+        if(data&&!pending)pending=loadPending(user,generation);
+      }catch(e){
+        const msg=String(e?.message||e);
+        const authFailure=/SESSION_|USER_|DEVICE_|PERMISSION_DENIED|BUSINESS_GENERATION_MISMATCH|W2_CONTROL_INVALID/.test(msg);
+        serverWriteEnabled=false;lastReadAt=0;error=authFailure?msg:'Нет связи с Кошельком. Показана последняя доступная копия; запись отключена.';
+        offlineCopy=!!data&&!authFailure;
+        if(authFailure){data=null;generation=null;offlineCopy=false;}
+        else if(!data)await restoreCache();
+      }finally{
+        loading=false;
+        if(!background||rootElement.classList.contains('active'))render();
+      }
+    }
     function collect(form){const fd=new FormData(form),v=Object.fromEntries(fd.entries());
       if(type==='MATERIAL_PURCHASE')v.legs=Array.from({length:legCount},(_,i)=>({kind:v['leg'+i+'kind'],amount:v['leg'+i+'amount'],location:v['leg'+i+'ref'],party:v['leg'+i+'ref'],obligation:v['leg'+i+'ref']}));
       if(type==='PROFIT_ASSIGN')v.shares=Array.from({length:shareCount},(_,i)=>({party:v['share'+i+'party'],percent:v['share'+i+'percent']}));
       return v;}
-    async function submit(form){if(pending){error='Сначала повторите или сверьте незавершённую операцию';render();return;}if(sending||!data||!generation||!serverWriteEnabled||!allowed('wallet.add')){error='Нет подтверждённых прав или данных сервера';render();return;}
+    async function submit(form){if(pending){error='Сначала повторите или сверьте незавершённую операцию';render();return;}if(sending||offlineCopy||!data||!generation||!serverWriteEnabled||!allowed('wallet.add')){error='Нет подтверждённых прав или данных сервера';render();return;}
       if(needsPermission(type)==='admin'&&!allowed('wallet.sensitive')){error='Эта операция требует разрешения ADMIN1';render();return;}
       let event;const token=session()?.token,dev=deviceId();
       try{if(!token||!dev)throw Error('Нет сессии');event=buildEvent(type,collect(form),{generation,revision:data.revision,effectiveDate:date(),eventId:'EVT-'+newId(),requestId:'REQ-'+newId()});}
@@ -231,11 +316,11 @@
         clearPending();sending=false;type=null;entryMode=null;await refresh();
       }catch(e){sending=false;error=String(e?.message||e)+' · Запрос сохранён. При необходимости повторите ТОТ ЖЕ запрос.';render();}
     }
-    async function retryPending(){if(!pending||sending||!serverWriteEnabled||!allowed('wallet.add'))return;
+    async function retryPending(){if(!pending||sending||offlineCopy||!serverWriteEnabled||!allowed('wallet.add'))return;
       const token=session()?.token,dev=deviceId();if(!token||!dev)return;
       await dispatchPending(token,dev);
     }
-    return Object.freeze({render,refresh,buildEvent,ensureResponse,get state(){return {generation,revision:data?.revision||null,hasData:!!data,error,view,loading,sending,lastReadAt,editing:type!==null||entryMode!==null};}});
+    return Object.freeze({render,refresh,restoreCache,buildEvent,ensureResponse,get state(){return {generation,revision:data?.revision||null,hasData:!!data,error,view,loading,sending,lastReadAt,offlineCopy,editing:type!==null||entryMode!==null};}});
   }
   return Object.freeze({create,buildEvent,ensureResponse,amount,qty,money,CATEGORIES,FIELDS,CONTRACT});
 });
