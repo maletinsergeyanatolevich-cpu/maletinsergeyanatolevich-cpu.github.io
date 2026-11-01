@@ -210,9 +210,10 @@
         if(!/^Q079[.:-]/.test(cached.generation)||cached.mode!=='ACTIVE_V2')return false;
         // Do not overwrite a newer network response or cross a user/device change.
         if(data||safeUser()!==user||String(deviceId()||'')!==device||!offlineAuthorizationValid())return false;
+        // Validate an unfinished pending event before exposing the cached screen.
+        const restoredPending=pending||loadPending(user,cached.generation);
         data=cached;generation=cached.generation;offlineCopy=true;serverWriteEnabled=false;
-        cacheSavedAt=saved.savedAt;lastReadAt=0;
-        if(!pending)pending=loadPending(user,generation);
+        cacheSavedAt=saved.savedAt;lastReadAt=0;pending=restoredPending;
         render();return true;
       }catch(_){return false;}
     }
