@@ -219,7 +219,7 @@
     async function saveReadCache(r,user,device){
       try{
         const compact=compactCacheResponse(r),encoded=JSON.stringify(compact);
-        if(encoded.length>500000||!offlineAuthorizationValid()||safeUser()!==user||String(deviceId()||'')!==device)return;
+        if(encoded.length>500000||!String(session()?.token||'')||!allowed('wallet.view')||safeUser()!==user||String(deviceId()||'')!==device)return;
         await cacheIo(cacheKey(user,device),{userId:user,deviceId:device,generation:r.generation,
           savedAt:Date.now(),data:compact});
       }catch(_){/* No cache must never break the live wallet */ }
@@ -251,7 +251,7 @@
       attach();
     }
     function attach(){rootElement.querySelectorAll?.('[data-w2]').forEach(el=>el.addEventListener('click',()=>{
-      const k=el.dataset.w2;if(k==='refresh')void refresh();else if(k==='retry')void retryPending();else if(k==='income'||k==='expense'){entryMode=entryMode===k?null:k;type=null;render();}else if(k==='close-menu'){entryMode=null;render();}
+      const k=el.dataset.w2;if(k==='refresh')void refresh({forceFull:true});else if(k==='retry')void retryPending();else if(k==='income'||k==='expense'){entryMode=entryMode===k?null:k;type=null;render();}else if(k==='close-menu'){entryMode=null;render();}
       else if(k==='close'){type=null;render();}else if(k==='back'){if(typeof window!=='undefined'&&typeof window.go==='function')window.go('home');}
       else if(k==='addLeg'){if(legCount<6){const form=rootElement.querySelector('#w2-form');form?.querySelector('button[data-w2="addLeg"]')?.insertAdjacentHTML('beforebegin',legForm(legCount++));}}else if(k==='addShare'){if(shareCount<10){const form=rootElement.querySelector('#w2-form');form?.querySelector('button[data-w2="addShare"]')?.insertAdjacentHTML('beforebegin',shareForm(shareCount++));}}
     }));
@@ -269,7 +269,7 @@
         if(session()?.token!==token||deviceId()!==dev||safeUser()!==user)throw Error('Сессия изменилась');
         // The EXISTING bootstrap includes the authoritative revision. If unchanged,
         // do not re-download even one byte of the full Wallet2 read response.
-        if(!data||generation!==hello.generation||data.revision!==hello.revision){
+        if(opts.forceFull===true||!data||generation!==hello.generation||data.revision!==hello.revision){
           const r=await api({action:'wallet2.read',session_token:token,device_id:dev,business_generation:hello.generation},{timeoutMs:background?22000:30000});
           ensureResponse(r,hello.generation);
           if(r.revision!==hello.revision)throw Error('Журнал изменился во время чтения — повторите обновление');
