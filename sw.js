@@ -1,7 +1,7 @@
 'use strict';
-const BUILD='2026-10-26.q079.wallet2.cachefix1';
+const BUILD='2026-11-01.q079.wallet2.mobile2';
 const CACHE='production-pwa-'+BUILD;
-const ROLLBACK_CACHE='production-pwa-2026-10-23.q079.wallet2.1';
+const ROLLBACK_CACHE='production-pwa-2026-10-26.q079.wallet2.cachefix1';
 const APP_SHELL=[
   './index.html','./assets/app.css','./assets/media.css','./assets/app.js','./bootstrap.js',
   './assets/wallet2.js','./assets/wallet2-bridge.js','./assets/wallet2.css',
