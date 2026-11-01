@@ -22,6 +22,27 @@
    }
  }
  let lastAutomaticAttempt=0;
+ let lastPassiveAttempt=0;
+ // Wallet-only, foreground throttling. Nothing starts a finance transfer from a service worker.
+ function goodForBackground(){
+   if(document.hidden||navigator.onLine===false)return false;
+   const c=navigator.connection||navigator.mozConnection||navigator.webkitConnection;
+   if(c?.saveData||['slow-2g','2g'].includes(String(c?.effectiveType||'')))return false;
+   return true;
+ }
+ function backgroundTick(){
+   if(!wallet||!goodForBackground()||!backendSession()||!SESSION.userId)return;
+   const st=wallet.state;
+   if(st.loading||st.sending||st.editing)return;
+   const c=navigator.connection||navigator.mozConnection||navigator.webkitConnection;
+   const minInterval=c?.effectiveType==='3g'?12*60000:4*60000;
+   const now=Date.now();
+   if(now-lastPassiveAttempt<minInterval||st.lastReadAt&&now-st.lastReadAt<minInterval)return;
+   lastPassiveAttempt=now;
+   // Authoritative revision check first; full read only if changed.
+   void wallet.refresh({background:true});
+ }
+
  function maybeReadWallet(){
    if(!wallet||!walletScreen?.classList.contains('active')||navigator.onLine===false)return;
    if(!backendSession()||!SESSION.userId)return;
@@ -43,19 +64,21 @@
     wallet=w.ProductionWallet2.create({
       rootElement:node,
       api:(body,opts)=>backendPost(body,opts),
-      session:()=>({userId:String(SESSION.userId||''),token:backendSession()}),
+      session:()=>({userId:String(SESSION.userId||''),token:backendSession(),offlineUntil:lsGet(BACKEND_KEYS.offlineUntil)}),
       deviceId:()=>backendDeviceId(),
       allow:permission=>permission==='wallet.sensitive'?isAdmin1():hasPermission(permission),
       requestIds:()=>crypto.randomUUID()
     });
   }
   wallet.render();
+  // Restore only an already authenticated Q079 Wallet2 cache; NEVER legacy S.wallet.
+  void wallet.restoreCache();
   placeTransferPanel();
   maybeReadWallet();
  }
  // A closing/reopening mobile PWA returns to a current server read automatically.
  // Never retry a failed request in a rapid loop or interrupt an unfinished form.
- const resume=()=>maybeReadWallet();
+ const resume=()=>{maybeReadWallet();if(!walletScreen?.classList.contains('active'))backgroundTick();};
  w.addEventListener('focus',resume);
  w.addEventListener('pageshow',resume);
  w.addEventListener('online',resume);
@@ -66,5 +89,8 @@
  w.__Q079_WALLET2_RENDER=render;
  // App startup can activate #wallet before deferred wallet2 files arrive.
  // Re-render only the existing wallet screen when the bridge becomes ready.
- if(walletScreen && walletScreen.classList && walletScreen.classList.contains('active')) render();
+ if(walletScreen) render();
+ // While the application is visible, perform small revision checks approximately
+ // every 4 minutes on good connections. The phone OS may suspend these timers.
+ w.setInterval(backgroundTick,60000);
 })(typeof window!=='undefined'?window:null);
