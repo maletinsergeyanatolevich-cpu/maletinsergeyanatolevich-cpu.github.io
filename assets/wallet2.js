@@ -23,6 +23,15 @@
     ['Прибыль','PROFIT_OFFSET','Зачесть ранее выведенное'],
     ['Начало','OPENING_CONFIRM','Подтвердить начальные сведения']
   ];
+  // Entry navigation only. The event contract and server accounting stay unchanged.
+  const INCOME_TYPES=new Set(['CASH_RECEIPT','PARTNER_CONTRIBUTION','LOAN_RECEIVE']);
+  const EXPENSE_TYPES=new Set(['PARTNER_RETURN','MATERIAL_PURCHASE','WAGE_PAY','SUPPLIER_PAY','LOAN_REPAY','OPERATING_EXPENSE','PLAN_SPEND','PROFIT_PAY','PARTNER_WITHDRAWAL']);
+  const UNAVAILABLE_UI_TYPES=new Set(['CUSTODY_TRANSFER']);
+  function inEntryMenu(eventType,mode){
+    if(UNAVAILABLE_UI_TYPES.has(eventType))return false;
+    const direct=mode==='income'?INCOME_TYPES:EXPENSE_TYPES;
+    return direct.has(eventType)||(!INCOME_TYPES.has(eventType)&&!EXPENSE_TYPES.has(eventType));
+  }
   const FIELDS={
     CASH_RECEIPT:[['amountKop','amount','Сумма, ₽'],['custodyLocation','id','Где находятся деньги'],['purpose','choice','Назначение', 'UNCLASSIFIED_RECEIPT|CUSTOMER_ADVANCE'],['orderId','id?','ID заказа (для аванса)']],
     CUSTODY_TRANSFER:[['amountKop','amount','Сумма, ₽'],['fromLocation','id','Откуда'],['toLocation','id','Куда']],
@@ -133,7 +142,7 @@
     if(!rootElement||typeof api!=='function'||typeof session!=='function'||typeof deviceId!=='function')throw Error('Wallet2 needs existing PWA container and authenticated API');
     const date=clock||(()=>{const parts=new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Tomsk',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());const p=Object.fromEntries(parts.map(x=>[x.type,x.value]));return `${p.year}-${p.month}-${p.day}`;});
     const newId=requestIds||(()=>{if(typeof crypto==='undefined'||typeof crypto.randomUUID!=='function')throw Error('Secure request IDs unavailable');return crypto.randomUUID();});
-    let generation=null,data=null,serverWriteEnabled=false,view='summary',loading=false,error='',sending=false,type=null,legCount=1,shareCount=2, lastUser=null,lastToken=null,lastDevice=null,pending=null;
+    let generation=null,data=null,serverWriteEnabled=false,view='summary',loading=false,error='',sending=false,type=null,entryMode=null,lastReadAt=0,legCount=1,shareCount=2, lastUser=null,lastToken=null,lastDevice=null,pending=null;
     const allowed=typeof allow==='function'?allow:()=>false;
     function safeUser(){return String(session()?.userId||'');}
     // Per-tab pending event, user+generation pinned; NO token. A deliberate retry reuses the exact ID.
@@ -155,28 +164,37 @@
 
     function render(){
       const active=safeUser(),token=String(session()?.token||''),device=String(deviceId()||''),has=allowed('wallet.view');
-      if(active!==lastUser||token!==lastToken||device!==lastDevice){data=null;generation=null;serverWriteEnabled=false;type=null;pending=null;lastUser=active;lastToken=token;lastDevice=device;error='';}
+      if(active!==lastUser||token!==lastToken||device!==lastDevice){data=null;generation=null;serverWriteEnabled=false;type=null;entryMode=null;lastReadAt=0;pending=null;lastUser=active;lastToken=token;lastDevice=device;error='';}
       if(!has||!active){rootElement.innerHTML='<div class="w2-root"><h2>Кошелёк</h2><p role="alert">Нет активной сессии или права просмотра.</p></div>';return;}
       const header=`<div class="w2-head"><button data-w2="back" class="w2-back" type="button">← Главная</button><h2>Кошелёк</h2><span class="w2-chip">Новый учёт</span></div>`;
       const status=error?`<p role="alert" class="w2-error">${esc(error)}</p>`:'';
-      const pre=!data?`<div class="w2-block"><p>${loading?'Подключение к новому журналу…':'Новый финансовый журнал ещё не подтверждён сервером.'}</p><p class="w2-muted">Старые финансы и сохранённые на телефоне суммы сюда не подставляются.</p></div>`:'';
-      const info=data?`<div class="w2-bar"><span>Поколение: ${esc(data.generation)}</span><span>Версия: ${data.revision}</span></div><p class="w2-opening">${data.openingStatus==='CONFIRMED'?'Начальные сведения подтверждены':'Начальные сведения ещё не подтверждены. Пустой журнал не означает нулевую кассу.'}</p>`:'';
-      const warn=data?.summary?.issues?.length?`<div class="w2-notices" role="status">${data.summary.issues.map(x=>`<span>${esc(x)}</span>`).join('')}</div>`:'';
-      const tabs=data?`<nav class="w2-tabs" aria-label="Разделы Кошелька">${VIEWS.map(([k,l])=>`<button type="button" data-view="${k}" class="${k===view?'selected':''}" aria-current="${k===view?'page':'false'}">${l}</button>`).join('')}</nav>`:'';
-      const doBtn=data?`<div class="w2-actions"><button type="button" class="w2-primary" data-w2="choose" ${sending||!serverWriteEnabled||pending?'disabled':''}>+ Операция</button><button type="button" data-w2="refresh">Обновить</button></div>`:`<button type="button" data-w2="refresh">Проверить сервер</button>`;
-      const pendingBanner=pending?`<div class="w2-block w2-pending" role="alert"><b>Операция без подтверждённого ответа</b><p>Новая операция заблокирована до сверки. Повтор использует тот же ID запроса, без второго списания.</p><button type="button" data-w2="retry" ${sending||!serverWriteEnabled?'disabled':''}>Повторить тот же запрос</button></div>`:'';
+      const pre=!data?`<div class="w2-block"><p>${loading?'Подключаюсь к серверу…':'Данные Кошелька ещё не получены с сервера.'}</p><p class="w2-muted">Новый журнал загружается автоматически. Старые финансы не подставляются.</p><button type="button" data-w2="refresh">Проверить сервер</button></div>`:'';
+      const summary=data?sections(data,'summary'):'';
+      const openingNote=data?.openingStatus!=='CONFIRMED'&&data?
+        '<p class="w2-balance-caution">Остатки предварительные: начальные сведения не подтверждены.</p>':'';
+      const blocked=sending||!serverWriteEnabled||!!pending||!allowed('wallet.add');
+      const actions=data?`<div class="w2-actions"><button type="button" class="w2-income" data-w2="income" aria-pressed="${entryMode==='income'}" ${blocked?'disabled':''}>+ Доход</button><button type="button" class="w2-expense" data-w2="expense" aria-pressed="${entryMode==='expense'}" ${blocked?'disabled':''}>− Расход</button></div>`:'';
+      const typeButton=([group,k,title])=>`<button type="button" data-type="${k}" ${needsPermission(k)==='admin'&&!allowed('wallet.sensitive')?'disabled':''}>${esc(title)}<small>${esc(group)}</small></button>`;
+      const visible=entryMode?CATEGORIES.filter(x=>inEntryMenu(x[1],entryMode)):[];
+      const direct=visible.filter(x=>entryMode==='income'?INCOME_TYPES.has(x[1]):EXPENSE_TYPES.has(x[1]));
+      const other=visible.filter(x=>!INCOME_TYPES.has(x[1])&&!EXPENSE_TYPES.has(x[1]));
+      const menu=type===null&&data&&entryMode?`<div class="w2-entry-picker"><div class="w2-form-title"><h3>${entryMode==='income'?'Доход / поступление':'Расход / выплата'}</h3><button type="button" data-w2="close-menu" aria-label="Закрыть">×</button></div><div class="w2-type-picker">${direct.map(typeButton).join('')}</div>${other.length?`<details class="w2-extra"><summary>Другие действия (${other.length})</summary><p class="w2-muted">Учётные действия, не являющиеся напрямую доходом или расходом.</p><div class="w2-type-picker">${other.map(typeButton).join('')}</div></details>`:''}</div>`:'';
       const pick=type===null?'':`<form id="w2-form"><div class="w2-form-title"><h3>${esc(CATEGORIES.find(x=>x[1]===type)?.[2]||type)}</h3><button type="button" data-w2="close">×</button></div><p class="w2-muted">Суммы в рублях, сохраняются в целых копейках. Запись требует ответа сервера.</p>${options(type)}${type==='MATERIAL_PURCHASE'?Array.from({length:legCount},(_,i)=>legForm(i)).join('')+'<button type="button" data-w2="addLeg">+ Источник оплаты</button>':''}${type==='PROFIT_ASSIGN'?Array.from({length:shareCount},(_,i)=>shareForm(i)).join('')+'<button type="button" data-w2="addShare">+ Участник</button>':''}<button type="submit" class="w2-primary" ${sending?'disabled':''}>${sending?'Отправка…':'Проверить и сохранить'}</button></form>`;
-      const menu=type===null&&data?`<div class="w2-type-picker" hidden>${CATEGORIES.map(([group,k,title])=>`<button type="button" data-type="${k}" ${needsPermission(k)==='admin'&&!allowed('wallet.sensitive')?'disabled':''}>${esc(title)}<small>${esc(group)}</small></button>`).join('')}</div>`:'';
-      rootElement.innerHTML=`<div class="w2-root">${header}${status}${info}${warn}${pre}${tabs}${data?sections(data,view):''}${doBtn}${pendingBanner}${menu}${pick}</div>`;
+      const tabs=data?`<nav class="w2-tabs" aria-label="Разделы Кошелька">${VIEWS.map(([k,l])=>`<button type="button" data-view="${k}" class="${k===view?'selected':''}" aria-current="${k===view?'page':'false'}">${l}</button>`).join('')}</nav>`:'';
+      const pendingBanner=pending?`<div class="w2-block w2-pending" role="alert"><b>Операция без подтверждённого ответа</b><p>Новая операция заблокирована до сверки. Повтор использует тот же ID запроса, без второго списания.</p><button type="button" data-w2="retry" ${sending||!serverWriteEnabled?'disabled':''}>Повторить тот же запрос</button></div>`:'';
+      const info=data?`<div class="w2-bar"><span>Поколение: ${esc(data.generation)}</span><span>Версия журнала: ${data.revision}</span></div><p class="w2-opening">${data.openingStatus==='CONFIRMED'?'Начальные сведения подтверждены':'Начальные сведения ещё не подтверждены. Пустой журнал не означает нулевую кассу.'}</p>`:'';
+      const notices=data?.summary?.issues?.length?`<div class="w2-notices" role="status">${data.summary.issues.map(x=>`<span>${esc(x)}</span>`).join('')}</div>`:'';
+      const technical=data?`<div class="w2-technical"><h3>Сведения об учёте</h3>${info}${notices}<button type="button" data-w2="refresh">Обновить с сервера</button></div>`:'';
+      rootElement.innerHTML=`<div class="w2-root">${header}${status}${pre}${summary}${openingNote}${actions}${menu}${pick}${tabs}${data&&view!=='summary'?sections(data,view):''}${pendingBanner}${technical}</div>`;
       attach();
     }
     function attach(){rootElement.querySelectorAll?.('[data-w2]').forEach(el=>el.addEventListener('click',()=>{
-      const k=el.dataset.w2;if(k==='refresh')void refresh();else if(k==='retry')void retryPending();else if(k==='choose'){const m=rootElement.querySelector('.w2-type-picker');if(m)m.hidden=!m.hidden;}
+      const k=el.dataset.w2;if(k==='refresh')void refresh();else if(k==='retry')void retryPending();else if(k==='income'||k==='expense'){entryMode=entryMode===k?null:k;type=null;render();}else if(k==='close-menu'){entryMode=null;render();}
       else if(k==='close'){type=null;render();}else if(k==='back'){if(typeof window!=='undefined'&&typeof window.go==='function')window.go('home');}
       else if(k==='addLeg'){if(legCount<6){const form=rootElement.querySelector('#w2-form');form?.querySelector('button[data-w2="addLeg"]')?.insertAdjacentHTML('beforebegin',legForm(legCount++));}}else if(k==='addShare'){if(shareCount<10){const form=rootElement.querySelector('#w2-form');form?.querySelector('button[data-w2="addShare"]')?.insertAdjacentHTML('beforebegin',shareForm(shareCount++));}}
     }));
     rootElement.querySelectorAll?.('[data-view]').forEach(el=>el.addEventListener('click',()=>{view=el.dataset.view;render();}));
-    rootElement.querySelectorAll?.('[data-type]').forEach(el=>el.addEventListener('click',()=>{if(el.disabled)return;type=el.dataset.type;legCount=1;shareCount=2;render();}));
+    rootElement.querySelectorAll?.('[data-type]').forEach(el=>el.addEventListener('click',()=>{if(el.disabled||!entryMode||!inEntryMenu(el.dataset.type,entryMode))return;type=el.dataset.type;legCount=1;shareCount=2;render();}));
     rootElement.querySelector?.('#w2-form')?.addEventListener('submit',evt=>{evt.preventDefault();void submit(evt.currentTarget);});}
     async function refresh(){if(loading||sending)return;loading=true;error='';render();
       try{const token=session()?.token,dev=deviceId();if(!token||!dev)throw Error('Нет активной сессии или устройства');
@@ -185,9 +203,9 @@
         const r=await api({action:'wallet2.read',session_token:token,device_id:dev,business_generation:hello.generation},{timeoutMs:30000});
         ensureResponse(r,hello.generation);
         if(session()?.token!==token||deviceId()!==dev)throw Error('Сессия изменилась');
-        data=r;generation=r.generation;serverWriteEnabled=hello.writeEnabled===true;
+        data=r;generation=r.generation;serverWriteEnabled=hello.writeEnabled===true;lastReadAt=Date.now();
         if(!pending)pending=loadPending(safeUser(),generation);
-      }catch(e){data=null;generation=null;serverWriteEnabled=false;error=String(e?.message||e);}
+      }catch(e){data=null;generation=null;serverWriteEnabled=false;lastReadAt=0;error=String(e?.message||e);}
       finally{loading=false;render();}}
     function collect(form){const fd=new FormData(form),v=Object.fromEntries(fd.entries());
       if(type==='MATERIAL_PURCHASE')v.legs=Array.from({length:legCount},(_,i)=>({kind:v['leg'+i+'kind'],amount:v['leg'+i+'amount'],location:v['leg'+i+'ref'],party:v['leg'+i+'ref'],obligation:v['leg'+i+'ref']}));
@@ -210,14 +228,14 @@
         ensureResponse(r,p.generation);
         if(r.acceptedEventId!==p.event.eventId||r.acceptedRequestId!==p.event.requestId)throw Error('Ответ сервера не подтверждает конкретную операцию');
         if(session()?.token!==token||deviceId()!==dev||safeUser()!==p.userId)throw Error('Сессия изменилась до подтверждения');
-        clearPending();sending=false;type=null;await refresh();
+        clearPending();sending=false;type=null;entryMode=null;await refresh();
       }catch(e){sending=false;error=String(e?.message||e)+' · Запрос сохранён. При необходимости повторите ТОТ ЖЕ запрос.';render();}
     }
     async function retryPending(){if(!pending||sending||!serverWriteEnabled||!allowed('wallet.add'))return;
       const token=session()?.token,dev=deviceId();if(!token||!dev)return;
       await dispatchPending(token,dev);
     }
-    return Object.freeze({render,refresh,buildEvent,ensureResponse,get state(){return {generation,revision:data?.revision||null,hasData:!!data,error,view,loading,sending};}});
+    return Object.freeze({render,refresh,buildEvent,ensureResponse,get state(){return {generation,revision:data?.revision||null,hasData:!!data,error,view,loading,sending,lastReadAt,editing:type!==null||entryMode!==null};}});
   }
   return Object.freeze({create,buildEvent,ensureResponse,amount,qty,money,CATEGORIES,FIELDS,CONTRACT});
 });
