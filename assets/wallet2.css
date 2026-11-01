@@ -15,7 +15,7 @@
 #wallet .w2-tile{min-width:0;display:flex;flex-direction:column;gap:11px;padding:13px;background:var(--card,#fff);border:1px solid var(--line,#ddd);border-radius:16px;box-shadow:0 1px 3px rgba(0,0,0,.04)}
 #wallet .w2-tile span{font-size:12px;color:var(--muted,#5f6671)}
 #wallet .w2-tile strong{font-size:clamp(17px,4.5vw,24px);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
-#wallet .w2-actions{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:10px}
+#wallet .w2-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
 #wallet .w2-actions button,#wallet .w2-root>button,#wallet .w2-form-title button,#wallet #w2-form button{min-height:46px;border:1px solid var(--line,#ccd1d9);border-radius:13px;padding:10px 14px;background:var(--card,#fff);color:inherit;font-size:15px}
 #wallet .w2-actions .w2-primary,#wallet #w2-form .w2-primary{color:#fff;background:var(--accent,#245780);border-color:transparent;font-weight:700}
 #wallet .w2-type-picker{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
@@ -36,3 +36,21 @@
 #wallet .w2-ledger li span{font-size:12px;color:var(--muted,#5f6671)}
 @media(max-width:360px){#wallet .w2-root{padding:8px 5px 100px}#wallet .w2-metrics,#wallet .w2-type-picker{grid-template-columns:1fr}#wallet .w2-actions{grid-template-columns:1fr}}
 @media(min-width:660px){#wallet .w2-metrics{grid-template-columns:repeat(3,minmax(0,1fr))}#wallet .w2-type-picker{grid-template-columns:repeat(3,minmax(0,1fr))}}
+
+/* Q079 mobile usability: wallet screen only. No other screen or finance logic changes. */
+#wallet .w2-actions .w2-income{background:var(--accent,#245780);border-color:transparent;color:white;font-weight:700}
+#wallet .w2-actions .w2-expense{background:var(--card,#fff);border:2px solid var(--accent,#245780);font-weight:700;color:inherit}
+#wallet .w2-actions button:disabled{opacity:.5;cursor:not-allowed}
+#wallet .w2-actions button[aria-pressed="true"]{outline:2px solid var(--accent,#245780);outline-offset:2px}
+#wallet .w2-entry-picker{display:flex;flex-direction:column;gap:12px;padding:14px;background:var(--card,#fff);border:1px solid var(--line,#ddd);border-radius:16px}
+#wallet .w2-entry-picker h3{margin:0;font-size:18px}
+#wallet .w2-entry-picker .w2-form-title button{border:0;background:transparent;font-size:25px;min-width:44px;min-height:44px;color:inherit}
+#wallet .w2-extra{border-top:1px solid var(--line,#ddd);padding-top:10px}
+#wallet .w2-extra summary{cursor:pointer;min-height:44px;padding:11px 3px;font-weight:600}
+#wallet .w2-extra .w2-type-picker{margin-top:10px}
+#wallet .w2-balance-caution{margin:-5px 0 0;color:var(--muted,#5f6671);font-size:12px}
+#wallet .w2-technical{display:flex;flex-direction:column;gap:10px;border-top:1px solid var(--line,#ddd);padding-top:18px;margin-top:12px}
+#wallet .w2-technical h3{margin:0;font-size:15px}
+#wallet .w2-technical [data-w2="refresh"],#wallet .w2-block [data-w2="refresh"]{min-height:44px;border:1px solid var(--line,#ddd);border-radius:12px;background:var(--card,#fff);color:inherit}
+#wallet #transferProgress{position:static;inset:auto;width:auto;margin-top:12px;max-width:100%;box-sizing:border-box}
+@media(max-width:360px){#wallet .w2-actions{grid-template-columns:repeat(2,minmax(0,1fr))}}
