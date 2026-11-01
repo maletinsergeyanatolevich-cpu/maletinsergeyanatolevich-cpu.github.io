@@ -1,22 +1,20 @@
 {
-  "version": "v0.3.29.1-wallet2",
-  "buildId": "2026-10-26.q079.wallet2.cachefix1",
-  "channel": "q079-wallet2",
-  "rolloutStage": "stable",
+  "version": "v0.3.30-wallet2-ux",
+  "buildId": "2026-11-01.q079.wallet2.mobile1",
+  "channel": "q079-wallet2-ux",
+  "rolloutStage": "admin1",
   "eligibleRoles": [
-    "ADMIN1",
-    "ADMIN2",
-    "USER"
+    "ADMIN1"
   ],
   "dbSchema": 5,
   "minBackend": "backend-0.2.35-q029-finance-sortfix",
-  "previousBuildId": "2026-10-23.q079.wallet2.1",
+  "previousBuildId": "2026-10-26.q079.wallet2.cachefix1",
   "rollback": {
-    "buildId": "2026-10-23.q079.wallet2.1",
+    "buildId": "2026-10-26.q079.wallet2.cachefix1",
     "dbSchema": 5,
     "safeWithoutDataReset": false,
     "requiresWalletLedgerReconciliation": true
   },
-  "publishedAt": "2026-10-26T00:00:00.000Z",
-  "notes": "Q079 Wallet2 already live, fix stale Chrome PWA core cache only. Network-first for app shell, offline fallback retained; no auth/local storage/IndexedDB mutation."
+  "publishedAt": "2026-11-01T00:00:00.000Z",
+  "notes": "Q079 Wallet2 mobile UX ADMIN1 candidate; new income/expense menu, auto server read on wallet resume, diagnostics moved below; no financial schema/data/backend changes."
 }
